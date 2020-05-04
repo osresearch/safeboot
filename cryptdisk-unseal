@@ -1,0 +1,15 @@
+#!/bin/sh -x
+# Unseal the key from the TPM, if possible, using direct access
+# since there is no resource manager.
+#
+# Otherwise fall back to the user's recovery key.
+
+PCRS='sha256:0,2,4,5,7,14'
+HANDLE=0x81000000
+
+/usr/bin/tpm2_unseal \
+	--tcti device:/dev/tpm0 \
+	--object-context $HANDLE \
+	--auth pcr:"$PCRS" \
+|| /lib/cryptsetup/askpass \
+	"Recovery key for $CRYPTTAB_SOURCE ($CRYPTTAB_NAME): "

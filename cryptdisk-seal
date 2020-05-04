@@ -1,0 +1,115 @@
+#!/bin/bash
+# Create a new disk encryption key and add it to the LUKS
+# system, as well as seal the key into the TPM.
+set -e -o pipefail
+die() { echo "$@" >&2 ; exit 1 ; }
+warn() { echo "$@" >&2 ; }
+
+PCRS='sha256:0,2,4,5,7,14'
+DEV=/dev/sda3
+KEYSLOT=1
+HANDLE=0x81000000
+
+TMP=`mktemp -d`
+
+mount -t tmpfs none "$TMP" \
+|| die "Unable to mount temp directory"
+chmod 700 "$TMP"
+
+cleanup() {
+	#umount "$TMP" || die "DANGER: umount $TMP failed"
+	#rmdir "$TMP"
+	echo "Not cleaning up"
+}
+
+trap cleanup EXIT
+
+dd \
+	if=/dev/urandom \
+	of="$TMP/key.bin" \
+	bs=32 \
+	count=1 \
+|| die "Unable to generate random key"
+
+# If pre-computed PCRs are known, they can be used here instead
+tpm2_pcrread -o "$TMP/pcrs.bin" "$PCRS" \
+|| die "Unable to read TPM PCRs"
+
+tpm2_createpolicy \
+	--policy-pcr \
+	--pcr-list "$PCRS" \
+	--pcr "$TMP/pcrs.bin" \
+	--policy "$TMP/policy.digest" \
+|| die "Unable to create TPM policy"
+
+tpm2_createprimary \
+	--key-context "$TMP/primary.context" \
+|| die "Unable to create TPM primary object"
+
+# Start a secret session with the TPM
+#tpm2_startauthsession \
+#	--session "$TMP/session.context" \
+#|| die "Unable to start TPM session"
+#
+#tpm2_policysecret \
+#	--session "$TMP/session.context" \
+#	--object-context "$TMP/primary.context" \
+#|| die "Unable to set secret policy"
+#	--parent-auth "$TMP/session.context" \
+#	--key-auth $HANDLE \
+
+tpm2_create \
+	--parent-context "$TMP/primary.context" \
+	--policy "$TMP/policy.digest" \
+	--sealing-input "$TMP/key.bin" \
+	--public "$TMP/public.bin" \
+	--private "$TMP/private.bin" \
+|| die "Unable to create TPM key context"
+
+tpm2_load \
+	--parent-context "$TMP/primary.context" \
+	--public "$TMP/public.bin" \
+	--private "$TMP/private.bin" \
+	--key-context "$TMP/key.context" \
+|| die "Unable to load TPM with key"
+	
+tpm2_evictcontrol \
+	--object-context "$HANDLE" \
+|| die "Unable to remove old TPM key context $HANDLE"
+
+tpm2_evictcontrol \
+	--object-context "$TMP/key.context" \
+|| die "Unable to load TPM key context into TPM"
+
+# Verify that the key actually works
+tpm2_unseal \
+	--object-context $HANDLE \
+	--auth pcr:"$PCRS" \
+	--output "$TMP/key2.bin" \
+|| die "Unable to unseal key from TPM"
+
+cmp "$TMP/key.bin" "$TMP/key2.bin" \
+|| die "Keys do not match; something failed"
+
+# ask for the disk encryption key
+for tries in 1 2 3 fail; do
+	read -s -p "Current recovery password: " recovery_key
+	echo -n "$recovery_key" > "$TMP/recovery.key"
+
+	cryptsetup luksKillSlot \
+		--key-file "$TMP/recovery.key" \
+		"$DEV" $KEYSLOT \
+	|| warn "$DEV: Unable to remove old key slot (ignored)"
+
+	cryptsetup luksAddKey \
+		--key-file "$TMP/recovery.key" \
+		--key-slot $KEYSLOT \
+		"$DEV" "$TMP/key.bin" \
+	&& break
+
+	warn "$DEV: Unable to add key slot"
+
+	if [ $tries -eq fail ]; then
+		die "Unable to add key"
+	fi
+done

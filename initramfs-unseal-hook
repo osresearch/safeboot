@@ -1,0 +1,21 @@
+#!/bin/sh
+# Install the tpm2_unseal and direct access library
+# into the initramdisk so that it can be used to
+# unseal the disk encryption key
+#
+# The tpm2_unseal program uses dlopen() to load the raw device
+# library, so it is necessary to explicitly copy it as well.
+#
+# This script should be copied to /etc/initramfs-tools/hooks/tpm2
+# (or a symlink from there to here):
+# ln -s `pwd`/initramfs-unseal-hook /etc/initramfs-tools/hooks/tpm2
+set -e
+
+if [ "$1" = "prereqs" ]; then
+	exit 0
+fi
+
+. /usr/share/initramfs-tools/hook-functions
+
+copy_exec /usr/bin/tpm2_unseal
+copy_exec /lib/x86_64-linux-gnu/libtss2-tcti-device.so.0
