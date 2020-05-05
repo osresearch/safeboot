@@ -1,7 +1,8 @@
-all: $(BINS)
 
 BINS += bin/sbsign
 BINS += bin/sign-efi-sig-list
+
+all: $(BINS)
 
 bin/sbsign: sbsigntools/Makefile
 	$(MAKE) -C sbsigntools
@@ -9,11 +10,11 @@ bin/sbsign: sbsigntools/Makefile
 sbsigntools/Makefile: sbsigntools/autogen.sh
 	cd $(dir $@) ; ./autogen.sh && configure
 sbsigntools/autogen.sh:
-	git submodule init --recursive sbsigntools
+	git submodule update --recursive sbsigntools
 
 bin/sign-efi-sig-list: efitools/Makefile
 	$(MAKE) -C efitools
 efitools/Makefile:
-	git submodule init --recursive efitools
+	git submodule update --recursive efitools
 	
 	
