@@ -10,6 +10,12 @@ DEV=/dev/sda3
 KEYSLOT=1
 HANDLE=0x81000000
 
+# if the TPM2 resource manager is running, talk to it.
+# otherwise use a direct connection to the TPM.
+if ! pidof tpm2-abrmd > /dev/null ; then
+	export TPM2TSSENGINE_TCTI="device:/dev/tpmrm0"
+fi
+
 TMP=`mktemp -d`
 
 mount -t tmpfs none "$TMP" \
@@ -17,9 +23,8 @@ mount -t tmpfs none "$TMP" \
 chmod 700 "$TMP"
 
 cleanup() {
-	#umount "$TMP" || die "DANGER: umount $TMP failed"
-	#rmdir "$TMP"
-	echo "Not cleaning up"
+	umount "$TMP" || die "DANGER: umount $TMP failed"
+	rmdir "$TMP"
 }
 
 trap cleanup EXIT
