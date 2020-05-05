@@ -11,7 +11,12 @@ recovery key (set during initial install).
 The random key will also be sealed into the TPM as a persistent object
 using the current value of the important PCRs.
 
-In order for the 
+In order for the `initrd` to be able to unseal and decrypt the key,
+it is necessary to also install a "hook" into the initramfs generation
+routine.
+
+TODO: Extend a PCR so that the key can not be unsealed again after boot.
+
 
 
 Other helpful links:
@@ -41,7 +46,99 @@ Meaning for UEFI is defined in
 
 Install the tools on the running system:
 ```
-apt install tpm2-tools tpm2-abrmd
+apt install \
+	tpm2-tools \
+	tpm2-abrmd \
+	efitools \
+	gnu-efi \
+	opensc \
+	yubico-piv-tool \
+	libengine-pkcs11-openssl \
+	build-essential \
+	git \
+	autotools \
+	binutils-dev \
+	libssl-dev \
+	uuid-dev \
+	help2man \
 ```
 
 
+
+```
+yubico-piv-tool -s 9c -a generate -o pubkey.pem # will take a while and overwrite any existing private keys
+yubico-piv-tool -s 9c -a verify-pin -a selfsign-certificate -S '/OU=test/O=example.com/' -i pubkey.pem -o cert.pem
+yubico-piv-tool -s 9c -a import-certificate -i cert.pem
+openssl x509 -outform der -in cert.pem -out cert.crt
+openssl x509 -in cert.pem -text -noout # display the contents of the PEM file
+```
+
+To retrieve the cert later:
+```
+yubico-piv-tool -s 9c -a read-certificate -o cert.pem
+```
+
+----
+
+efitools from source for `-e` engine support: https://git.kernel.org/pub/scm/linux/kernel/git/jejb/efitools.git
+
+sbsign from source for yubikey support: https://github.com/osresearch/sbsigntools
+
+yubikey setup for PK (and KEK, and DB)
+
+reboot into uefi setup, configure bios for security:
+* admin password
+* thunderbolt, etc
+* take ownership of TPM
+* tamper detection
+* secure boot - clear keys
+
+reboot into linux
+
+build linux kernel and initrd image
+* tpm keys
+* hook initramfs creation
+* merge, sign and install into /boot
+```
+sudo efibootmgr  --create --disk /dev/sda --part 1 --label linux --loader '\EFI\linux\linux.efi'
+```
+
+build recovery USB
+* sign kernel and initramfs
+
+install secureboot keys
+* sign pk update with key
+```
+cert-to-efi-sig-list -g `uuidgen` /boot/cert.pem cert.esl
+sign-efi-sig-list -e pkcs11 -k 'pkcs11:' -c /boot/cert.pem PK cert.esl PK.auth
+sign-efi-sig-list -e pkcs11 -k 'pkcs11:' -c /boot/cert.pem KEK cert.esl KEK.auth
+sign-efi-sig-list -e pkcs11 -k 'pkcs11:' -c /boot/cert.pem db cert.esl db.auth
+```
+* install platform keys, kek and db, replacing the lenovo and microsoft ones (must be in this order; once PK is set the others will not be changed)
+```
+efi-updatevar -f db.auth  db
+efi-updatevar -f KEK.auth  KEK
+efi-updatevar -f PK.auth  PK
+```
+
+* for corporate deployment: install signed setup variable?
+
+reboot
+* boot order
+* test usb 
+
+other things to do:
+* read-only root
+* dm-verity
+* separate /home
+
+
+kernel and initrd update process:
+* run update-initram-fs
+* run merging tools
+* run signing tool
+* needs the security token
+
+disk re-keying:
+* necessary if firmware setup variables change
+* should not be required for kernel updates
