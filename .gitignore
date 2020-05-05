@@ -1,0 +1,3 @@
+.*.swp
+bin/sbsign
+bin/sign-efi-sig-list
