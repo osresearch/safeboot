@@ -40,8 +40,14 @@ If there are any updates to the UEFI firmware, such as changing the
 `Setup` variable, then the TPM sealed keys will no longer be accessible
 and the recovery key will be necessary to re-seal the drive.
 
+The assumption is that there is no TPM2 resource manager running,
+either at runtime or in the initrd, so it is possible for the tools
+to directly talk to the TPM2.
+
 -----
 This guide was written using Ubuntu 20.04 and `tpm2-tools` 4.1.1.
+Unfortunately there has been churn in the names of the tools and
+the command line options, so it does not work on 18.04.
 All of the commands are run as `root`.
 
 The `cryptdisk-seal` program will securely generate a random key
@@ -65,6 +71,7 @@ TODO: Extend a PCR so that the key can not be unsealed again after boot.
 Other helpful links:
 * https://robertou.com/tpm2-sealed-luks-encryption-keys.html which uses a less standard TPM toolkit
 * https://threat.tevora.com/secure-boot-tpm-2/ which is out of date on the tpm2 command line options
+* https://github.com/timchen119/tpm2-initramfs-tool which stores the pass phrase in the TPM, rather than a separate key
 
 
 Meaning for UEFI is defined in
