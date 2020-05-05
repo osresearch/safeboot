@@ -1,3 +1,46 @@
+# Safer Boot
+
+Safer Boot has three goals:
+* Self-signed platform key for kernel and initrd, stored in a yubikey
+* TPM protected disk encryption keys
+* Optionally read-only root with dm-verity (and signed root hash)
+
+Unlike the [slightly more secure Heads firmware](http://osresearch.net),
+Safer Boot is trying to work with existing commodity hardware and UEFI
+SecureBoot mechanisms, as well as relatively stock Ubuntu installations.
+
+## Setup phase
+This is done once when the system is being setup to use Safer Boot mode.
+Note that the hardware token and key signing portions can be done offline
+on a separate disconnected machine and then signed keys copied to the machine.
+
+* Generate signing key in hardware token
+* Store public certificate in UEFI platform key (`PK`), key-exchange key (`KEK`) and database (`db`)
+* Add UEFI boot menu item for safer boot kernel
+* Configure UEFI setup for safer operation
+* Create a random disk encryption key, seal it into the TPM
+* Add `initramfs` hooks to unseal key from TPM during boot
+
+## Root filesystem update phase
+* Remount `/` read-write
+* Perform updates
+* Remount `/` read-only
+* Compute block hashes and root hash
+* Add root hash to command line
+* Sign kernel/initramfs/commandline
+
+## Kernel and initramfs update phase
+* Re-generate `/boot/initrd` and `/boot/vmlinuz`
+* Merge the kernel, initrd and command line into a single EFI executable
+* Use the hardware token to sign that executable
+* Copy the signed image to the EFI boot partition
+
+## UEFI firmware update
+If there are any updates to the UEFI firmware, such as changing the
+`Setup` variable, then the TPM sealed keys will no longer be accessible
+and the recovery key will be necessary to re-seal the drive.
+
+-----
 This guide was written using Ubuntu 20.04 and `tpm2-tools` 4.1.1.
 All of the commands are run as `root`.
 
@@ -80,6 +123,32 @@ yubico-piv-tool -s 9c -a read-certificate -o cert.pem
 
 ----
 
+Ubuntu 20.04 installation:
+* "Try it", then 
+* "Advanced" - "LVM encrypt"
+* Install as normal, then 
+* Then reduce the volume before rebooting:
+```
+sudo e2fsck -f /dev/vgubuntu/root
+sudo resize2fs /dev/vgubuntu/root 32G
+sudo lvreduce -L 32G /dev/vgubuntu/root
+sudo lvcreate -L 80G home vgubuntu
+```
+
+* "Something else"
+** sda1: EFI system partition
+** sda2: /boot (ext4)
+** sda3: encrypted partition (have to click back?)
+** create partition table
+** / -- 64 GB
+** /var - 16 GB
+** swap -- 16 GB
+** /home -- the rest
+* and this is broken in 20.04... trying via preseed
+
+https://www.chucknemeth.com/linux/distribution/debian/debian-9-preseed-uefi-encrypted-lvm
+
+
 efitools from source for `-e` engine support: https://git.kernel.org/pub/scm/linux/kernel/git/jejb/efitools.git
 
 sbsign from source for yubikey support: https://github.com/osresearch/sbsigntools
@@ -131,7 +200,7 @@ other things to do:
 * read-only root
 * dm-verity
 * separate /home
-
+* turn off automatic filesystem mounting
 
 kernel and initrd update process:
 * run update-initram-fs
@@ -142,3 +211,5 @@ kernel and initrd update process:
 disk re-keying:
 * necessary if firmware setup variables change
 * should not be required for kernel updates
+
+
