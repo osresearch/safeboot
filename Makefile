@@ -14,7 +14,7 @@ bin/sbsign: sbsigntools/Makefile
 sbsigntools/Makefile: sbsigntools/autogen.sh
 	cd $(dir $@) ; ./autogen.sh && ./configure
 sbsigntools/autogen.sh:
-	git submodule update sbsigntools
+	git submodule update --init sbsigntools
 
 #
 # sign-efi-sig-list needs to be built from source to have support for
@@ -24,4 +24,22 @@ bin/sign-efi-sig-list: efitools/Makefile
 	$(MAKE) -C $(dir $<) $(notdir $@)
 	cp $(dir $<)$(notdir $@) $@
 efitools/Makefile:
-	git submodule update efitools
+	git submodule update --init efitools
+
+
+#
+# Extra package requirements
+#
+requirements:
+	apt install -y \
+		tpm2-tools \
+		efitools \
+		gnu-efi \
+		opensc \
+		yubico-piv-tool \
+		libengine-pkcs11-openssl \
+		build-essential \
+		git \
+		autotools \
+		help2man \
+
