@@ -15,6 +15,9 @@ INITRD=/boot/initrd.img
 OUTDIR=/boot/efi/EFI/linux
 CERT="$TMP/cert.pem"
 
+warn "Regenerating initramfs"
+update-initramfs -u
+
 if [ ! -d "$OUTDIR" ]; then
 	warn "$OUTDIR: Creating directory on EFI System Partition"
 	mkdir -p "$OUTDIR" \
