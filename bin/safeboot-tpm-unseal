@@ -7,6 +7,13 @@
 PCRS='sha256:0,2,4,5,7,14'
 HANDLE=0x81000000
 
+echo >&2 "---- TPM PCRs ----" 
+/usr/bin/tpm2_pcrread \
+	--tcti device:/dev/tpm0 \
+	'sha256:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16' \
+>&2
+
+echo >&2 "---- Attempting TPM unseal ----" 
 /usr/bin/tpm2_unseal \
 	--tcti device:/dev/tpm0 \
 	--object-context $HANDLE \
