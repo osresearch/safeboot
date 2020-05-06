@@ -121,9 +121,9 @@ for tries in 1 2 3 fail; do
 done
 
 # check to see if the initramfs hook is installed
-if [ ! -r /etc/initramfs-tools/hooks/saferboot-initramfs-hook ]; then
+if [ ! -r /etc/initramfs-tools/hooks/tpm-unseal ]; then
 	warn "adding initramfs hook"
-	ln -s "$DIR/saferboot-initramfs-hook" /etc/initramfs-tools/hooks \
+	ln -s "$DIR/../initramfs/hooks/tpm-unseal" /etc/initramfs-tools/hooks \
 	|| die "/etc/initramfs-tools/hooks: unable to install hook"
 fi
 
