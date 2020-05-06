@@ -39,7 +39,10 @@ requirements:
 		yubico-piv-tool \
 		libengine-pkcs11-openssl \
 		build-essential \
+		binutils-dev \
 		git \
-		autotools \
+		automake \
 		help2man \
+		libssl-dev \
+		uuid-dev \
 

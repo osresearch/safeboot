@@ -1,15 +1,15 @@
 #!/bin/bash
-# Merge the kernel, initrd, command line and notes into a single file
-# that can be signed and booted with UEFI Secure Boot
+# Configure the Yubikey and add it to the platform keys
 set -e -o pipefail
 die() { echo "$@" >&2 ; exit 1 ; }
 warn() { echo "$@" >&2 ;  }
+DIR="`dirname $0`"
 
-KERNEL=/boot/vmlinuz
-INITRD=/boot/initrd.img
-OUTDIR=/boot/efi/EFI/linux
-CERT=/boot/cert.pem
-
+yubico-piv-tool -s 9c -a generate -o pubkey.pem # will take a while and overwrite any existing private keys
+yubico-piv-tool -s 9c -a verify-pin -a selfsign-certificate -S '/OU=test/O=example.com/' -i pubkey.pem -o cert.pem
+yubico-piv-tool -s 9c -a import-certificate -i cert.pem
+openssl x509 -outform der -in cert.pem -out cert.crt
+openssl x509 -in cert.pem -text -noout # display the contents of the PEM file
 if [ ! -d "$OUTDIR" ]; then
 	warn "$OUTDIR: Creating boot menu item"
 	efibootmgr \
@@ -60,7 +60,7 @@ fi
 
 #	--key 'pkcs11:manufacturer=piv_II' \
 warn "$OUTDIR/linux.efi: Signing"
-~hudson/sbsigntools/src/sbsign \
+$DIR/sbsign \
 	--engine pkcs11 \
 	--key 'pkcs11:' \
 	--cert "$CERT" \
