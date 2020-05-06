@@ -4,6 +4,7 @@
 DIR="`dirname $0`"
 
 die() { echo "$@" >&2 ; exit 1 ; }
+warn() { echo "$@" >&2 ; }
 cleanup() { rm -rf "$TMP" ; }
 
 TMP=`mktemp -d`
@@ -15,24 +16,25 @@ cert-to-efi-sig-list -g `uuidgen` $TMP/cert.pem $TMP/cert.esl \
 || die "cert-to-efi-sig-list failed"
 
 # Cache the yubico pin since it will be used multiple times
-read -s -p 'Yubikey PIN: ' pin
-echo pin=$pin
+read -s -p 'Yubikey login PIN: ' pin
+echo
 
 # Use the sign-efi-sig-list from our build so that the
 # -e option exists
 for key in db KEK PK; do
+	warn "Signing UEFI variable $key"
 	$DIR/sign-efi-sig-list \
 		-e pkcs11 \
 		-k "pkcs11:pin-value=$pin" \
 		-c $TMP/cert.pem \
 		$key \
 		$TMP/cert.esl \
-		$TMP/$key.auth \
+		$key.auth \
 	|| die "$key: Signing failed"
 done
 
 # The order of update must be from lowest to highest
 for key in db KEK PK; do
-	efi-updatevar -f $TMP/$key.auth $key \
+	efi-updatevar -f $key.auth $key \
 	|| die "$key: updating key failed"
 done
