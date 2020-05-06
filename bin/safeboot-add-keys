@@ -1,0 +1,38 @@
+#!/bin/bash
+# Retrieve the cert from the Yubikey and use the key to
+# sign the cert for the PK, KEK and db keys
+DIR="`dirname $0`"
+
+die() { echo "$@" >&2 ; exit 1 ; }
+cleanup() { rm -rf "$TMP" ; }
+
+TMP=`mktemp -d`
+
+yubico-piv-tool -s 9c -a read-certificate -o $TMP/cert.pem \
+|| die "Unable to retrieve PIN from yubikey"
+
+cert-to-efi-sig-list -g `uuidgen` $TMP/cert.pem $TMP/cert.esl \
+|| die "cert-to-efi-sig-list failed"
+
+# Cache the yubico pin since it will be used multiple times
+read -s -p 'Yubikey PIN: ' pin
+echo pin=$pin
+
+# Use the sign-efi-sig-list from our build so that the
+# -e option exists
+for key in db KEK PK; do
+	$DIR/sign-efi-sig-list \
+		-e pkcs11 \
+		-k "pkcs11:pin-value=$pin" \
+		-c $TMP/cert.pem \
+		$key \
+		$TMP/cert.esl \
+		$TMP/$key.auth \
+	|| die "$key: Signing failed"
+done
+
+# The order of update must be from lowest to highest
+for key in db KEK PK; do
+	efi-updatevar -f $TMP/$key.auth $key \
+	|| die "$key: updating key failed"
+done
