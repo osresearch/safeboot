@@ -1,78 +1,83 @@
 #!/bin/bash
 # Merge the kernel, initrd, command line and notes into a single file
 # that can be signed and booted with UEFI Secure Boot
+# The assumption is that `update-initramfs -u` has been run
+# and that the new kernel/initrd are in /boot.
 set -e -o pipefail
 die() { echo "$@" >&2 ; exit 1 ; }
 warn() { echo "$@" >&2 ;  }
+cleanup() { rm -rf "$TMP" ; }
 DIR="`dirname $0`"
+TMP="`mktemp -d`"
 
 KERNEL=/boot/vmlinuz
 INITRD=/boot/initrd.img
 OUTDIR=/boot/efi/EFI/linux
-CERT=/boot/cert.pem
+CERT="$TMP/cert.pem"
 
 if [ ! -d "$OUTDIR" ]; then
-	warn "$OUTDIR: Creating boot menu item"
+	warn "$OUTDIR: Creating directory on EFI System Partition"
+	mkdir -p "$OUTDIR" \
+	|| die "$OUTDIR: unable to create"
+fi
+
+
+if ! efibootmgr | grep '^Boot.* linux$' ; then
+	# determine the device the EFI system partition is on
+	DEV="`df "$OUTDIR" | tail -1 | cut -d' ' -f1`"
+
+	warn "$OUTDIR: Creating boot menu item on $DEV"
 	efibootmgr \
  		--create \
-		--disk /dev/sda \
+		--disk "$DEV" \
 		--part 1 \
 		--label linux \
 		--loader '\EFI\linux\linux.efi' \
 	|| die 'efibootmgr: failed to create linux entry'
-
-	mkdir -p "$OUTDIR"
-
-#	echo 'linux.efi,linux,,Single image linux' \
-#		| iconv -t UCS-2 > "$OUTDIR/BOOTX64.CSV"
-
 fi
 
-cat /proc/cmdline > /tmp/cmdline.txt
+# Should get extra command line options from user?
+cat /proc/cmdline > "$TMP/cmdline.txt"
 
-warn "$OUTDIR: Creating merged Linux/initrd image (ignore warnings)"
+warn "$TMP/linux.efi: Creating merged Linux/initrd image"
 objcopy \
 	--add-section .osrel=/etc/os-release \
-	--change-section-vma .osrel=0x20000 \
-	--add-section .cmdline=/tmp/cmdline.txt \
-	--change-section-vma .cmdline=0x30000 \
+	--add-section .cmdline="$TMP/cmdline.txt" \
 	--add-section .linux="$KERNEL" \
-	--change-section-vma .linux=0x40000 \
 	--add-section .initrd="$INITRD" \
+	--change-section-vma .osrel=0x20000 \
+	--change-section-vma .cmdline=0x30000 \
+	--change-section-vma .linux=0x40000 \
 	--change-section-vma .initrd=0x3000000 \
 	/usr/lib/systemd/boot/efi/linuxx64.efi.stub \
-	/tmp/linux.efi \
-|| die "/tmp/linux.efi: unable to create"
+	"$TMP/linux.efi" \
+|| die "linux.efi: unable to create"
 
 if [ ! -r "$CERT" ]; then
-	warn "Extracting certificate from yubikey"
 	yubico-piv-tool \
 		-s 9c \
 		-a read-certificate \
 		-o "$CERT" \
 	|| die "$CERT: unable to read from yubikey"
-
-	openssl x509 \
-		-outform der \
-		-in "$CERT" \
-		-out "`basename $CERT .pem`.crt" \
-	|| die "$CERT: unable to create CRT file"
 fi
 
-#	--key 'pkcs11:manufacturer=piv_II' \
-warn "$OUTDIR/linux.efi: Signing"
+warn "$OUTDIR/linux.efi: Signing (ignore warnings about gaps)"
 $DIR/sbsign \
 	--engine pkcs11 \
 	--key 'pkcs11:' \
 	--cert "$CERT" \
 	--output "$OUTDIR/linux.efi.new" \
-	"/tmp/linux.efi" \
+	"$TMP/linux.efi" \
 || die "$OUTDIR/linux.efi: Unable to sign"
 
 # Duplicate the old image and atomically move the new kernel
 # image to avoid potentially leaving an unbootable system
-cp "$OUTDIR/linux.efi" "$OUTDIR/linux.efi.old" \
-|| die "$OUTDIR/linux.efi.old: unable to backup old image"
+if [ -r "$OUTDIR/linux.efi" ]; then
+	cp "$OUTDIR/linux.efi" "$OUTDIR/linux.efi.old" \
+	|| die "$OUTDIR/linux.efi.old: unable to backup old image"
+fi
 
 mv "$OUTDIR/linux.efi.new" "$OUTDIR/linux.efi" \
 || die "$OUTDIR/linux.efi: unable to install new image"
+
+sha256sum "$OUTDIR/linux.efi"
