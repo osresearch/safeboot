@@ -1,3 +1,10 @@
 .*.swp
 bin/sbsign
 bin/sign-efi-sig-list
+tags
+*.esl
+*.pem
+*.auth
+*.sig
+*.sha1
+*.sha256
