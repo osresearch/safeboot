@@ -1,23 +1,27 @@
-# Safer Boot
+# Safe Boot: Booting Linux Safely
 
-Safer Boot has three goals:
-* Self-signed platform key for kernel and initrd, stored in a yubikey
-* TPM protected disk encryption keys
-* Optionally read-only root with dm-verity (and signed root hash)
+Safe Boot has four goals:
+* Only booting what the system owner has authorized (by installing a hardware protected platform key for the kernel and initrd)
+* Streamline the boot process (by storing disk encryption keys in the TPM, and only unsealing them if the firmware and configuration is unmodified)
+* Protect the system integrity (by optionally enabling a read-only root with dm-verity and signed root hash)
+* Make it harder for an adversary to exfiltrate data (by enabling Linux kernel features to de-priviledge the root account)
 
-Unlike the [slightly more secure Heads firmware](http://osresearch.net),
-Safer Boot is trying to work with existing commodity hardware and UEFI
-SecureBoot mechanisms, as well as relatively stock Ubuntu installations.
+The [slightly more secure Heads firmware](http://osresearch.net)
+is a better choice for user freedom since it replaces the proprietary firmware
+with open source, while Safe Boot's objective is to work with existing
+commodity hardware and UEFI SecureBoot mechanisms, as well as relatively
+stock Ubuntu installations.
+
 
 ## Setup phase
-This is done once when the system is being setup to use Safer Boot mode.
+This is done once when the system is being setup to use Safe Boot mode.
 Note that the hardware token and key signing portions can be done offline
 on a separate disconnected machine and then signed keys copied to the machine.
 
 * Generate signing key in hardware token
 * Store public certificate in UEFI platform key (`PK`), key-exchange key (`KEK`) and database (`db`)
-* Add UEFI boot menu item for safer boot kernel
-* Configure UEFI setup for safer operation
+* Add UEFI boot menu item for safe boot kernel
+* Configure UEFI setup for safe operation
 * Create a random disk encryption key, seal it into the TPM
 * Add `initramfs` hooks to unseal key from TPM during boot
 
@@ -218,5 +222,11 @@ kernel and initrd update process:
 disk re-keying:
 * necessary if firmware setup variables change
 * should not be required for kernel updates
+
+
+----
+
+# Read only root file system
+* overlay root: https://gist.github.com/mutability/6cc944bde1cf4f61908e316befd42bc4
 
 
