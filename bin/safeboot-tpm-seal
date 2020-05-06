@@ -17,6 +17,8 @@ if ! pidof tpm2-abrmd > /dev/null ; then
 	export TPM2TSSENGINE_TCTI="device:/dev/tpmrm0"
 fi
 
+# Use a tmpfs mount instead of just a temp directory so that
+# the disk encryption key doesn't touch a persistent disk.
 TMP=`mktemp -d`
 
 mount -t tmpfs none "$TMP" \
@@ -39,6 +41,7 @@ dd \
 
 # If pre-computed PCRs are known, they can be used here instead
 tpm2_pcrread -o "$TMP/pcrs.bin" "$PCRS" \
+	>> /tmp/tpm.log \
 || die "Unable to read TPM PCRs"
 
 tpm2_createpolicy \
@@ -46,10 +49,12 @@ tpm2_createpolicy \
 	--pcr-list "$PCRS" \
 	--pcr "$TMP/pcrs.bin" \
 	--policy "$TMP/policy.digest" \
+	>> /tmp/tpm.log \
 || die "Unable to create TPM policy"
 
 tpm2_createprimary \
 	--key-context "$TMP/primary.context" \
+	>> /tmp/tpm.log \
 || die "Unable to create TPM primary object"
 
 # Start a secret session with the TPM
@@ -64,12 +69,14 @@ tpm2_createprimary \
 #	--parent-auth "$TMP/session.context" \
 #	--key-auth $HANDLE \
 
+warn "Sealing secret with TPM"
 tpm2_create \
 	--parent-context "$TMP/primary.context" \
 	--policy "$TMP/policy.digest" \
 	--sealing-input "$TMP/key.bin" \
 	--public "$TMP/public.bin" \
 	--private "$TMP/private.bin" \
+	>> /tmp/tpm.log \
 || die "Unable to create TPM key context"
 
 tpm2_load \
@@ -77,21 +84,28 @@ tpm2_load \
 	--public "$TMP/public.bin" \
 	--private "$TMP/private.bin" \
 	--key-context "$TMP/key.context" \
+	>> /tmp/tpm.log \
 || die "Unable to load TPM with key"
 	
+warn "Installing sealed secret into TPM"
 tpm2_evictcontrol \
 	--object-context "$HANDLE" \
+	>> /tmp/tpm.log \
 || die "Unable to remove old TPM key context $HANDLE"
 
 tpm2_evictcontrol \
 	--object-context "$TMP/key.context" \
+	>> /tmp/tpm.log \
 || die "Unable to load TPM key context into TPM"
 
-# Verify that the key actually works
+# Verify that the key actually works -- this might break
+# if there are different PCRs
+warn "Verifying sealed secret"
 tpm2_unseal \
 	--object-context $HANDLE \
 	--auth pcr:"$PCRS" \
 	--output "$TMP/key2.bin" \
+	>> /tmp/tpm.log \
 || die "Unable to unseal key from TPM"
 
 cmp "$TMP/key.bin" "$TMP/key2.bin" \
@@ -100,13 +114,16 @@ cmp "$TMP/key.bin" "$TMP/key2.bin" \
 # ask for the disk encryption key
 for tries in 1 2 3 fail; do
 	read -s -p "Current recovery password: " recovery_key
+	echo
 	echo -n "$recovery_key" > "$TMP/recovery.key"
 
+	warn "Removing old LUKS TPM key (if it exists)"
 	cryptsetup luksKillSlot \
 		--key-file "$TMP/recovery.key" \
 		"$DEV" $KEYSLOT \
 	|| warn "$DEV: Unable to remove old key slot (ignored)"
 
+	warn "Adding new LUKS TPM key"
 	cryptsetup luksAddKey \
 		--key-file "$TMP/recovery.key" \
 		--key-slot $KEYSLOT \
@@ -115,31 +132,34 @@ for tries in 1 2 3 fail; do
 
 	warn "$DEV: Unable to add key slot"
 
-	if [ $tries -eq fail ]; then
+	if [ $tries == fail ]; then
 		die "Unable to add key"
 	fi
 done
 
 # check to see if the initramfs hook is installed
-if [ ! -r /etc/initramfs-tools/hooks/tpm-unseal ]; then
+#if [ ! -r /etc/initramfs-tools/hooks/tpm-unseal ]; then
 	warn "adding initramfs hook"
-	ln -s "$DIR/../initramfs/hooks/tpm-unseal" /etc/initramfs-tools/hooks \
+	cp "$DIR/../initramfs/hooks/tpm-unseal" /etc/initramfs-tools/hooks \
 	|| die "/etc/initramfs-tools/hooks: unable to install hook"
-fi
+#fi
 
 # put the tpm unlock script in /usr/local/bin
 # todo: figure out if this can be run from elsewhere
-if [ ! -r /usr/local/bin/safeboot-tpm-unseal ]; then
+#if [ ! -r /usr/local/bin/safeboot-tpm-unseal ]; then
 	warn "copying safeboot-tpm-unseal"
-	ln -s "$DIR/safeboot-tpm-unseal" /usr/local/bin \
-	|| die "safeboot-tpm-unseal: unable to link into /usr/local/bin"
-fi
+	cp "$DIR/safeboot-tpm-unseal" /usr/local/bin \
+	|| die "safeboot-tpm-unseal: unable to install into /usr/local/bin"
+#fi
 
 # make sure the crypttab has the unlock script referenced
 if ! grep keyscript /etc/crypttab > /dev/null ; then
 	warn "adding crypttab unseal script"
-	sed -i.orig 's:,discard:,discard,keyscript=/usr/local/bin/safeboot-tpm-unseal' /etc/crypttab \
+	sed -i.orig 's:,discard$:,discard,keyscript=/usr/local/bin/safeboot-tpm-unseal:' /etc/crypttab \
 	|| die "/etc/crypttab: unable to add keyscript"
-fi
 
+	warn "***** You should update your ramdisk and resign the kernel:"
+	warn "sudo update-initramfs -u"
+	warn "sudo $DIR/safeboot-signkernel"
+fi
 
