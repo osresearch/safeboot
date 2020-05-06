@@ -17,7 +17,13 @@ This is done once when the system is being setup to use Safe Boot mode.
 Note that the hardware token and key signing portions can be done offline
 on a separate disconnected machine and then signed keys copied to the machine.
 
-* Generate signing key in hardware token
+### Hardware token
+First step is to generate a signing key in a yubikey hardware token.
+Skip this if you have already initialized your hardware token.
+The Yubikey needs to have CCID mode enabled and a key generated:
+
+
+
 * Store public certificate in UEFI platform key (`PK`), key-exchange key (`KEK`) and database (`db`)
 * Add UEFI boot menu item for safe boot kernel
 * Configure UEFI setup for safe operation
@@ -138,12 +144,23 @@ Ubuntu 20.04 installation:
 * "Try it", then 
 * "Advanced" - "LVM encrypt"
 * Install as normal, then 
-* Then reduce the volume before rebooting:
+* Then reduce the root volume before rebooting and create some new entries for `/home` and `/var`:
 ```
 sudo e2fsck -f /dev/vgubuntu/root
 sudo resize2fs /dev/vgubuntu/root 32G
 sudo lvreduce -L 32G /dev/vgubuntu/root
-sudo lvcreate -L 80G home vgubuntu
+sudo lvcreate -L 80G -n home vgubuntu
+sudo lvcreate -L 16G -n var vgubuntu
+sudo mkfs.ext4 /dev/vgubuntu/home
+sudo mkfs.ext4 /dev/vgubuntu/var
+```
+
+The `/etc/fstab` will need to be updated to include these two partitions
+and to switch the `root` partition to `ro`.
+
+Creating dm-verity hashes takes a while (smaller `/` file systems are faster):
+```
+sudo veritysetup format --debug /dev/vgubuntu/root /boot/root.hashes
 ```
 
 * "Something else"

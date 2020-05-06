@@ -39,8 +39,11 @@ if ! efibootmgr | grep '^Boot.* linux$' ; then
 	|| die 'efibootmgr: failed to create linux entry'
 fi
 
-# Should get extra command line options from user?
-cat /proc/cmdline > "$TMP/cmdline.txt"
+cmdline="$@"
+if [ -z "$cmdline" ]; then
+	cmdline="`cat /proc/cmdline`"
+fi
+echo "$cmdline" > "$TMP/cmdline.txt"
 
 warn "$TMP/linux.efi: Creating merged Linux/initrd image"
 objcopy \
