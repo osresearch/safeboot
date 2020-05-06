@@ -5,6 +5,7 @@ set -e -o pipefail
 die() { echo "$@" >&2 ; exit 1 ; }
 warn() { echo "$@" >&2 ; }
 
+DIR="`dirname $0`"
 PCRS='sha256:0,2,4,5,7,14'
 DEV=/dev/sda3
 KEYSLOT=1
@@ -118,3 +119,27 @@ for tries in 1 2 3 fail; do
 		die "Unable to add key"
 	fi
 done
+
+# check to see if the initramfs hook is installed
+if [ ! -r /etc/initramfs-tools/hooks/saferboot-initramfs-hook ]; then
+	warn "adding initramfs hook"
+	ln -s "$DIR/saferboot-initramfs-hook" /etc/initramfs-tools/hooks \
+	|| die "/etc/initramfs-tools/hooks: unable to install hook"
+fi
+
+# put the tpm unlock script in /usr/local/bin
+# todo: figure out if this can be run from elsewhere
+if [ ! -r /usr/local/bin/safeboot-tpm-unseal ]; then
+	warn "copying safeboot-tpm-unseal"
+	ln -s "$DIR/safeboot-tpm-unseal" /usr/local/bin \
+	|| die "safeboot-tpm-unseal: unable to link into /usr/local/bin"
+fi
+
+# make sure the crypttab has the unlock script referenced
+if ! grep keyscript /etc/crypttab > /dev/null ; then
+	warn "adding crypttab unseal script"
+	sed -i.orig 's:,discard:,discard,keyscript=/usr/local/bin/safeboot-tpm-unseal' /etc/crypttab \
+	|| die "/etc/crypttab: unable to add keyscript"
+fi
+
+

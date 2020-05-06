@@ -1,0 +1,175 @@
+#!/bin/sh
+# goes in /etc/initramfs-tools/scripts/init-bottom/overlay
+
+PREREQ=""
+prereqs()
+{
+    echo "$PREREQ"
+}
+
+case $1 in
+    prereqs)
+        prereqs
+        exit 0
+        ;;
+esac
+
+. /scripts/functions
+
+RW_SIZE=256m
+
+# Should we run at all?
+
+OVERLAY="no"
+for arg in $(cat /proc/cmdline)
+do
+    case "$arg" in
+        overlay=*)
+            OVERLAY=${arg#overlay=}
+            ;;
+        *)
+            ;;
+    esac
+done
+
+if [ "$OVERLAY" != "yes" ]
+then
+    log_warning_msg "overlay not enabled, leaving the root fs alone"
+    exit 0
+fi
+
+log_begin_msg "Remounting root fs in overlay mode"
+
+if ! modprobe -qb overlay
+then
+    log_failure_msg "can't load overlay module"
+    exit 0
+fi
+
+# initially we have:
+
+#  /           initramfs
+#  ${rootmnt}  readonly-mounted real root FS  (mounted from device ${ROOT})
+#
+# We want:
+#
+#  /              initramfs
+#  ${rootmnt}     overlayfs using ${rootmnt}/ro and ${rootmnt}/rw
+#  ${rootmnt}/ro  readonly-mounted real root FS  (mounted from device ${ROOT})
+#  ${rootmnt}/rw  tmpfs that will be used for changes
+#  ${rootmnt}/rw/upper  overlayfs upper dir
+#  ${rootmnt}/rw/work   overlayfs work dir
+#
+
+# create and mount /ro and /rw on the initramfs, we will move them later
+for dir in /ro /rw
+do
+  [ -d "${dir}" ] || mkdir -p "${dir}"
+  if [ $? -ne 0 ]
+  then
+    log_failure_msg "can't create ${dir}"
+    exit 0
+  fi
+done
+
+# set up /rw
+if ! mount -t tmpfs -o "size=${RW_SIZE}" overlay-rw /rw
+then
+    log_failure_msg "can't mount tmpfs on /rw"
+    exit 0
+fi
+
+for dir in /rw/upper /rw/work
+do
+  if ! mkdir -p ${dir}
+  then
+      log_failure_msg "overlay: can't create ${dir}"
+      exit 0
+  fi
+done
+
+# set up /ro
+if ! mount -o move "${rootmnt}" /ro
+then
+    log_failure_msg "can't move root fs to /ro"
+    exit 0
+fi
+
+# set up an overlayfs on rootmnt
+if ! mount -t overlay -o lowerdir=/ro,upperdir=/rw/upper,workdir=/rw/work overlay-root "${rootmnt}"
+then
+    log_failure_msg "can't move root fs to /ro"
+
+    # try to recover
+    if ! mount -o move /ro "${rootmnt}"
+    then
+        panic "recovering the old root fs failed, panicking"
+        exit 0
+    fi
+
+    log_warning_msg "overlay: moved regular rootfs back into place and continuing"
+    exit 0
+fi
+
+for dir in "${rootmnt}/ro" "${rootmnt}/rw"
+do
+  [ -d "${dir}" ] || mkdir -p "${dir}"
+  if [ $? -ne 0 ]
+  then
+    log_failure_msg "can't create ${dir}"
+    exit 0
+  fi
+done
+
+# move /ro and /rw into place so we can access them later
+if ! mount -o move /ro "${rootmnt}/ro"
+then
+    log_failure_msg "can't move /ro to ${rootmnt}/ro"
+    exit 0
+fi
+
+if ! mount -o move /rw "${rootmnt}/rw"
+then
+    log_failure_msg "can't move /rw to ${rootmnt}/rw"
+    exit 0
+fi
+
+# populate fstab on the new root
+
+{
+    cat <<EOF
+# overlayfs mount is in use; changes to the root FS are
+# written to tmpfs and will be discarded on reboot.
+#
+# to disable, pass "overlay=no" on the kernel command line
+# (in /boot/cmdline.txt)
+#
+# the underlying root FS is mounted readonly on /ro
+# temporary changes are written to /rw
+EOF
+
+    {
+        while read dev dir fstype fsopts freq pass
+        do
+            if [ "${dir}" = "${rootmnt}" ]
+            then
+                echo "${dev} / ${fstype} ${fsopts} ${freq} ${pass}"
+            fi
+        done
+    } </proc/mounts
+
+    echo "# original fstab follows"
+
+    {
+        while read dev dir fstype fsopts freq pass
+        do
+            if [ "${dir}" != "/" ]
+            then
+                echo "${dev} ${dir} ${fstype} ${fsopts} ${freq} ${pass}"
+            fi
+        done
+    } <"${rootmnt}/ro/etc/fstab"
+} >"${rootmnt}/etc/fstab"
+
+log_end_msg
+exit 0

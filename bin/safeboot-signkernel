@@ -1,0 +1,78 @@
+#!/bin/bash
+# Merge the kernel, initrd, command line and notes into a single file
+# that can be signed and booted with UEFI Secure Boot
+set -e -o pipefail
+die() { echo "$@" >&2 ; exit 1 ; }
+warn() { echo "$@" >&2 ;  }
+DIR="`dirname $0`"
+
+KERNEL=/boot/vmlinuz
+INITRD=/boot/initrd.img
+OUTDIR=/boot/efi/EFI/linux
+CERT=/boot/cert.pem
+
+if [ ! -d "$OUTDIR" ]; then
+	warn "$OUTDIR: Creating boot menu item"
+	efibootmgr \
+ 		--create \
+		--disk /dev/sda \
+		--part 1 \
+		--label linux \
+		--loader '\EFI\linux\linux.efi' \
+	|| die 'efibootmgr: failed to create linux entry'
+
+	mkdir -p "$OUTDIR"
+
+#	echo 'linux.efi,linux,,Single image linux' \
+#		| iconv -t UCS-2 > "$OUTDIR/BOOTX64.CSV"
+
+fi
+
+cat /proc/cmdline > /tmp/cmdline.txt
+
+warn "$OUTDIR: Creating merged Linux/initrd image (ignore warnings)"
+objcopy \
+	--add-section .osrel=/etc/os-release \
+	--change-section-vma .osrel=0x20000 \
+	--add-section .cmdline=/tmp/cmdline.txt \
+	--change-section-vma .cmdline=0x30000 \
+	--add-section .linux="$KERNEL" \
+	--change-section-vma .linux=0x40000 \
+	--add-section .initrd="$INITRD" \
+	--change-section-vma .initrd=0x3000000 \
+	/usr/lib/systemd/boot/efi/linuxx64.efi.stub \
+	/tmp/linux.efi \
+|| die "/tmp/linux.efi: unable to create"
+
+if [ ! -r "$CERT" ]; then
+	warn "Extracting certificate from yubikey"
+	yubico-piv-tool \
+		-s 9c \
+		-a read-certificate \
+		-o "$CERT" \
+	|| die "$CERT: unable to read from yubikey"
+
+	openssl x509 \
+		-outform der \
+		-in "$CERT" \
+		-out "`basename $CERT .pem`.crt" \
+	|| die "$CERT: unable to create CRT file"
+fi
+
+#	--key 'pkcs11:manufacturer=piv_II' \
+warn "$OUTDIR/linux.efi: Signing"
+$DIR/sbsign \
+	--engine pkcs11 \
+	--key 'pkcs11:' \
+	--cert "$CERT" \
+	--output "$OUTDIR/linux.efi.new" \
+	"/tmp/linux.efi" \
+|| die "$OUTDIR/linux.efi: Unable to sign"
+
+# Duplicate the old image and atomically move the new kernel
+# image to avoid potentially leaving an unbootable system
+cp "$OUTDIR/linux.efi" "$OUTDIR/linux.efi.old" \
+|| die "$OUTDIR/linux.efi.old: unable to backup old image"
+
+mv "$OUTDIR/linux.efi.new" "$OUTDIR/linux.efi" \
+|| die "$OUTDIR/linux.efi: unable to install new image"
