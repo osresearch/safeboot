@@ -35,6 +35,7 @@ done
 
 # The order of update must be from lowest to highest
 for key in db KEK PK; do
+	warn "Installing UEFI variable $key"
 	efi-updatevar -f $key.auth $key \
 	|| die "$key: updating key failed"
 done
