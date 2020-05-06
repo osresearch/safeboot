@@ -72,6 +72,7 @@ Other helpful links:
 * https://robertou.com/tpm2-sealed-luks-encryption-keys.html which uses a less standard TPM toolkit
 * https://threat.tevora.com/secure-boot-tpm-2/ which is out of date on the tpm2 command line options
 * https://github.com/timchen119/tpm2-initramfs-tool which stores the pass phrase in the TPM, rather than a separate key
+* https://www.crowdstrike.com/blog/enhancing-secure-boot-chain-on-fedora-29/
 
 
 Meaning for UEFI is defined in
@@ -197,8 +198,21 @@ efi-updatevar -f KEK.auth  KEK
 efi-updatevar -f PK.auth  PK
 ```
 
+for signing the db entries, `sign-efi-sig-list` needs too many
+key entries.  it can create detached blobs to be signed:
+
+./bin/sign-efi-sig-list -o -t '2020-05-01' -c cert.pem db cert.esl db.raw
+
+the correct 256 byte signature on this can be computed:
+
+pkcs11-tool -s -p 123456 -m SHA256-RSA-PKCS < db.raw
+
+
+
+
 * for corporate deployment: install signed setup variable?
 
+----
 reboot
 * boot order
 * test usb 
