@@ -1,18 +1,11 @@
 #!/bin/sh
-# goes in /etc/initramfs-tools/scripts/init-bottom/dmverity-root
+# goes in /etc/initramfs-tools/scripts/local-bottom/dmverity-root
 # This allows the dmverity root hash to be passed in on the command line.
 
 PREFIX="dmverity-root"
 
-PREREQ=""
-prereqs()
-{
-    echo "$PREREQ"
-}
-
 case $1 in
     prereqs)
-        prereqs
         exit 0
         ;;
 esac
@@ -76,8 +69,9 @@ veritysetup open vroot ${ROOT} /hashes/root.hashes ${HASH}
 
 if [ $? -ne 0 ]; then
 	log_failure_msg "$PREFIX: ${ROOT} unable to setup verity, remounting ${rootmnt}"
-	umount /hashes
-	mount -o ro ${ROOT} ${rootmnt}
+	panic "$PREFIX: failed"
+	#umount /hashes
+	#mount -o ro ${ROOT} ${rootmnt}
 	exit 0
 fi
 
@@ -85,9 +79,10 @@ fi
 mount -o ro /dev/mapper/vroot ${rootmnt}
 if [ $? -ne 0 ]; then
 	log_failure_msg "$PREFIX: ${ROOT} unable to mount verity dm, remounting"
-	mount -o ro ${ROOT} ${rootmnt}
+	panic "$PREFIX: failed"
+	#mount -o ro ${ROOT} ${rootmnt}
 	exit 0
 fi
 
-log_end_msg "$PREFIX: mounted ${rootmnt} with root hash $HASH"
+log_success_msg "$PREFIX: remounted ${rootmnt} with root hash $HASH"
 exit 0
