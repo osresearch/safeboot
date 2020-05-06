@@ -1,0 +1,22 @@
+#!/bin/sh
+# goes in /etc/initramfs-tools/hooks/dmverity-root
+
+# Ensure that dm_verity and tools are in the initrd
+
+PREREQ=""
+prereqs()
+{
+    echo "$PREREQ"
+}
+
+case $1 in
+    prereqs)
+        prereqs
+        exit 0
+        ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+manual_add_modules dm_verity
+copy_bin veritysetup

@@ -1,0 +1,93 @@
+#!/bin/sh
+# goes in /etc/initramfs-tools/scripts/init-bottom/dmverity-root
+# This allows the dmverity root hash to be passed in on the command line.
+
+PREFIX="dmverity-root"
+
+PREREQ=""
+prereqs()
+{
+    echo "$PREREQ"
+}
+
+case $1 in
+    prereqs)
+        prereqs
+        exit 0
+        ;;
+esac
+
+. /scripts/functions
+
+# Find our root hash and salt
+
+HASH=""
+SALT=""
+HASHDEV="/dev/sda2"
+for arg in $(cat /proc/cmdline)
+do
+    case "$arg" in
+        verity.hash=*)
+            HASH=${arg#verity.hash=}
+            ;;
+        verity.salt=*)
+            SALT=${arg#verity.salt=}
+            ;;
+	verity.hashdev=*)
+            HASHDEV=${arg#verity.hashdev=}
+            ;;
+        *)
+            ;;
+    esac
+done
+
+if [ "$HASH" == "" ]
+then
+    log_warning_msg "$PREFIX: verity.hash command line not found; not enabling"
+    exit 0
+fi
+
+log_begin_msg "$PREFIX: verity.hash=$HASH verity.hashdev=$HASHDEV"
+
+if ! modprobe -qb dm_verity
+then
+    log_failure_msg "$PREFIX: unable to load dm_verity module"
+    exit 0
+fi
+
+# initially we have:
+
+#  /           initramfs
+#  ${rootmnt}  readonly-mounted real root FS  (mounted from device ${ROOT})
+#
+# We want:
+#
+#  /              initramfs
+#  /hashes        file system with root hashes (/dev/sda2 or verity.hashdev)
+#  vroot          LVM volume from device ${ROOT}, with hashes from /hashes
+#  ${rootmnt}     re-mounted root, now going through the vroot
+#
+
+umount ${rootmnt}
+mkdir /hashes
+mount -o ro ${HASHDEV} /hashes
+
+veritysetup open vroot ${ROOT} /hashes/root.hashes ${HASH}
+
+if [ $? -ne 0 ]; then
+	log_failure_msg "$PREFIX: ${ROOT} unable to setup verity, remounting ${rootmnt}"
+	umount /hashes
+	mount -o ro ${ROOT} ${rootmnt}
+	exit 0
+fi
+
+# Verity protected volume group is setup - mount it as root
+mount -o ro /dev/mapper/vroot ${rootmnt}
+if [ $? -ne 0 ]; then
+	log_failure_msg "$PREFIX: ${ROOT} unable to mount verity dm, remounting"
+	mount -o ro ${ROOT} ${rootmnt}
+	exit 0
+fi
+
+log_end_msg "$PREFIX: mounted ${rootmnt} with root hash $HASH"
+exit 0
