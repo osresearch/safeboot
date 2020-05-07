@@ -15,8 +15,8 @@ INITRD=/boot/initrd.img
 OUTDIR=/boot/efi/EFI/linux
 CERT="$TMP/cert.pem"
 
-warn "Regenerating initramfs"
-update-initramfs -u
+#warn "Regenerating initramfs"
+#update-initramfs -u
 
 if [ ! -d "$OUTDIR" ]; then
 	warn "$OUTDIR: Creating directory on EFI System Partition"
@@ -86,4 +86,6 @@ fi
 mv "$OUTDIR/linux.efi.new" "$OUTDIR/linux.efi" \
 || die "$OUTDIR/linux.efi: unable to install new image"
 
+
+echo "Kernel commandline: '`cat $TMP/cmdline.txt`'"
 sha256sum "$OUTDIR/linux.efi"
