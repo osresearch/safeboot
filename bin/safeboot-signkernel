@@ -10,9 +10,16 @@ cleanup() { rm -rf "$TMP" ; }
 DIR="`dirname $0`"
 TMP="`mktemp -d`"
 
+if [ -z "$1" ]; then
+	die "Usage: $0 boot-entry kernel-options..."
+fi
+
+TARGET=$1
+shift
+
 KERNEL=/boot/vmlinuz
 INITRD=/boot/initrd.img
-OUTDIR=/boot/efi/EFI/linux
+OUTDIR="/boot/efi/EFI/$TARGET"
 CERT="$TMP/cert.pem"
 
 #warn "Regenerating initramfs"
@@ -25,7 +32,7 @@ if [ ! -d "$OUTDIR" ]; then
 fi
 
 
-if ! efibootmgr | grep '^Boot.* linux$' ; then
+if ! efibootmgr | grep "^Boot.* $TARGET\$" ; then
 	# determine the device the EFI system partition is on
 	DEV="`df "$OUTDIR" | tail -1 | cut -d' ' -f1`"
 
@@ -34,9 +41,9 @@ if ! efibootmgr | grep '^Boot.* linux$' ; then
  		--create \
 		--disk "$DEV" \
 		--part 1 \
-		--label linux \
-		--loader '\EFI\linux\linux.efi' \
-	|| die 'efibootmgr: failed to create linux entry'
+		--label "$TARGET" \
+		--loader '\EFI\$TARGET\linux.efi' \
+	|| die "efibootmgr: failed to create $TARGET entry"
 fi
 
 cmdline="$@"
@@ -44,6 +51,17 @@ if [ -z "$cmdline" ]; then
 	cmdline="`cat /proc/cmdline`"
 fi
 echo "$cmdline" > "$TMP/cmdline.txt"
+
+
+if [ ! -r "$CERT" ]; then
+	warn "Extracting signing cert from yubikey"
+	yubico-piv-tool \
+		-s 9c \
+		-a read-certificate \
+		-o "$CERT" \
+	|| die "$CERT: unable to read from yubikey"
+fi
+
 
 warn "$TMP/linux.efi: Creating merged Linux/initrd image"
 objcopy \
@@ -58,14 +76,6 @@ objcopy \
 	/usr/lib/systemd/boot/efi/linuxx64.efi.stub \
 	"$TMP/linux.efi" \
 || die "linux.efi: unable to create"
-
-if [ ! -r "$CERT" ]; then
-	yubico-piv-tool \
-		-s 9c \
-		-a read-certificate \
-		-o "$CERT" \
-	|| die "$CERT: unable to read from yubikey"
-fi
 
 warn "$OUTDIR/linux.efi: Signing (ignore warnings about gaps)"
 $DIR/sbsign \
