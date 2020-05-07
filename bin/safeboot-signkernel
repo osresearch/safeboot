@@ -42,7 +42,7 @@ if ! efibootmgr | grep "^Boot.* $TARGET\$" ; then
 		--disk "$DEV" \
 		--part 1 \
 		--label "$TARGET" \
-		--loader '\EFI\$TARGET\linux.efi' \
+		--loader "\\EFI\\$TARGET\\linux.efi" \
 	|| die "efibootmgr: failed to create $TARGET entry"
 fi
 

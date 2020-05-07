@@ -29,7 +29,7 @@ sign: verity.log
 		verity.hash="`awk '/Root hash:/ { print $$3 }' $<`" \
 
 sign-recovery:
-	./bin/safeboot-signkernel linux-recovery \
+	./bin/safeboot-signkernel recovery \
 		root=/dev/mapper/vgubuntu-root \
 		ro \
 		recovery \
