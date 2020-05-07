@@ -5,6 +5,8 @@ BINS += bin/sign-efi-sig-list
 all: $(BINS)
 
 INITRAMFS=/etc/initramfs-tools
+ROOTDEV=/dev/mapper/vgubuntu-root2
+HASHDEV=/dev/mapper/vgubuntu-hashes
 
 install:
 	cp initramfs/scripts/dmverity-root $(INITRAMFS)/scripts/local-premount/
@@ -15,25 +17,26 @@ install:
 
 hashes:
 	@echo "this will take a while..."
-	mount -o ro,noload,remount /
-	fsck /
-	veritysetup format --debug /dev/vgubuntu/root /dev/vgubuntu/hashes \
+	if mount | grep ${ROOTDEV} ; then \
+		mount -o ro,noload,remount ${ROOTDEV} ; \
+	fi
+	fsck.ext4 -f ${ROOTDEV}
+	veritysetup format --debug ${ROOTDEV} ${HASHDEV} \
 		| tee verity.log
 
 sign: verity.log
 	./bin/safeboot-signkernel linux \
 		root=/dev/mapper/vroot \
 		ro \
-		verity.hashdev=/dev/mapper/vgubuntu-hashes \
-		verity.rootdev=/dev/mapper/vgubuntu-root \
+		verity.hashdev=${HASHDEV} \
+		verity.rootdev=${ROOTDEV} \
 		verity.hash="`awk '/Root hash:/ { print $$3 }' $<`" \
 
 sign-recovery:
 	./bin/safeboot-signkernel recovery \
-		root=/dev/mapper/vgubuntu-root \
 		ro \
-		recovery \
-		single \
+		root=/dev/mapper/vgubuntu-root2 \
+		rootflags=noload \
 
 
 #
