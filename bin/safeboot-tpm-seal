@@ -6,7 +6,7 @@ die() { echo "$@" >&2 ; exit 1 ; }
 warn() { echo "$@" >&2 ; }
 
 DIR="`dirname $0`"
-PCRS='sha256:0,2,4,5,7,14'
+PCRS='sha256:0,2,5,7'  # 14 is not listed here, but it is included later
 DEV=/dev/sda3
 KEYSLOT=1
 HANDLE=0x81000000
@@ -44,9 +44,13 @@ tpm2_pcrread -o "$TMP/pcrs.bin" "$PCRS" \
 	>> /tmp/tpm.log \
 || die "Unable to read TPM PCRs"
 
+# Add a zero entry for PCR 14, which ensures that the system
+# will not be able to unseal the secret after the initial unsealing
+perl -e 'print chr(0x00) x 0x20' >> "$TMP/pcrs.bin"
+
 tpm2_createpolicy \
 	--policy-pcr \
-	--pcr-list "$PCRS" \
+	--pcr-list "$PCRS,14" \
 	--pcr "$TMP/pcrs.bin" \
 	--policy "$TMP/policy.digest" \
 	>> /tmp/tpm.log \
@@ -101,15 +105,17 @@ tpm2_evictcontrol \
 # Verify that the key actually works -- this might break
 # if there are different PCRs
 warn "Verifying sealed secret"
-tpm2_unseal \
+if tpm2_unseal \
 	--object-context $HANDLE \
 	--auth pcr:"$PCRS" \
 	--output "$TMP/key2.bin" \
 	>> /tmp/tpm.log \
-|| die "Unable to unseal key from TPM"
-
-cmp "$TMP/key.bin" "$TMP/key2.bin" \
-|| die "Keys do not match; something failed"
+; then
+	cmp "$TMP/key.bin" "$TMP/key2.bin" \
+	|| die "Keys do not match; something failed"
+else
+	warn "Unable to unseal, that is probably good"
+fi
 
 # ask for the disk encryption key
 for tries in 1 2 3 fail; do
