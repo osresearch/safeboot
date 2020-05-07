@@ -20,3 +20,6 @@ esac
 
 manual_add_modules dm_verity
 copy_exec /usr/sbin/veritysetup
+copy_exec /usr/sbin/lvcreate
+copy_exec /usr/sbin/resize2fs
+
