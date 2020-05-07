@@ -19,4 +19,4 @@ esac
 . /usr/share/initramfs-tools/hook-functions
 
 manual_add_modules dm_verity
-copy_bin veritysetup
+copy_exec /usr/sbin/veritysetup
