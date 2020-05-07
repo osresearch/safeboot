@@ -63,7 +63,7 @@ fi
 
 umount ${rootmnt}
 
-veritysetup open vroot ${ROOT} ${HASHDEV} ${HASH}
+veritysetup open ${ROOT} vroot ${HASHDEV} ${HASH}
 
 if [ $? -ne 0 ]; then
 	log_failure_msg "$PREFIX: ${ROOT} unable to setup verity, remounting ${rootmnt}"
