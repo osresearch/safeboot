@@ -16,7 +16,7 @@ esac
 
 HASH=""
 SALT=""
-HASHDEV="/dev/sda2"
+HASHDEV="/dev/mapper/vgubuntu-hashes"
 for arg in $(cat /proc/cmdline)
 do
     case "$arg" in
@@ -62,10 +62,8 @@ fi
 #
 
 umount ${rootmnt}
-mkdir /hashes
-mount -o ro ${HASHDEV} /hashes
 
-veritysetup open vroot ${ROOT} /hashes/root.hashes ${HASH}
+veritysetup open vroot ${ROOT} ${HASHDEV} ${HASH}
 
 if [ $? -ne 0 ]; then
 	log_failure_msg "$PREFIX: ${ROOT} unable to setup verity, remounting ${rootmnt}"
