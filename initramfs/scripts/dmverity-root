@@ -1,5 +1,5 @@
 #!/bin/sh
-# goes in /etc/initramfs-tools/scripts/local-bottom/dmverity-root
+# goes in /etc/initramfs-tools/scripts/local-premount/dmverity-root
 # This allows the dmverity root hash to be passed in on the command line.
 
 PREFIX="dmverity-root"
@@ -17,6 +17,7 @@ esac
 HASH=""
 SALT=""
 HASHDEV="/dev/mapper/vgubuntu-hashes"
+ROOTDEV="/dev/mapper/vgubuntu-root"
 for arg in $(cat /proc/cmdline)
 do
     case "$arg" in
@@ -25,6 +26,9 @@ do
             ;;
         verity.salt=*)
             SALT=${arg#verity.salt=}
+            ;;
+	verity.rootdev=*)
+            ROOTDEV=${arg#verity.rootdev=}
             ;;
 	verity.hashdev=*)
             HASHDEV=${arg#verity.hashdev=}
@@ -40,7 +44,7 @@ then
     exit 0
 fi
 
-log_begin_msg "$PREFIX: verity.hash=$HASH verity.hashdev=$HASHDEV"
+log_begin_msg "$PREFIX: verity.hash=$HASH verity.rootdev=$ROOTDEV verity.hashdev=$HASHDEV"
 
 if ! modprobe -qb dm_verity
 then
@@ -56,17 +60,16 @@ fi
 # We want:
 #
 #  /              initramfs
-#  /hashes        file system with root hashes (/dev/sda2 or verity.hashdev)
 #  vroot          LVM volume from device ${ROOT}, with hashes from /hashes
 #  ${rootmnt}     re-mounted root, now going through the vroot
 #
 
-umount ${rootmnt}
+#umount ${rootmnt}
 
-veritysetup open ${ROOT} vroot ${HASHDEV} ${HASH}
+veritysetup open ${ROOTDEV} vroot ${HASHDEV} ${HASH}
 
 if [ $? -ne 0 ]; then
-	log_failure_msg "$PREFIX: ${ROOT} unable to setup verity, remounting ${rootmnt}"
+	log_failure_msg "$PREFIX: ${ROOTDEV} unable to setup verity, remounting ${rootmnt}"
 	panic "$PREFIX: failed"
 	#umount /hashes
 	#mount -o ro ${ROOT} ${rootmnt}
@@ -74,13 +77,18 @@ if [ $? -ne 0 ]; then
 fi
 
 # Verity protected volume group is setup - mount it as root
-mount -o ro /dev/mapper/vroot ${rootmnt}
+mount -o ro,noload /dev/mapper/vroot ${rootmnt}
 if [ $? -ne 0 ]; then
 	log_failure_msg "$PREFIX: ${ROOT} unable to mount verity dm, remounting"
+	veritysetup close vroot
+	#mount -o ro,noload ${ROOT} ${rootmnt}
 	panic "$PREFIX: failed"
-	#mount -o ro ${ROOT} ${rootmnt}
 	exit 0
 fi
 
-log_success_msg "$PREFIX: remounted ${rootmnt} with root hash $HASH"
+log_success_msg "$PREFIX: verified ${rootmnt} with root hash $HASH"
+
+# now unmount it so that it can be remounted later
+umount ${rootmnt}
+
 exit 0

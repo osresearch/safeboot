@@ -7,7 +7,7 @@ all: $(BINS)
 INITRAMFS=/etc/initramfs-tools
 
 install:
-	cp initramfs/scripts/dmverity-root $(INITRAMFS)/scripts/local-bottom/
+	cp initramfs/scripts/dmverity-root $(INITRAMFS)/scripts/local-premount/
 	cp initramfs/hooks/dmverity-root $(INITRAMFS)/hooks/
 	cp initramfs/hooks/tpm-unseal $(INITRAMFS)/hooks/
 	cp bin/safeboot-tpm-unseal /usr/local/bin/
@@ -15,16 +15,25 @@ install:
 
 hashes:
 	@echo "this will take a while..."
-	mount -o ro,remount /
+	mount -o ro,noload,remount /
 	fsck /
 	veritysetup format --debug /dev/vgubuntu/root /dev/vgubuntu/hashes \
 		| tee verity.log
+
 sign: verity.log
-	./bin/safeboot-signkernel \
-		root=/dev/mapper/vgubuntu-root \
+	./bin/safeboot-signkernel linux \
+		root=/dev/mapper/vroot \
 		ro \
 		verity.hashdev=/dev/mapper/vgubuntu-hashes \
+		verity.rootdev=/dev/mapper/vgubuntu-root \
 		verity.hash="`awk '/Root hash:/ { print $$3 }' $<`" \
+
+sign-recovery:
+	./bin/safeboot-signkernel linux-recovery \
+		root=/dev/mapper/vgubuntu-root \
+		ro \
+		recovery \
+		single \
 
 
 #
