@@ -1,0 +1,39 @@
+#!/bin/sh -x
+# This is run in the initramfs context, not in the normal user space.
+# It attempts to unseal the key from the TPM based on the PCRS passed
+# on the command line using direct access since there is no resource
+# manager. 
+#
+# If successful, PCR14 will be extended to prevent later stages from
+# retrieving the decryption key.  The key is stored in a kernel key
+# ring, so it should not be accessible to even a root user.
+#
+# If the unsealing fails, fall back to asking for the user's recovery key.
+#
+source /scripts/functions
+
+# HACK: the PCRs should be read from the kernel command line
+PCRS='sha256:0,2,5,7,14'
+HANDLE=0x81000000
+export TPM2TSSENGINE_TCTI="device:/dev/tpmrm0"
+
+log_begin_msg "Reading TPM PCRs"
+/usr/bin/tpm2_pcrread >&2 \
+	'sha256:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16' \
+
+if /usr/bin/tpm2_unseal \
+	--object-context $HANDLE \
+	--auth pcr:"$PCRS" \
+; then
+	# ensure that a local attacker can't re-read the key from the TPM
+	# by setting pcr 14 to "postboot"
+	/usr/bin/tpm2_pcrextend >&2 \
+		14:sha256=35675e73484c1191b3c0eabe782d8634d35f17fdf632f73cd5360c1bcb133855
+
+	log_success_msg "Disk key unsealed"
+else
+	# the key was not unsealed; ask the user for it
+	log_failure_msg "Falling back to user pass phrase"
+	/lib/cryptsetup/askpass \
+		"TPM Unsealing failed! Enter recovery key for $CRYPTTAB_SOURCE ($CRYPTTAB_NAME): "
+fi
