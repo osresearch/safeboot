@@ -17,6 +17,7 @@ fi
 
 . /usr/share/initramfs-tools/hook-functions
 
+copy_exec /usr/bin/sha256sum
 copy_exec /usr/bin/tpm2_unseal
 copy_exec /usr/bin/tpm2_pcrread
 copy_exec /usr/bin/tpm2_pcrextend

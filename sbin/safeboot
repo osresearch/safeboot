@@ -26,6 +26,18 @@ TMP=`mktemp -d`
 TMP_MOUNT=n
 trap cleanup EXIT
 
+hex2bin() { perl -ne 'chomp; print pack("H*", $_)' ; }
+sha256() { sha256sum - | cut -d' ' -f1 ; }
+PCR_DEFAULT=0000000000000000000000000000000000000000000000000000000000000000
+
+#
+# Compute the extended value of a PCR register
+#
+tpm2_trial_extend() {
+	( echo -n "$1" ; sha256 ) | hex2bin | sha256
+}
+
+
 usage="Safe Boot subcommands:
 ----
 "
@@ -248,9 +260,14 @@ luks-seal() {
 		>> /tmp/tpm.log \
 	|| die "Unable to read TPM PCRs"
 
-	# Add a zero entry for PCR 14, which ensures that the system
-	# will not be able to unseal the secret after the initial unsealing
-	perl -e 'print chr(0x00) x 0x20' >> "$TMP/pcrs.bin"
+	# Add a "normal" entry for PCR 14, which ensures that the TPM
+	# will only unseal during a normal boot, not a recovery boot.
+	# the unseal script will also extend PCR14 after unsealing
+	# to prevent the TPM from unsealing the secret a second time
+	echo -n "normal" \
+		| tpm2_trial_extend $PCR_DEFAULT \
+		| hex2bin \
+		>> "$TMP/pcrs.bin"
 
 	tpm2_createpolicy \
 		--policy-pcr \
@@ -455,6 +472,12 @@ sign-kernel() {
 
 	echo "Kernel commandline: '`cat $TMP/cmdline.txt`'"
 	sha256sum "$OUTDIR/linux.efi"
+
+	if [ -r "$TMP/verity.log" ]; then
+		# stash a copy of the verity log in the boot directory
+		# so that repeat signing can be done more quickly
+		cp "$TMP/verity.log" "$OUTDIR"
+	fi
 }
 
 hash_and_sign_usage="
@@ -483,7 +506,7 @@ hash-and-sign()
 
 	if mount | grep "${ROOTDEV}" ; then \
 		warn "$ROOTDEV: unmounting and checking"
-		mount -o ro,noload,noatime,remount "${ROOTDEV}" ; \
+		mount -o ro,noatime,remount "${ROOTDEV}" ; \
 		fsck.ext4 -f "${ROOTDEV}"
 	fi
 
@@ -510,12 +533,14 @@ hash-and-sign()
 		/boot/initrd.img \
 		root=/dev/mapper/vroot \
 		ro \
+		fsck.mode=skip \
 		verity.hashdev="${HASHDEV}" \
 		verity.rootdev="${ROOTDEV}" \
 		verity.hash="$HASH" \
 		tpm.pcrs=0,2,5,7,14 \
-		"$@"
-
+		tpm.mode=normal \
+		"$@" \
+	|| die "Kernel signing failed!"
 }
 
 
