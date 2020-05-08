@@ -34,7 +34,12 @@ PCR_DEFAULT=0000000000000000000000000000000000000000000000000000000000000000
 # Compute the extended value of a PCR register
 #
 tpm2_trial_extend() {
-	( echo -n "$1" ; sha256 ) | hex2bin | sha256
+	initial="$1"
+	if [ "0" == "$initial" ]; then
+		initial="$PCR_DEFAULT"
+	fi
+		
+	( echo -n "$initial" ; sha256 ) | hex2bin | sha256
 }
 
 
@@ -264,10 +269,11 @@ luks-seal() {
 	# will only unseal during a normal boot, not a recovery boot.
 	# the unseal script will also extend PCR14 after unsealing
 	# to prevent the TPM from unsealing the secret a second time
-	echo -n "normal" \
-		| tpm2_trial_extend $PCR_DEFAULT \
-		| hex2bin \
+	pcr14=`echo -n "normal" | tpm2_trial_extend $PCR_DEFAULT`
+	warn "PCR14=$pcr14"
+	echo -n "$pcr14" | hex2bin \
 		>> "$TMP/pcrs.bin"
+	xxd -g1 "$TMP/pcrs.bin"
 
 	tpm2_createpolicy \
 		--policy-pcr \
@@ -328,7 +334,7 @@ luks-seal() {
 	warn "Verifying sealed secret"
 	if tpm2_unseal \
 		--object-context $HANDLE \
-		--auth pcr:"$PCRS" \
+		--auth pcr:"$PCRS,14" \
 		--output "$TMP/key2.bin" \
 		>> /tmp/tpm.log \
 	; then
@@ -374,6 +380,8 @@ luks-seal() {
 			die "$dev: Unable to add key"
 		fi
 	done
+
+	warn "$dev: sealed with PCR $PCRS,14"
 }
 
 sign_kernel_usage="
@@ -557,7 +565,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|hash-and-sign)
+	yubikey-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|hash-and-sign|tpm2_trial_extend)
 		$command "$@"
 		;;
 	*)
