@@ -10,7 +10,6 @@
 #
 # If the unsealing fails, fall back to asking for the user's recovery key.
 #
-source /scripts/functions
 
 # Default PCRs
 PCRS='0,2,5,7,14'
@@ -19,6 +18,10 @@ HANDLE=0x81000000
 
 # Direct access
 export TPM2TSSENGINE_TCTI="device:/dev/tpmrm0"
+
+sha256() { echo -n "$@" | sha256sum | cut -d' ' -f1 ; }
+log() { echo >&2 "$@" ; }
+
 
 for arg in $(cat /proc/cmdline)
 do
@@ -37,9 +40,8 @@ do
     esac
 done
 
-log_begin_msg "TPM mode=$MODE pcrs=$PCRS"
+log "TPM mode=$MODE pcrs=$PCRS"
 
-sha256() { echo -n "$@" | sha256sum | cut -d' ' -f1 ; }
 
 /usr/bin/tpm2_pcrread >&2 \
 	'sha256:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16'
@@ -60,13 +62,13 @@ if /usr/bin/tpm2_unseal \
 ; then
 	# ensure that a local attacker can't re-read the key from the TPM
 	# by extending pcr 14 with "postboot"
-	log_success_msg "TPM disk key unsealed"
+	log "TPM disk key unsealed"
 	/usr/bin/tpm2_pcrextend >&2 14:sha256=`sha256 postboot`
 	exit 0
 else
 	# the key was not unsealed; log the failure
 	# and ask the user for the recovery key
-	log_failure_msg "Falling back to user pass phrase"
+	log "Falling back to user pass phrase"
 	/usr/bin/tpm2_pcrextend >&2 14:sha256=`sha256 bootfail`
 
 	/lib/cryptsetup/askpass \
