@@ -55,7 +55,7 @@ usage+=$yubikey_init_usage
 commands+="|yubikey-init"
 
 yubikey-init() {
-	show_help $1 "$yubikey_init_usage"
+	show_help "$1" "$yubikey_init_usage"
 	if [ $# == 0 ]; then
 		die $yubikey_init_usage;
 	fi
@@ -109,7 +109,7 @@ usage+=$uefi_sign_keys_usage
 commands+="|uefi-sign-keys"
 
 uefi-sign-keys() {
-	show_help $1 "$uefi_sign_keys_usage"
+	show_help "$1" "$uefi_sign_keys_usage"
 
 	yubico-piv-tool \
 		-s 9c \
@@ -156,7 +156,7 @@ commands+="|uefi-set-keys"
 
 uefi_set_keys()
 {
-	show_help $1 $uefi_set_keys_usage
+	show_help "$1" $uefi_set_keys_usage
 
 	# The order of update must be from lowest to highest
 	for key in db KEK PK; do
@@ -188,7 +188,7 @@ usage+=$luks_seal_usage
 commands+="|luks-seal"
 
 luks-seal() {
-	show_help $1 "$luks_seal_usage"
+	show_help "$1" "$luks_seal_usage"
 
 	PCRS=$1
 	if [ -z "$PCRS" ]; then
@@ -200,12 +200,12 @@ luks-seal() {
 
 	# check to see if the initramfs hook is installed
 	if [ ! -x "$PREFIX/etc/initramfs-tools/hooks/tpm-unseal" ]; then
-		die "!!! $PREFIX/etc/initramfs-tools/hooks/tpm-unseal is not installed; this will probably not work"
+		warn "!!! $PREFIX/etc/initramfs-tools/hooks/tpm-unseal is not installed; this will probably not work"
 	fi
 
 	# and make sure that the unlock script is installed as expected
 	if [ ! -x "$PREFIX/usr/sbin/safeboot" ]; then
-		die "!!! $PREFIX/usr/sbin/safeboot is not installed; this will probably not work"
+		warn "!!! $PREFIX/usr/sbin/safeboot is not installed; this will probably not work"
 	fi
 
 	if [ `wc -l < "$PREFIX/etc/crypttab"` -ne 1 ]; then
@@ -371,7 +371,7 @@ usage+=$sign_kernel_usage
 commands+="|sign-kernel"
 
 sign-kernel() {
-	show_help $1 "$sign_kernel_usage"
+	show_help "$1" "$sign_kernel_usage"
 
 	TARGET=$1 ; shift
 	KERNEL=$1 ; shift
@@ -413,7 +413,7 @@ sign-kernel() {
 		|| die "efibootmgr: failed to create $TARGET entry"
 	fi
 
-	if [ -z "$@" ]; then
+	if [ $# == 0 ]; then
 		warn "Using /proc/cmdline"
 		cat /proc/cmldine > "$TMP/cmdline.txt"
 	else
@@ -458,58 +458,70 @@ sign-kernel() {
 }
 
 hash_and_sign_usage="
-safeboot hash-and-sign
+safeboot hash-and-sign target /dev/mapper/vgubuntu-root /dev/mapper/vgubuntu-hashes ...
 
-  Generate dm-verity hashes.  Currently this is hardcoded for some of the ubuntu install
-  things and needs to be made more general.
+  Generate dm-verity hashes and then sign the Linux with the root hash added
+  to the kernel command line.
+
+  If HASH is set in the environment, it will be used instead of recomputing
+  the dmverity hashes (which can take some time).
   
-  TODO: allow 'boot-name' /dev/mapper/vgubuntu-root /dev/mapper/vgubuntu-hashes parameters...
-
 "
 usage+=$hash_and_sign_usage
 commands+="|hash-and-sign"
 
 hash-and-sign()
 {
-	show_help $1 "$hash_and_sign_usage"
+	show_help "$1" "$hash_and_sign_usage"
+	if [ $# -lt 3 ]; then
+		die "Usage:$hash_and_sign_usage"
+	fi
 
-	ROOTDEV=/dev/mapper/vgubuntu-root
-	HASHDEV=/dev/mapper/vgubuntu-hashes
+	TARGET=$1 ; shift # linux
+	ROOTDEV=$1 ; shift # /dev/mapper/vgubuntu-root
+	HASHDEV=$1 ; shift # /dev/mapper/vgubuntu-hashes
 
-	if mount | grep ${ROOTDEV} ; then \
+	if mount | grep "${ROOTDEV}" ; then \
 		warn "$ROOTDEV: unmounting and checking"
-		mount -o ro,noload,noatime,remount ${ROOTDEV} ; \
-		fsck.ext4 -f ${ROOTDEV}
+		mount -o ro,noload,noatime,remount "${ROOTDEV}" ; \
+		fsck.ext4 -f "${ROOTDEV}"
 	fi
 
 	if [ -z "$HASH" ]; then
 		echo "$ROOTDEV: Computing hashes: this will take a while..."
 		veritysetup format \
 			--debug \
-			${ROOTDEV} \
-			${HASHDEV} \
+			"${ROOTDEV}" \
+			"${HASHDEV}" \
 			| tee $TMP/verity.log \
 		|| die "$ROOTDEV: unable to compute hashes"
 
-		HASH="`awk '/Root hash:/ { print $$3 }' $TMP/verity.log`"
+		HASH="`awk '/Root hash:/ { print $3 }' $TMP/verity.log`"
 
 		if [ -z "$HASH" ]; then
 			die "$ROOTDEV: root hash not in log?"
 		fi
+	else
+		warn "$ROOTDEV: Using hash $HASH"
 	fi
 
-	sign-kernel linux \
+	sign-kernel "$TARGET" \
 		/boot/vmlinuz \
 		/boot/initrd.img \
 		root=/dev/mapper/vroot \
 		ro \
-		verity.hashdev=${HASHDEV} \
-		verity.rootdev=${ROOTDEV} \
+		verity.hashdev="${HASHDEV}" \
+		verity.rootdev="${ROOTDEV}" \
 		verity.hash="$HASH" \
 		tpm.pcrs=0,2,5,7,14 \
+		"$@"
 
 }
 
+
+if [ $# -lt 1 ]; then
+	die "Usage: $0 [$commands] ...." 
+fi
 
 command=$1 ; shift
 #echo "$commands"
