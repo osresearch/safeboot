@@ -1,0 +1,529 @@
+#!/bin/bash
+# Safer Booting with UEFI Secure Boot and the TPM
+#
+# Be careful with this, it is possible to lock yourself
+# out of your computer if you lose the firmware password
+# and platform signing keys.
+set -e -o pipefail
+DIR="`dirname $0`"
+if [ "$VERBOSE" == "" ]; then
+	VERBOSE=0
+fi
+
+die() { echo "$@" >&2 ; exit 1 ; }
+warn() { echo "$@" >&2 ; }
+debug() { [ "$VERBOSE" == 1 ] && echo "$@" >&2 ; }
+
+cleanup() {
+	if [ "$TMP_MOUNT" == "y" ]; then
+		warn "$TMP: Unmounting"
+		umount "$TMP" || die "DANGER: umount $TMP failed. Secrets might be exposed."
+	fi
+	rm -rf "$TMP"
+}
+
+TMP=`mktemp -d`
+TMP_MOUNT=n
+trap cleanup EXIT
+
+usage="Safe Boot subcommands:
+----
+"
+commands="commands"
+
+commands() {
+	echo "$usage"
+	exit 0
+}
+
+show_help() {
+	if [ "$1" == "-h" -o "$1" == "--help" ]; then
+		echo "$2"
+		exit 0
+	fi
+}
+	
+
+yubikey_init_usage="
+safeboot yubikey-init '/U=foo/OU=example.com/'
+
+  Generate a new x509 signing key on an attached Yubikey device
+  and set the certificate subject to the provided argument.
+
+"
+usage+=$yubikey_init_usage
+commands+="|yubikey-init"
+
+yubikey-init() {
+	show_help $1 "$yubikey_init_usage"
+	if [ $# == 0 ]; then
+		die $yubikey_init_usage;
+	fi
+
+	subject=$1
+
+	read -p "WARNING: This will erase any existing key on the yubikey. Are you sure? " really_do_it
+	if [ "$really_do_it" != "y" ]; then
+		die "Not overwriting existing key"
+	fi
+
+	# will take a while and overwrite any existing private keys
+	warn "Generating new key..."
+	yubico-piv-tool \
+		-s 9c \
+		-a generate \
+		--pin \
+		-o $TMP/pubkey.pem \
+	|| die "unable to generate new key"
+
+	warn "Self-signing certificate"
+	yubico-piv-tool \
+		-s 9c \
+		-a verify-pin \
+		-a selfsign-certificate \
+		-S $subject \
+		-i $TMP/pubkey.pem \
+		-o $TMP/cert.pem \
+	|| die "Unable to self-sign certificate"
+
+	warn "Importing self-signed certificate into key"
+	yubico-piv-tool \
+		-s 9c \
+		-a import-certificate \
+		-i $TMP/cert.pem \
+	|| die "Unable to import certificate into key"
+
+	yubico-piv-tool \
+		-a status \
+	|| die "Unable to retrieve key status"
+}
+
+uefi_sign_keys_usage="
+safeboot uefi-sign-keys
+
+  Create three signed certificates for the PK, KEK, and db using
+  the attached Yubikey and store them in the UEFI SecureBoot configuration.
+  You will have to authenticate to the yubikey multiple times during this process.
+"
+usage+=$uefi_sign_keys_usage
+commands+="|uefi-sign-keys"
+
+uefi-sign-keys() {
+	show_help $1 "$uefi_sign_keys_usage"
+
+	yubico-piv-tool \
+		-s 9c \
+		-a read-certificate \
+		-o $TMP/cert.pem \
+	|| die "Unable to retrieve PIN from yubikey"
+
+	cert-to-efi-sig-list \
+		-g `uuidgen` \
+		$TMP/cert.pem \
+		$TMP/cert.esl \
+	|| die "cert-to-efi-sig-list failed"
+
+	# Cache the yubico pin since it will be used multiple times
+	read -s -p 'Yubikey login PIN: ' pin
+	echo
+
+	# Use the sign-efi-sig-list from our build so that the
+	# -e option exists
+	for key in db KEK PK; do
+		warn "Signing UEFI variable $key"
+		sign-efi-sig-list \
+			-e pkcs11 \
+			-k "pkcs11:pin-value=$pin" \
+			-c $TMP/cert.pem \
+			$key \
+			$TMP/cert.esl \
+			$key.auth \
+		|| die "$key: Signing failed"
+	done
+
+	uefi_set_keys
+}
+
+uefi_set_keys_usage="
+safeboot uefi-set-keys
+
+  Store the PK, KEK, and db into the UEFI Secure Boot configuration
+  variables.  This must be done once during system setup.
+
+"
+usage+=$uefi_set_keys_usage
+commands+="|uefi-set-keys"
+
+uefi_set_keys()
+{
+	show_help $1 $uefi_set_keys_usage
+
+	# The order of update must be from lowest to highest
+	for key in db KEK PK; do
+		if [ ! -r "$key.auth" ]; then
+			die "$key.auth not found: run safeboot uefi-sign-keys"
+		fi
+
+		warn "Installing UEFI variable $key"
+
+		efi-updatevar -f $key.auth $key \
+		|| die "$key: updating key failed; is the BIOS in setup mode?"
+	done
+}
+
+
+luks_seal_usage="
+safeboot luks-seal [0,2,5,7...]
+
+  Generate a new LUKS encryption key for the block devices in /etc/crypttab,
+  sealed with the optional comma separated list of TPM PCRs.  PCR 14 will be
+  used to indicate a 'postboot' status to prevent the key from being unsealed
+  after the initramfs has run.
+
+  If this is the first time the disk has been sealed, /etc/crypttab will be updated
+  to include a call to this script to retrieve the keys from the TPM.
+  Right now only a single crypt disk is supported.
+"
+usage+=$luks_seal_usage
+commands+="|luks-seal"
+
+luks-seal() {
+	show_help $1 "$luks_seal_usage"
+
+	PCRS=$1
+	if [ -z "$PCRS" ]; then
+		PCRS=0,2,5,7
+	fi
+	
+	KEYSLOT=1
+	HANDLE=0x81000000
+
+	# check to see if the initramfs hook is installed
+	if [ ! -x "$PREFIX/etc/initramfs-tools/hooks/tpm-unseal" ]; then
+		die "!!! $PREFIX/etc/initramfs-tools/hooks/tpm-unseal is not installed; this will probably not work"
+	fi
+
+	# and make sure that the unlock script is installed as expected
+	if [ ! -x "$PREFIX/usr/sbin/safeboot" ]; then
+		die "!!! $PREFIX/usr/sbin/safeboot is not installed; this will probably not work"
+	fi
+
+	if [ `wc -l < "$PREFIX/etc/crypttab"` -ne 1 ]; then
+		die "!!! $PREFIX/etc/crypttab must have only one entry"
+	fi
+
+	# Determine which device is the cryptdisk
+	uuid=`perl -ne '/UUID=(.*?) / && print "$1"' $PREFIX/etc/crypttab`
+	if [ -z "$uuid" ]; then
+		die "Unable to find UUID in crypttab"
+	fi
+	dev=`blkid -U $uuid`
+	if [ -z "$dev" ]; then
+		die "Unable to find device for uuid $uuid"
+	fi
+
+	# if the TPM2 resource manager is running, talk to it.
+	# otherwise use a direct connection to the TPM.
+	if ! pidof tpm2-abrmd > /dev/null ; then
+		export TPM2TSSENGINE_TCTI="device:/dev/tpmrm0"
+	fi
+
+	# Use a tmpfs mount instead of just a temp directory so that
+	# the disk encryption key doesn't touch a persistent disk.
+	mount -t tmpfs none "$TMP" \
+	|| die "Unable to mount temp directory"
+
+	chmod 700 "$TMP"
+	TMP_MOUNT=y
+
+	dd \
+		if=/dev/urandom \
+		of="$TMP/key.bin" \
+		bs=32 \
+		count=1 \
+	|| die "Unable to generate random key"
+
+	# If pre-computed PCRs are known, they can be used here instead
+	tpm2_pcrread -o "$TMP/pcrs.bin" "sha256:$PCRS" \
+		>> /tmp/tpm.log \
+	|| die "Unable to read TPM PCRs"
+
+	# Add a zero entry for PCR 14, which ensures that the system
+	# will not be able to unseal the secret after the initial unsealing
+	perl -e 'print chr(0x00) x 0x20' >> "$TMP/pcrs.bin"
+
+	tpm2_createpolicy \
+		--policy-pcr \
+		--pcr-list "sha256:$PCRS,14" \
+		--pcr "$TMP/pcrs.bin" \
+		--policy "$TMP/policy.digest" \
+		>> /tmp/tpm.log \
+	|| die "Unable to create TPM policy"
+
+	tpm2_createprimary \
+		--key-context "$TMP/primary.context" \
+		>> /tmp/tpm.log \
+	|| die "Unable to create TPM primary object"
+
+	# Start a secret session with the TPM
+	#tpm2_startauthsession \
+	#	--session "$TMP/session.context" \
+	#|| die "Unable to start TPM session"
+	#
+	#tpm2_policysecret \
+	#	--session "$TMP/session.context" \
+	#	--object-context "$TMP/primary.context" \
+	#|| die "Unable to set secret policy"
+	#	--parent-auth "$TMP/session.context" \
+	#	--key-auth $HANDLE \
+
+	warn "Sealing secret with TPM"
+	tpm2_create \
+		--parent-context "$TMP/primary.context" \
+		--policy "$TMP/policy.digest" \
+		--sealing-input "$TMP/key.bin" \
+		--public "$TMP/public.bin" \
+		--private "$TMP/private.bin" \
+		>> /tmp/tpm.log \
+	|| die "Unable to create TPM key context"
+
+	tpm2_load \
+		--parent-context "$TMP/primary.context" \
+		--public "$TMP/public.bin" \
+		--private "$TMP/private.bin" \
+		--key-context "$TMP/key.context" \
+		>> /tmp/tpm.log \
+	|| die "Unable to load TPM with key"
+		
+	warn "Installing sealed secret into TPM"
+	tpm2_evictcontrol \
+		--object-context "$HANDLE" \
+		>> /tmp/tpm.log \
+	|| die "Unable to remove old TPM key context $HANDLE"
+
+	tpm2_evictcontrol \
+		--object-context "$TMP/key.context" \
+		>> /tmp/tpm.log \
+	|| die "Unable to load TPM key context into TPM"
+
+	# Verify that the key actually works -- this might break
+	# if there are different PCRs
+	warn "Verifying sealed secret"
+	if tpm2_unseal \
+		--object-context $HANDLE \
+		--auth pcr:"$PCRS" \
+		--output "$TMP/key2.bin" \
+		>> /tmp/tpm.log \
+	; then
+		cmp "$TMP/key.bin" "$TMP/key2.bin" \
+		|| die "Keys do not match; something failed"
+	else
+		warn "Unable to unseal (probably due to PCR14); ignored"
+	fi
+
+	# make sure the crypttab has the unlock script referenced
+	if ! grep keyscript "$PREFIX/etc/crypttab" > /dev/null ; then
+		warn "adding crypttab unseal script"
+		sed -i.orig 's:,discard$:,discard,keyscript=/usr/sbin/safeboot-tpm-unseal:' $PREFIX/etc/crypttab \
+		|| die "$PREFIX/etc/crypttab: unable to add keyscript"
+
+		warn "***** You should update your ramdisk and resign the kernel:"
+		warn "sudo update-initramfs -u"
+	fi
+
+
+	# ask for the disk encryption key
+	for tries in 1 2 3 fail; do
+		read -s -p "$dev: Current recovery password: " recovery_key
+		echo
+		echo -n "$recovery_key" > "$TMP/recovery.key"
+
+		warn "Removing old LUKS TPM key (if it exists)"
+		cryptsetup luksKillSlot \
+			--key-file "$TMP/recovery.key" \
+			"$dev" $KEYSLOT \
+		|| warn "$dev: Unable to remove old key slot (ignored)"
+
+		warn "Adding new LUKS TPM key"
+		cryptsetup luksAddKey \
+			--key-file "$TMP/recovery.key" \
+			--key-slot $KEYSLOT \
+			"$dev" "$TMP/key.bin" \
+		&& break
+
+		warn "$dev: Unable to add key slot"
+
+		if [ $tries == fail ]; then
+			die "$dev: Unable to add key"
+		fi
+	done
+}
+
+sign_kernel_usage="
+safeboot sign-kernel 'boot-name' /boot/vmlinuz /boot/initrd  parameters...
+
+  Create an EFI boot menu entry for 'boot-name', with the specified
+  kernel, initrd and command line bundled into an executable and signed.
+  This is the raw command; you might want to use hash-and-sign instead.
+
+"
+usage+=$sign_kernel_usage
+commands+="|sign-kernel"
+
+sign-kernel() {
+	show_help $1 "$sign_kernel_usage"
+
+	TARGET=$1 ; shift
+	KERNEL=$1 ; shift
+	INITRD=$1 ; shift
+
+	if [ -z "$TARGET" -o -z "$KERNEL" -o -z "$INITRD" ]; then
+		die $sign_kernel_usage
+	fi
+
+	OUTDIR="/boot/efi/EFI/$TARGET"
+	CERT="$TMP/cert.pem"
+
+	if [ ! -r "$CERT" ]; then
+		warn "Extracting signing cert from yubikey"
+		yubico-piv-tool \
+			-s 9c \
+			-a read-certificate \
+			-o "$CERT" \
+		|| die "$CERT: unable to read from yubikey"
+	fi
+
+	if [ ! -d "$OUTDIR" ]; then
+		warn "$OUTDIR: Creating directory on EFI System Partition"
+		mkdir -p "$OUTDIR" \
+		|| die "$OUTDIR: unable to create"
+	fi
+
+	if ! efibootmgr | grep "^Boot.* $TARGET\$" ; then
+		# determine the device the EFI system partition is on
+		DEV="`df "$OUTDIR" | tail -1 | cut -d' ' -f1`"
+
+		warn "$OUTDIR: Creating boot menu item on $DEV"
+		efibootmgr \
+			--create \
+			--disk "$DEV" \
+			--part 1 \
+			--label "$TARGET" \
+			--loader "\\EFI\\$TARGET\\linux.efi" \
+		|| die "efibootmgr: failed to create $TARGET entry"
+	fi
+
+	if [ -z "$@" ]; then
+		warn "Using /proc/cmdline"
+		cat /proc/cmldine > "$TMP/cmdline.txt"
+	else
+		echo -n "$@" > "$TMP/cmdline.txt"
+	fi
+
+	warn "$TMP/linux.efi: Creating merged Linux/initrd image"
+	objcopy \
+		--add-section .osrel=/etc/os-release \
+		--add-section .cmdline="$TMP/cmdline.txt" \
+		--add-section .linux="$KERNEL" \
+		--add-section .initrd="$INITRD" \
+		--change-section-vma .osrel=0x20000 \
+		--change-section-vma .cmdline=0x30000 \
+		--change-section-vma .linux=0x40000 \
+		--change-section-vma .initrd=0x3000000 \
+		/usr/lib/systemd/boot/efi/linuxx64.efi.stub \
+		"$TMP/linux.efi" \
+	|| die "linux.efi: unable to create"
+
+	warn "$OUTDIR/linux.efi: Signing (ignore warnings about gaps)"
+	sbsign \
+		--engine pkcs11 \
+		--key 'pkcs11:' \
+		--cert "$CERT" \
+		--output "$OUTDIR/linux.efi.new" \
+		"$TMP/linux.efi" \
+	|| die "$OUTDIR/linux.efi: Unable to sign"
+
+	# Duplicate the old image and atomically move the new kernel
+	# image to avoid potentially leaving an unbootable system
+	if [ -r "$OUTDIR/linux.efi" ]; then
+		cp "$OUTDIR/linux.efi" "$OUTDIR/linux.efi.old" \
+		|| die "$OUTDIR/linux.efi.old: unable to backup old image"
+	fi
+
+	mv "$OUTDIR/linux.efi.new" "$OUTDIR/linux.efi" \
+	|| die "$OUTDIR/linux.efi: unable to install new image"
+
+	echo "Kernel commandline: '`cat $TMP/cmdline.txt`'"
+	sha256sum "$OUTDIR/linux.efi"
+}
+
+hash_and_sign_usage="
+safeboot hash-and-sign
+
+  Generate dm-verity hashes.  Currently this is hardcoded for some of the ubuntu install
+  things and needs to be made more general.
+  
+  TODO: allow 'boot-name' /dev/mapper/vgubuntu-root /dev/mapper/vgubuntu-hashes parameters...
+
+"
+usage+=$hash_and_sign_usage
+commands+="|hash-and-sign"
+
+hash-and-sign()
+{
+	show_help $1 "$hash_and_sign_usage"
+
+	ROOTDEV=/dev/mapper/vgubuntu-root
+	HASHDEV=/dev/mapper/vgubuntu-hashes
+
+	if mount | grep ${ROOTDEV} ; then \
+		warn "$ROOTDEV: unmounting and checking"
+		mount -o ro,noload,noatime,remount ${ROOTDEV} ; \
+		fsck.ext4 -f ${ROOTDEV}
+	fi
+
+	if [ -z "$HASH" ]; then
+		echo "$ROOTDEV: Computing hashes: this will take a while..."
+		veritysetup format \
+			--debug \
+			${ROOTDEV} \
+			${HASHDEV} \
+			| tee $TMP/verity.log \
+		|| die "$ROOTDEV: unable to compute hashes"
+
+		HASH="`awk '/Root hash:/ { print $$3 }' $TMP/verity.log`"
+
+		if [ -z "$HASH" ]; then
+			die "$ROOTDEV: root hash not in log?"
+		fi
+	fi
+
+	sign-kernel linux \
+		/boot/vmlinuz \
+		/boot/initrd.img \
+		root=/dev/mapper/vroot \
+		ro \
+		verity.hashdev=${HASHDEV} \
+		verity.rootdev=${ROOTDEV} \
+		verity.hash="$HASH" \
+		tpm.pcrs=0,2,5,7,14 \
+
+}
+
+
+command=$1 ; shift
+#echo "$commands"
+
+case "$command" in
+	-h|--help)
+		echo "$usage"
+		exit 0
+		;;
+	#$commands)
+	yubikey-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|hash-and-sign)
+		$command "$@"
+		;;
+	*)
+		die "$0: subcommand $command unknown"
+		;;
+esac
