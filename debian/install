@@ -1,6 +1,6 @@
-sbin/safeboot /usr/sbin/
-sbin/safeboot-tpm-unseal /usr/sbin/
-initramfs/hooks/dmverity-root /etc/initramfs/hooks/
-initramfs/hooks/tpm-unseal /etc/initramfs/hooks/
-initramfs/hooks/tpm-unseal /etc/initramfs/hooks/
-initramfs/scripts/dmverity-root /etc/initramfs/scripts/local-premount/
+sbin/safeboot			usr/sbin/
+sbin/safeboot-tpm-unseal	usr/sbin/
+initramfs/hooks/dmverity-root	etc/initramfs/hooks/
+initramfs/hooks/tpm-unseal	etc/initramfs/hooks/
+initramfs/hooks/tpm-unseal	etc/initramfs/hooks/
+initramfs/scripts/dmverity-root	etc/initramfs/scripts/local-premount/
