@@ -1,6 +1,0 @@
-[submodule "sbsigntools"]
-	path = sbsigntools
-	url = https://github.com/osresearch/sbsigntools
-[submodule "efitools"]
-	path = efitools
-	url = https://git.kernel.org/pub/scm/linux/kernel/git/jejb/efitools.git
