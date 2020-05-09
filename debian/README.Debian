@@ -1,6 +1,8 @@
 safeboot for Debian
 ------------------
 
-<possible notes regarding this package - if none, delete this file>
+This is potentially dangerous and can brick your machine
+if you lose access to the signing keys or overwrite the wrong
+filesystem with the dmverity hashes.
 
  -- Trammell Hudson <hudson@trmm.net>  Sat, 09 May 2020 13:20:05 +0200

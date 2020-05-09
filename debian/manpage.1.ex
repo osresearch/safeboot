@@ -18,7 +18,7 @@
 .\" .sp <n>    insert n+1 empty lines
 .\" for manpage-specific macros, see man(7)
 .SH NAME
-safeboot \- program to do something
+safeboot \- boot Linux more safely
 .SH SYNOPSIS
 .B safeboot
 .RI [ options ] " files" ...
@@ -35,7 +35,7 @@ commands.
 .\" TeX users may be more comfortable with the \fB<whatever>\fP and
 .\" \fI<whatever>\fP escape sequences to invode bold face and italics,
 .\" respectively.
-\fBsafeboot\fP is a program that...
+\fBsafeboot\fP is a script to make the Linux boot process slightly safer.
 .SH OPTIONS
 These programs follow the usual GNU command line syntax, with long
 options starting with two dashes (`-').

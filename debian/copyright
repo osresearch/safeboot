@@ -4,8 +4,7 @@ Upstream-Contact: <preferred name and address to reach the upstream project>
 Source: <url://example.com>
 
 Files: *
-Copyright: <years> <put author's name and email here>
-           <years> <likewise for another author>
+Copyright: 2020 Trammell Hudson <hudson@trmm.net>
 License: GPL-2.0+
 
 Files: debian/*
