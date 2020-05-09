@@ -3,8 +3,8 @@ sbin/safeboot			usr/sbin/
 sbin/safeboot-tpm-unseal	usr/sbin/
 
 # Compiled with modifications from source
-sbin/sbsign.safeboot		usr/sbin/
-sbin/sign-efi-sig-list.safeboot	usr/sbin/
+bin/sbsign.safeboot		usr/sbin/
+bin/sign-efi-sig-list.safeboot	usr/sbin/
 
 # scripts to interface with secure boot in the initramfs
 initramfs/hooks/dmverity-root	etc/initramfs/hooks/

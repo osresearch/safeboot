@@ -1,5 +1,5 @@
 .*.swp
-sbin/*.safeboot
+bin
 tags
 *.esl
 *.pem
