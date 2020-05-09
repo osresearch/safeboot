@@ -66,7 +66,7 @@ fi
 
 #umount ${rootmnt}
 
-veritysetup open ${ROOTDEV} vroot ${HASHDEV} ${HASH}
+veritysetup open "${ROOTDEV}" vroot "${HASHDEV}" "${HASH}"
 
 if [ $? -ne 0 ]; then
 	log_failure_msg "$PREFIX: ${ROOTDEV} unable to setup verity, remounting ${rootmnt}"
@@ -89,6 +89,10 @@ fi
 log_success_msg "$PREFIX: verified ${rootmnt} with root hash $HASH"
 
 # now unmount it so that it can be remounted later
-umount ${rootmnt}
+umount "${rootmnt}"
+
+# also set the read-only flag on the hashes so that they are not tampered
+# with accidentally while dmverity is running
+blockdev --setro "${HASHDEV}"
 
 exit 0
