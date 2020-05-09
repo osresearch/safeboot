@@ -148,7 +148,7 @@ uefi-sign-keys() {
 	# -e option exists
 	for key in db KEK PK; do
 		warn "Signing UEFI variable $key"
-		sign-efi-sig-list \
+		sign-efi-sig-list.safeboot \
 			-e pkcs11 \
 			-k "pkcs11:pin-value=$pin" \
 			-c $TMP/cert.pem \
@@ -460,7 +460,7 @@ sign-kernel() {
 	|| die "linux.efi: unable to create"
 
 	warn "$OUTDIR/linux.efi: Signing (ignore warnings about gaps)"
-	sbsign \
+	sbsign.safeboot \
 		--engine pkcs11 \
 		--key 'pkcs11:' \
 		--cert "$CERT" \
