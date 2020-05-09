@@ -1,6 +1,5 @@
 .*.swp
-bin/sbsign
-bin/sign-efi-sig-list
+sbin/*.safeboot
 tags
 *.esl
 *.pem
