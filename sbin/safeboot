@@ -551,6 +551,35 @@ hash-and-sign()
 	|| die "Kernel signing failed!"
 }
 
+recovery_usage="
+safeboot recovery [reboot]
+
+  Configure the next boot for a recovery.  If reboot is passed in,
+  the system will be rebooted now.
+  
+"
+usage+=$recovery_usage
+commands+="|recovery"
+
+recovery()
+{
+	show_help "$1" "$recovery_usage"
+	# Find the recovery entry in the efibootmgr
+	entry=`efibootmgr | perl -ne '/^Boot([0-9A-F]+). recovery$/ and print $1'`
+	if [ -z "$entry" ]; then
+		die "recovery boot entry not in efibootmgr?"
+	fi
+
+	warn "recovery: boot mode $entry"
+	efibootmgr --bootnext "$entry" \
+		|| die "Boot$entry: unable to set bootnext"
+
+	if [ "$1" == "reboot" ]; then
+		warn "Initiating reboot!"
+		reboot
+	fi
+}
+
 
 if [ $# -lt 1 ]; then
 	die "Usage: $0 [$commands] ...." 
@@ -565,7 +594,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|hash-and-sign|tpm2_trial_extend)
+	yubikey-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|hash-and-sign|recovery|tpm2_trial_extend)
 		$command "$@"
 		;;
 	*)
