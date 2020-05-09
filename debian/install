@@ -7,7 +7,7 @@ bin/sbsign.safeboot		usr/sbin/
 bin/sign-efi-sig-list.safeboot	usr/sbin/
 
 # scripts to interface with secure boot in the initramfs
-initramfs/hooks/dmverity-root	etc/initramfs/hooks/
-initramfs/hooks/tpm-unseal	etc/initramfs/hooks/
-initramfs/hooks/tpm-unseal	etc/initramfs/hooks/
-initramfs/scripts/dmverity-root	etc/initramfs/scripts/local-premount/
+initramfs/hooks/dmverity-root	etc/initramfs-tools/hooks/
+initramfs/hooks/tpm-unseal	etc/initramfs-tools/hooks/
+initramfs/hooks/tpm-unseal	etc/initramfs-tools/hooks/
+initramfs/scripts/dmverity-root	etc/initramfs-tools/scripts/local-premount/
