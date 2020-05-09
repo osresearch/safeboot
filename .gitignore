@@ -8,3 +8,8 @@ tags
 *.sha1
 *.sha256
 *.crt
+debian/.debhelper
+debian/debhelper-build-stamp
+debian/files
+debian/*.substvars
+debian/safeboot
