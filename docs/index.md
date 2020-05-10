@@ -150,9 +150,9 @@ Any modifications to the filesystem will be detected when the modified
 blocks are read, allowing the system to enter recovery mode to protect
 its data.
 
-![Output of `hash-and-seal` command](images/hash-and-seal.png)
+![Output of `hash-and-sign` command](images/hash-and-sign.png)
 
-The `safeboot hash-and-seal` command will:
+The `safeboot hash-and-sign` command will:
 
 * unmount `/` and remount it `ro`
 * `fsck /` to ensure that it is clean
@@ -161,6 +161,12 @@ The `safeboot hash-and-seal` command will:
 * merge the linux kernel, initrd, and a command line with the dmverity root hash into an EFI executable
 * sign this executable
 * and install it as the default entry in the EFI boot manager
+
+Because this might change the EFI boot manager, it is necessary to
+reboot into the SIP mode and then re-seal the TPM key with
+`safeboot luks-seal` as documented above.
+
+TODO: Detect changes and notify the use rather than just `EIO`.
 
 When changes to `/` need to be made, such as to install new packages
 with `apt-get`, the system has to be rebooted into recovery mode
