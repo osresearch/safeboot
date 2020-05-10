@@ -62,10 +62,13 @@ show_help() {
 	
 
 yubikey_init_usage="
-safeboot yubikey-init '/U=foo/OU=example.com/'
+safeboot yubikey-init subject
 
   Generate a new x509 signing key on an attached Yubikey device
   and set the certificate subject to the provided argument.
+
+  The subject must be written as:
+       /CN=host.example.com/OU=test/O=example.com/
 
 "
 usage+=$yubikey_init_usage
@@ -89,8 +92,7 @@ yubikey-init() {
 	yubico-piv-tool \
 		-s 9c \
 		-a generate \
-		--pin \
-		-o $TMP/pubkey.pem \
+		-o "$TMP/pubkey.pem" \
 	|| die "unable to generate new key"
 
 	warn "Self-signing certificate"
@@ -98,16 +100,16 @@ yubikey-init() {
 		-s 9c \
 		-a verify-pin \
 		-a selfsign-certificate \
-		-S $subject \
-		-i $TMP/pubkey.pem \
-		-o $TMP/cert.pem \
+		-S "$subject" \
+		-i "$TMP/pubkey.pem" \
+		-o "$TMP/cert.pem" \
 	|| die "Unable to self-sign certificate"
 
 	warn "Importing self-signed certificate into key"
 	yubico-piv-tool \
 		-s 9c \
 		-a import-certificate \
-		-i $TMP/cert.pem \
+		-i "$TMP/cert.pem" \
 	|| die "Unable to import certificate into key"
 
 	yubico-piv-tool \
@@ -158,7 +160,7 @@ uefi-sign-keys() {
 		|| die "$key: Signing failed"
 	done
 
-	uefi_set_keys
+	uefi-set-keys
 }
 
 uefi_set_keys_usage="
@@ -171,7 +173,7 @@ safeboot uefi-set-keys
 usage+=$uefi_set_keys_usage
 commands+="|uefi-set-keys"
 
-uefi_set_keys()
+uefi-set-keys()
 {
 	show_help "$1" $uefi_set_keys_usage
 
@@ -430,6 +432,7 @@ sign-kernel() {
 
 		warn "$OUTDIR: Creating boot menu item on $DEV"
 		efibootmgr \
+			--quiet \
 			--create \
 			--disk "$DEV" \
 			--part 1 \
