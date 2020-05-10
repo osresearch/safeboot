@@ -1,3 +1,10 @@
+safeboot (0.2-1) unstable; urgency=medium
+
+  * Ran through instructions, worked on fresh 20.04 install
+  * Setup `mkdocs` website with documentation.
+
+ -- Trammell Hudson <hudson@trmm.net>  Sun, 10 May 2020 23:20:05 +0200
+
 safeboot (0.1-1) unstable; urgency=medium
 
   * Initial release

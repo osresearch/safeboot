@@ -58,8 +58,8 @@ clean:
 
 # Regenerate the source file
 tar: clean
-	tar zcvf ../safeboot_0.1.orig.tar.gz \
-		--exclude .git\* \
+	tar zcvf ../safeboot_0.2.orig.tar.gz \
+		--exclude .git \
 		--exclude debian \
 		.
 

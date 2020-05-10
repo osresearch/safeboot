@@ -16,6 +16,31 @@ For more details, see [the docs directory](docs/index.md)
 
 -----
 
+## Building debian package
+
+```
+sudo apt -y install \
+	devscripts \
+	tpm2-tools \
+	efitools \
+	gnu-efi \
+	opensc \
+	yubico-piv-tool \
+	libengine-pkcs11-openssl \
+	build-essential \
+	binutils-dev \
+	git \
+	automake \
+	help2man \
+	libssl-dev \
+	uuid-dev
+mkdir debian ; cd debian
+git clone https://github.com/osresearch/safeboot
+make -C safeboot package
+```
+
+-----
+
 # RAW NOTES
 
 -----
@@ -113,9 +138,9 @@ yubico-piv-tool -s 9c -a read-certificate -o cert.pem
 ----
 
 Ubuntu 20.04 installation:
-* "Try it", then 
+* "Try it", then
 * "Advanced" - "LVM encrypt"
-* Install as normal, then 
+* Install as normal, then
 * Then reduce the root volume before rebooting and create some new entries for `/home` and `/var`:
 ```
 sudo e2fsck -f /dev/vgubuntu/root
@@ -212,7 +237,7 @@ pkcs11-tool -s -p 123456 -m SHA256-RSA-PKCS < db.raw
 ----
 reboot
 * boot order
-* test usb 
+* test usb
 
 other things to do:
 * read-only root
