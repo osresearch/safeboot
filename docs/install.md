@@ -2,7 +2,7 @@
 
 # Safe Boot: Booting Linux Safely
 
-**Be careful** when following these instructions: it is possible to lock
+**Be careful!** When following these instructions: it is possible to lock
 yourself out from your own machine if you forget some of the passwords.
 It is best to try this on a non-production system until you're certain
 that you understand how to use the recovery mode to fix bad kernel
@@ -14,14 +14,16 @@ so the Debian package does not work on 18.04.
 
 The outline for configuring safeboot requires some knowledge of the
 command line and familiarity with running commands as `root` with `sudo`.
+This guide will show you how to:
 
-* Install the `safeboot.deb` package
-* Configure the UEFI firmware
-* Create a signing key in a Yubikey
-* Sign a recovery kernel
+* Install the `safeboot.deb` package (download from [github.com/osresearch/safeboot]())
+* Configure the UEFI firmware for beter security
+* Create a signing key stored in a Yubikey
 * Install the signing key into the UEFI SecureBoot configuration
+* Sign a recovery kernel and create a UEFI Boot Manager entry for it
 * Seal a disk encryption secret into the TPM
-* Enable System Integrity Protection mode and sign the runtime kernel
+* Enable System Integrity Protection mode, hash the root filesystem, and
+sign the runtime kernel
 
 
 ## Initial Setup
@@ -63,12 +65,7 @@ using a hardware token like a yubikey greatly enhances the security
 of the system since even with root access an attacker can't
 gain persistence in the `/` or in the kernel.  
 
-![UEFI SecureBoot setup screen](images/thinkpad-x1-secureboot.jpg)
-To replace the Platform Key requires that the UEFI SecureBoot
-firmware be put into "`Setup mode`".  On the Thinkpads, select
-`Reset to Setup Mode` and `Clear All Secure Boot Keys`, then boot
-into Linux.
-
+#### Yubikey key generation
 ![Output of `yubikey-init` command](images/yubikey-init.png)
 
 First step is to generate a new key that will be used for UEFI SecureBoot.
@@ -81,6 +78,44 @@ The `safeboot yubikey-init` subcommand will do several steps:
 * Self-sign the public key to generate a new x509 certificate
 * Reimport the certificate into the Yubikey so that UEFI variables and images
 can be signed with the hardware token.
+
+#### Signed Linux recovery kernel
+![Output of `sign-kernel`](images/sign-kernel.png)
+
+The first step is to sign and install a recovery kernel, which will be able
+to read/write mount the root filesystem, and does not have TPM sealing keys,
+so it will always require a recovery password to decrypt the disk.
+If you don't have a recovery entry in the EFI boot manager on the disk,
+you would need to have a USB drive signed with a key in the UEFI `db`
+to recover from errors.
+
+To create the `recovery` entry with the current kernel and initrd, and
+the default command line parameters as the current kernel:
+
+```
+sudo safeboot sign-kernel \
+	recovery \
+	/boot/vmlinuz \
+	/boot/initrd.img \
+	"root=/dev/mapper/vgubuntu-root ro quiet splash vt.handoff=7"
+```
+
+This command will:
+
+* Add UEFI boot menu item for recovery kernel
+* Create a directory for it in the EFI System Partition ("ESP")
+* Merge the vmlinux, initrd and command line into a single EFI executable
+* Sign the merged EFI executable
+
+Typically you will not have to redo this command since the normal
+kernel will be hashed and signed during updates.
+
+#### UEFI Platform Keys
+![UEFI SecureBoot setup screen](images/thinkpad-x1-secureboot.jpg)
+Replacing the UEFI Platform Key with the generated x509 cert requires
+that the UEFI SecureBoot firmware be put into "`Setup mode`".  On the
+Thinkpads, select `Reset to Setup Mode` and `Clear All Secure Boot Keys`,
+then boot into Linux.
 
 ![Output of `uefi-sign-keys` command](images/uefi-sign-keys.png)
 
@@ -97,28 +132,9 @@ The `safeboot uefi-sign-keys` subcommand will:
 for each variable)
 * Store public certificate in UEFI platform key (`PK`), key-exchange key (`KEK`) and database (`db`)
 
-**Do not reboot yet!** You have to sign the kernel first, or else the
-firmware will refuse to load it.
-
-### Signed Linux setup
-![Output of `sign-kernel`](images/sign-kernel.png)
-
-The first step is to sign and install a recovery kernel, which will be able
-to read/write mount the root filesystem, and does not have TPM sealing keys,
-so it will always require a recovery password.  If you don't have a recovery
-entry on the disk, you would need to have a USB drive signed with a key
-in the UEFI `db` to recover from errors.
-
-The `safeboot sign-kernel recovery` command will:
-
-* Add UEFI boot menu item for recovery kernel
-* Create a directory for it in the EFI System Partition ("ESP")
-* Merge the vmlinux, initrd and command line into a single EFI executable
-* Sign the merged EFI executable
-
-Typically you will not have to redo this command since the normal
-kernel will be hashed and signed during updates.
-
+**Before you reboot!** If you have not signed the kernel and initrd as
+described above, the system will not boot and you will have to disable
+UEFI Secure Boot to get back into the machine.
 
 ### TPM Configuration
 
@@ -132,17 +148,25 @@ measured into the TPM, so a local attacker shouldn't be able to modify
 the SPI flash contents to bypass the measurements, or to add their
 own keys to the UEFI key database.  (Subject to various CVE's and TOCTOUs, etc)
 
-The `safeboot luks-seal` command will:
+The command to seal the LUKS disk encryption key into the TPM is:
 
+```
+safeboot luks-seal
+```
+
+This will:
 * Create a new disk encryption key with random data
 * Read the current PCRs, seal new key into the TPM with these PCRs
 * Add new key slot to disk with new key (will require the recovery password)
 * Add initramfs building hooks
 * Modify `/etc/crypttab` entry to call unlock script if necessary
 
-The very first time this is run you will need to also run
-`update-initramfs -u` to build an initrd with the new crypttab and
-hooks in place.
+The very first time this is run you will need to also rebuild the initrd
+with the new crypttab and hooks in place:
+
+```
+update-initramfs -u
+```
 
 The TPM PCRs are somewhat fragile; they include hashes of the ROM images,
 the EFI executables that have been run along the boot path, etc.
@@ -151,9 +175,12 @@ so the TPM will not automatically unseal on the same boot that the
 user has entered the setup application.
 
 ### System Integrity Protection mode
+![`dmverity` merkle tree diagram](images/dmverity.jpg)
 
-The "SIP" mode ensure that even an attacker with root priviledges
-can't make persistent changes to the contents of the root filesystem.
+The "SIP" mode is optional and ensures that even an attacker with root
+priviledges can't make persistent changes to the contents of the root
+filesystem. It uses the same dmverity as Android's verified boot mode.
+
 The root of the dm-verity Merkle-tree is passed to the kernel as part of the
 signed command line, ensuring that an attacker can't change anything
 on the filesystem without access to the signing key.

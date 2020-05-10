@@ -6,7 +6,7 @@ Safe Boot has four goals:
 
 * **Booting only code that is authorized by the system owner** (by installing a hardware protected platform key for the kernel and initrd)
 * **Streamlining the encrypted disk boot process** (by storing keys in the TPM, and only unsealing them if the firmware and configuration is unmodified)
-* **Reduce the attack surface** (by enabling Linux kernel features to enable hardware protection features and to de-priviledge the root account)
+* **Reducing the attack surface** (by enabling Linux kernel features to enable hardware protection features and to de-priviledge the root account)
 * **Protecting the runtime system integrity** (by optionaly booting from a read-only root with dm-verity and signed root hash)
 
 The [slightly more secure Heads firmware](http://osresearch.net)
