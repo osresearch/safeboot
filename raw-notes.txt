@@ -1,0 +1,223 @@
+-----
+
+# RAW NOTES
+
+-----
+This guide was written using Ubuntu 20.04 and `tpm2-tools` 4.1.1.
+Unfortunately there has been churn in the names of the tools and
+the command line options, so it does not work on 18.04.
+All of the commands are run as `root`.
+
+The `cryptdisk-seal` program will securely generate a random key
+for encrypting the disk and add it to the LUKS key slot 1; the
+normal installer uses key slot 0 for the manually entered key,
+which will be left as a recovery key in case there is a TPM failure.
+In order to add the new key, you will have to enter the existing
+recovery key (set during initial install).
+
+The random key will also be sealed into the TPM as a persistent object
+using the current value of the important PCRs.
+
+In order for the `initrd` to be able to unseal and decrypt the key,
+it is necessary to also install a "hook" into the initramfs generation
+routine.
+
+TODO: Extend a PCR so that the key can not be unsealed again after boot.
+
+PCR 2 changes based on the boot variable selected -- can be used
+to ensure that this is not a wrong boot.
+PCR 4 and 10 change with the kernel/initrd image
+
+`tpm2-initramfs-tool`? where did that come from? can totally replace
+ugly hacks in the sealing/unsealing code
+
+
+
+Other helpful links:
+* https://robertou.com/tpm2-sealed-luks-encryption-keys.html which uses a less standard TPM toolkit
+* https://threat.tevora.com/secure-boot-tpm-2/ which is out of date on the tpm2 command line options
+* https://github.com/timchen119/tpm2-initramfs-tool which stores the pass phrase in the TPM, rather than a separate key
+* https://www.crowdstrike.com/blog/enhancing-secure-boot-chain-on-fedora-29/
+
+
+Meaning for UEFI is defined in
+[Microsoft's "`OSPlatformValidation_UEFI`" registry key](https://getadmx.com/?Category=MDOP&Policy=Microsoft.Policies.BitLockerManagement::PlatformValidation_UEFI_Name). By default Bitlocker uses 0, 2, 4, 8, 9, 10, 11.
+
+* PCR 0: Core System Firmware executable code
+* PCR 1: Core System Firmware data
+* PCR 2: ROM Code (was Extended or pluggable executable code?)
+* PCR 3: Extended or pluggable firmware data
+* PCR 4: MBR Code (was Boot Manager?)
+* PCR 5: GPT / Partition Table
+* PCR 6: Resume from S4 and S5 Power State Events
+* PCR 7: Secure Boot State
+* PCR 8: NTFS Boot Secure (was Initialized to 0 with no Extends (reserved for future use)?)
+* PCR 9: NTFS Boot Block (was Initialized to 0 with no Extends (reserved for future use)?)
+* PCR 10: NTFS Boot Manager (was Initialized to 0 with no Extends (reserved for future use)?)
+* PCR 11: BitLocker Access Control
+* PCR 12: Data events and highly volatile events
+* PCR 13: Boot Module Details
+* PCR 14: Boot Authorities
+* PCR 15-23: Reserved for future use
+
+Install the tools on the running system:
+```
+apt install \
+	tpm2-tools \
+	tpm2-abrmd \
+	efitools \
+	gnu-efi \
+	opensc \
+	yubico-piv-tool \
+	libengine-pkcs11-openssl \
+	build-essential \
+	git \
+	autotools \
+	binutils-dev \
+	libssl-dev \
+	uuid-dev \
+	help2man \
+```
+
+
+
+```
+yubico-piv-tool -s 9c -a generate -o pubkey.pem # will take a while and overwrite any existing private keys
+yubico-piv-tool -s 9c -a verify-pin -a selfsign-certificate -S '/OU=test/O=example.com/' -i pubkey.pem -o cert.pem
+yubico-piv-tool -s 9c -a import-certificate -i cert.pem
+openssl x509 -outform der -in cert.pem -out cert.crt
+openssl x509 -in cert.pem -text -noout # display the contents of the PEM file
+```
+
+To retrieve the cert later:
+```
+yubico-piv-tool -s 9c -a read-certificate -o cert.pem
+```
+
+----
+
+Ubuntu 20.04 installation:
+* "Try it", then
+* "Advanced" - "LVM encrypt"
+* Install as normal, then
+* Then reduce the root volume before rebooting and create some new entries for `/home` and `/var`:
+```
+sudo e2fsck -f /dev/vgubuntu/root
+sudo resize2fs /dev/vgubuntu/root 32G
+sudo lvreduce -L 32G /dev/vgubuntu/root
+sudo lvcreate -L 80G -n home vgubuntu
+sudo lvcreate -L 16G -n var vgubuntu
+sudo mkfs.ext4 /dev/vgubuntu/home
+sudo mkfs.ext4 /dev/vgubuntu/var
+```
+
+The `/etc/fstab` will need to be updated to include these two partitions
+and to switch the `root` partition to `ro`.
+
+Creating dm-verity hashes takes a while (smaller `/` file systems are faster):
+```
+sudo veritysetup format --debug /dev/vgubuntu/root /boot/root.hashes
+```
+
+Even a read-only mount will modify the filesystem, so this is problematic
+for a dmverity installation. `mount -o noload` is supposed to fix it, but...
+
+Notes on writing initramfs scripts: http://manpages.ubuntu.com/manpages/xenial/man8/initramfs-tools.8.html
+
+* "Something else"
+** sda1: EFI system partition
+** sda2: /boot (ext4)
+** sda3: encrypted partition (have to click back?)
+** create partition table
+** / -- 64 GB
+** /var - 16 GB
+** swap -- 16 GB
+** /home -- the rest
+* and this is broken in 20.04... trying via preseed
+
+https://www.chucknemeth.com/linux/distribution/debian/debian-9-preseed-uefi-encrypted-lvm
+
+
+efitools from source for `-e` engine support: https://git.kernel.org/pub/scm/linux/kernel/git/jejb/efitools.git
+
+sbsign from source for yubikey support: https://github.com/osresearch/sbsigntools
+
+yubikey setup for PK (and KEK, and DB)
+
+reboot into uefi setup, configure bios for security:
+* admin password
+* thunderbolt, etc
+* take ownership of TPM
+* tamper detection
+* secure boot - clear keys
+
+reboot into linux
+
+build linux kernel and initrd image
+* tpm keys
+* hook initramfs creation
+* merge, sign and install into /boot
+```
+sudo efibootmgr  --create --disk /dev/sda --part 1 --label linux --loader '\EFI\linux\linux.efi'
+```
+
+build recovery USB
+* sign kernel and initramfs
+
+install secureboot keys
+* sign pk update with key
+```
+cert-to-efi-sig-list -g `uuidgen` /boot/cert.pem cert.esl
+sign-efi-sig-list -e pkcs11 -k 'pkcs11:' -c /boot/cert.pem PK cert.esl PK.auth
+sign-efi-sig-list -e pkcs11 -k 'pkcs11:' -c /boot/cert.pem KEK cert.esl KEK.auth
+sign-efi-sig-list -e pkcs11 -k 'pkcs11:' -c /boot/cert.pem db cert.esl db.auth
+```
+* install platform keys, kek and db, replacing the lenovo and microsoft ones (must be in this order; once PK is set the others will not be changed)
+```
+efi-updatevar -f db.auth  db
+efi-updatevar -f KEK.auth  KEK
+efi-updatevar -f PK.auth  PK
+```
+
+for signing the db entries, `sign-efi-sig-list` needs too many
+key entries.  it can create detached blobs to be signed:
+
+./bin/sign-efi-sig-list -o -t '2020-05-01' -c cert.pem db cert.esl db.raw
+
+the correct 256 byte signature on this can be computed:
+
+pkcs11-tool -s -p 123456 -m SHA256-RSA-PKCS < db.raw
+
+
+
+
+* for corporate deployment: install signed setup variable?
+
+----
+reboot
+* boot order
+* test usb
+
+other things to do:
+* read-only root
+* dm-verity
+* separate /home
+* turn off automatic filesystem mounting
+
+kernel and initrd update process:
+* run update-initram-fs
+* run merging tools
+* run signing tool
+* needs the security token
+
+disk re-keying:
+* necessary if firmware setup variables change
+* should not be required for kernel updates
+
+
+----
+
+# Read only root file system
+* overlay root: https://gist.github.com/mutability/6cc944bde1cf4f61908e316befd42bc4
+
+
