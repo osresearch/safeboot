@@ -1,0 +1,21 @@
+site_name: safeboot
+repo_url: https://github.com/osresearch/safeboot/
+edit_uri: ""
+theme:
+  name: material
+#  custom_dir: docs/custom/
+  logo: images/logo.png
+  palette:
+    primary: indigo
+    accent: purple
+extra_css: [extra.css]
+markdown_extensions:
+        - admonition
+plugins:
+  - search # necessary for search to work
+  - git-revision-date-localized
+site_favicon: favicon.ico
+nav:
+  - Overview: 'index.md'
+  - Installation: 'install.md'
+  - FAQ: 'faq.md'

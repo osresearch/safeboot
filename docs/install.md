@@ -1,10 +1,30 @@
+![Linux on a classic Butterfly Thinkpad](images/installation-header.jpg)
+
 # Safe Boot: Booting Linux Safely
+
+**Be careful** when following these instructions: it is possible to lock
+yourself out from your own machine if you forget some of the passwords.
+It is best to try this on a non-production system until you're certain
+that you understand how to use the recovery mode to fix bad kernel
+signatures or hashes.
 
 This guide was written for a Thinkpad X1 Carbon Gen 6 running
 Ubuntu 20.04.  Unfortunately there has been churn in the `tpm2` tools,
 so the Debian package does not work on 18.04.
 
-## Setup phase
+The outline for configuring safeboot requires some knowledge of the
+command line and familiarity with running commands as `root` with `sudo`.
+
+* Install the `safeboot.deb` package
+* Configure the UEFI firmware
+* Create a signing key in a Yubikey
+* Sign a recovery kernel
+* Install the signing key into the UEFI SecureBoot configuration
+* Seal a disk encryption secret into the TPM
+* Enable System Integrity Protection mode and sign the runtime kernel
+
+
+## Initial Setup
 This is done once when the system is being setup to use Safe Boot mode.
 Note that the hardware token and key signing portions can be done offline
 on a separate disconnected machine and then signed keys copied to the machine.
@@ -23,6 +43,8 @@ like DMA attacks against the Thunderbolt ports during the boot process.
 * TPM clear 
 
 ### UEFI Secure Boot signing keys
+![Yubikey and Nano](images/yubikey.jpg)
+
 UEFI Secure Boot settings that the system will only run bootloaders that
 are signed by keys in the SPI flash.  By default these keys are the OEM and
 Microsoft, and Microsoft will sign anyone else's key for $99, so it is
@@ -41,7 +63,7 @@ using a hardware token like a yubikey greatly enhances the security
 of the system since even with root access an attacker can't
 gain persistence in the `/` or in the kernel.  
 
-![UEFI SecureBoot setup screen](images/secureboot-setup.jpg)
+![UEFI SecureBoot setup screen](images/thinkpad-x1-secureboot.jpg)
 To replace the Platform Key requires that the UEFI SecureBoot
 firmware be put into "`Setup mode`".  On the Thinkpads, select
 `Reset to Setup Mode` and `Clear All Secure Boot Keys`, then boot
@@ -129,6 +151,7 @@ so the TPM will not automatically unseal on the same boot that the
 user has entered the setup application.
 
 ### System Integrity Protection mode
+
 The "SIP" mode ensure that even an attacker with root priviledges
 can't make persistent changes to the contents of the root filesystem.
 The root of the dm-verity Merkle-tree is passed to the kernel as part of the
@@ -137,6 +160,56 @@ on the filesystem without access to the signing key.
 Any modifications to the filesystem will be detected when the modified
 blocks are read, allowing the system to enter recovery mode to protect
 its data.
+
+#### RO and RW Partition setup
+
+![Resizing `/dev/mapper/vgubuntu-root`](images/lvresize-root.jpg)
+
+There is some manual work in a live CD that needs to be done to prepare
+the system for SIP mode (since `/` can't be mounted while it is worked on);
+it is easiest to do this **before** setting
+the SecureBoot config so that you can still boot a stock Live CD.
+Ubuntu installer used to allow you to configure the partitions at
+install time, but for some reason it no longer does so.
+
+The root filesystem needs to be resized so that hash computation doesn't
+take forever, `/home` and `/var` need to be split into a separate mounts,
+`/tmp` needs to be a symlink to `/var/tmp`, etc.
+
+```
+fsck -f /dev/vgubuntu/root
+resize2fs /dev/vgubuntu/root 8G
+lvresize --size 8G /dev/vgubuntu/root
+```
+
+Then the new `/var`, `/home` and dmverity hash partitions have to be created:
+```
+lvcreate --size 16G -n var vgubuntu
+lvcreate --size 80G -n home vgubuntu
+lvcreate --size 1G hashes vgubuntu
+mkfs.ext4 /dev/gvubuntu/home
+mkfs.ext4 /dev/gvubuntu/var
+```
+
+And then the various partitions need to be adjusted in the fstab:
+```
+mkdir /root /tmp/var /tmp/home
+mount /dev/vgubuntu/root /root
+mount /dev/vgubuntu/var /tmp/var
+mount /dev/vgubuntu/home /tmp/home
+mv /root/var/* /tmp/var/
+mv /root/home/* /tmp/home
+echo >> /root/etc/fstab '/dev/mapper/vgubuntu-var /var ext4 defaults 0 1'
+echo >> /root/etc/fstab '/dev/mapper/vgubuntu-home /home ext4 defaults 0 1'
+rm -rf /root/tmp
+ln -s ./var/tmp /root
+```
+
+Once this is done you should be able to reboot and continue
+with the safeboot setup.
+
+
+#### Hasing and signing the RO root filesystem
 
 ![Output of `hash-and-sign` command](images/hash-and-sign.png)
 
@@ -187,14 +260,14 @@ access to the disk encryption recovery key.
 * Sign kernel/initramfs/commandline
 * These could be done offline and the block image pushed to the system for installation
 
-## Kernel and initramfs update phase
+### Kernel and initramfs update
 * Re-generate `/boot/initrd` and `/boot/vmlinuz`
 * Merge the kernel, initrd and command line into a single EFI executable
 * Use the hardware token to sign that executable
 * Copy the signed image to the EFI boot partition
 * These could be done offline and the block image pushed to the system for installation
 
-## UEFI firmware update
+### UEFI firmware update
 If there are any updates to the UEFI firmware, such as changing the
 `Setup` variable, then the TPM sealed keys will no longer be accessible
 and the recovery key will be necessary to re-seal the drive.  This
