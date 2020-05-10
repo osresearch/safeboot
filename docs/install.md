@@ -16,12 +16,13 @@ The outline for configuring safeboot requires some knowledge of the
 command line and familiarity with running commands as `root` with `sudo`.
 This guide will show you how to:
 
-* Install the `safeboot.deb` package (download from [github.com/osresearch/safeboot]())
+* Install the safeboot Debian package (currently [`safeboot_0.2-1_amd64.deb`](https://github.com/osresearch/safeboot/releases/download/release-0.2/safeboot_0.2-1_amd64.deb))
 * Configure the UEFI firmware for beter security
 * Create a signing key stored in a Yubikey
 * Install the signing key into the UEFI SecureBoot configuration
 * Sign a recovery kernel and create a UEFI Boot Manager entry for it
 * Seal a disk encryption secret into the TPM
+* Rebuild the initial ramdisk with TPM unsealing support
 * Enable System Integrity Protection mode, hash the root filesystem, and
 sign the runtime kernel
 
