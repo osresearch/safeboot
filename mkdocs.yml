@@ -10,7 +10,7 @@ theme:
     accent: purple
 extra_css: [extra.css]
 markdown_extensions:
-        - admonition
+  - admonition
 plugins:
   - search # necessary for search to work
   - git-revision-date-localized

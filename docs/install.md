@@ -2,11 +2,13 @@
 
 # Safe Boot: Booting Linux Safely
 
-**Be careful!** When following these instructions: it is possible to lock
-yourself out from your own machine if you forget some of the passwords.
-It is best to try this on a non-production system until you're certain
-that you understand how to use the recovery mode to fix bad kernel
-signatures or hashes.
+!!! danger
+    **Be careful!**
+    When following these instructions: it is possible to lock
+    yourself out from your own machine if you forget some of the passwords.
+    It is best to try this on a non-production system until you're certain
+    that you understand how to use the recovery mode to fix bad kernel
+    signatures or hashes.
 
 This guide was written for a Thinkpad X1 Carbon Gen 6 running
 Ubuntu 20.04.  Unfortunately there has been churn in the `tpm2` tools,
@@ -69,8 +71,10 @@ gain persistence in the `/` or in the kernel.
 #### Yubikey key generation
 ![Output of `yubikey-init` command](images/yubikey-init.png)
 
+!!! note
+    Skip this if you have already initialized your hardware token.
+
 First step is to generate a new key that will be used for UEFI SecureBoot.
-Skip this if you have already initialized your hardware token.
 The Yubikey needs to have CCID mode enabled and a key generated.
 The `safeboot yubikey-init` subcommand will do several steps:
 
@@ -86,9 +90,11 @@ can be signed with the hardware token.
 The first step is to sign and install a recovery kernel, which will be able
 to read/write mount the root filesystem, and does not have TPM sealing keys,
 so it will always require a recovery password to decrypt the disk.
-If you don't have a recovery entry in the EFI boot manager on the disk,
-you would need to have a USB drive signed with a key in the UEFI `db`
-to recover from errors.
+
+!!! warning
+    If you don't have a recovery entry in the EFI boot manager on the disk,
+    you would need to have a USB drive signed with a key in the UEFI `db`
+    to recover from errors.
 
 To create the `recovery` entry with the current kernel and initrd, and
 the default command line parameters as the current kernel:
@@ -133,9 +139,10 @@ The `safeboot uefi-sign-keys` subcommand will:
 for each variable)
 * Store public certificate in UEFI platform key (`PK`), key-exchange key (`KEK`) and database (`db`)
 
-**Before you reboot!** If you have not signed the kernel and initrd as
-described above, the system will not boot and you will have to disable
-UEFI Secure Boot to get back into the machine.
+!!! danger
+    **Before you reboot!** If you have not signed the kernel and initrd as
+    described above, the system will not boot and you will have to disable
+    UEFI Secure Boot to get back into the machine.
 
 ### TPM Configuration
 
@@ -169,18 +176,20 @@ with the new crypttab and hooks in place:
 update-initramfs -u
 ```
 
-The TPM PCRs are somewhat fragile; they include hashes of the ROM images,
-the EFI executables that have been run along the boot path, etc.
-For example, entering the UEFI `Setup` menu will cause different measurements,
-so the TPM will not automatically unseal on the same boot that the
-user has entered the setup application.
+!!! note
+    The TPM PCRs are somewhat fragile; they include hashes of the ROM images,
+    the EFI executables that have been run along the boot path, etc.
+    For example, entering the UEFI `Setup` menu will cause different
+    measurements, so the TPM will not automatically unseal on the same
+    boot that the user has entered the setup application.
 
 ### System Integrity Protection mode
 ![`dmverity` merkle tree diagram](images/dmverity.jpg)
 
-The "SIP" mode is optional and ensures that even an attacker with root
-priviledges can't make persistent changes to the contents of the root
-filesystem. It uses the same dmverity as Android's verified boot mode.
+!!! note
+    The "SIP" mode is optional and ensures that even an attacker with root
+    priviledges can't make persistent changes to the contents of the root
+    filesystem. It uses the same dmverity as Android's verified boot mode.
 
 The root of the dm-verity Merkle-tree is passed to the kernel as part of the
 signed command line, ensuring that an attacker can't change anything
