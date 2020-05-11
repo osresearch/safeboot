@@ -16,36 +16,46 @@ so the Debian package does not work on 18.04.
 
 The outline for configuring safeboot requires some knowledge of the
 command line and familiarity with running commands as `root` with `sudo`.
-This guide will show you how to:
-
-* Install the safeboot Debian package from [safeboot/releases](https://github.com/osresearch/safeboot/releases) (currently [`safeboot-0.4.deb`](https://github.com/osresearch/safeboot/releases/download/release-0.4/safeboot_0.4_amd64.deb))
-* Configure the UEFI firmware for beter security
-* Create a signing key stored in a Yubikey or password protected file
-* Sign a recovery kernel and create a UEFI Boot Manager entry for it
-* Install the signing key into the UEFI SecureBoot configuration
-* Seal a disk encryption secret into the TPM
-* Rebuild the initial ramdisk with TPM unsealing support
-* Enable System Integrity Protection mode, hash the root filesystem, and
-sign the runtime kernel
+Releases for the the safeboot Debian package are in [safeboot/releases](https://github.com/osresearch/safeboot/releases).
 
 ## tl;dr
 
-* Set UEFI SecureBoot setup mode and install Ubuntu 20.04, resizing '/' to 8GB during the install
-* `sudo apt install safeboot-0.4.deb`
-* `sudo safeboot key-init` or `sudo safeboot yubikey-init`
-* `sudo safeboot uefi-key-sign`
-* `sudo safeboot recovery-sign`
-* `sudo safeboot recovery-reboot`
-* Should reboot into the recovery image
-* `sudo safeboot luks-seal`
-* `sudo update-initramfs -u`
-* `sudo safeboot sip-init` (if you want to enable SIP mode)
-* `sudo safeboot recovery-reboot`
-* Should reboot into the recovery image, with `/` no longer held open
-* `sudo safeboot linux-sign`
-* Reboot one more time, into dmverity protect Linux image...
-* `sudo safeboot luks-seal`
-* Reboot and now the disk should unlock automatically as long as no one tampers with the device
+* Set UEFI SecureBoot setup mode
+* Install Ubuntu 20.04, configure encrypted LVM partition
+* Resizing '/' to 8GB during the install if you want to enable SIP
+
+```
+wget https://github.com/osresearch/safeboot/releases/download/release-0.4/safeboot_0.4_amd64.deb`
+sudo apt install safeboot_0.4_amd64.deb`
+sudo safeboot yubikey-init /CN=foo/ # or safeboot key-init if you don't have a token
+sudo safeboot uefi-key-sign
+sudo safeboot recovery-sign
+sudo safeboot recovery-reboot
+
+# Should reboot into the recovery image. Login as usual.
+sudo safeboot luks-seal`
+sudo update-initramfs -u`
+sudo safeboot sip-init # if you want to enable SIP mode
+sudo safeboot recovery-sign
+sudo safeboot recovery-reboot
+
+# Should reboot into the recovery image again, with `/` mounted read-only.
+sudo safeboot linux-sign
+sudo reboot
+
+# Reboot one more time, now into dmverity protect Linux image...
+sudo safeboot luks-seal
+sudo reboot
+```
+After this final reboot, the UEFI SecureBoot database will have the
+public signing keys, the UEFI boot manager will have entries for `linux`
+(which boots with a read-only dmverity protected root filesystem)
+and `recovery` (which boots with a root filesystem that can be remounted
+read-write), TPM should contain the disk encryption secret sealed to
+the `linux` boot mode, and now the disk should unlock automatically
+as long as no one tampers with the device.
+
+For more details as to how this all works, read on...
 
 ## Initial Setup
 This is done once when the system is being setup to use Safe Boot mode.
@@ -53,17 +63,17 @@ Note that the hardware token and key signing portions can be done offline
 on a separate disconnected machine and then signed keys copied to the machine.
 
 ### UEFI firmware configuration
-The goal of these configuration changes are to remove several of
-the easy attacks such as booting from external disks, modifying kernel or initrd on disk,
-changing kernel command line parameters, as well as some of the more esoteric ones
-like DMA attacks against the Thunderbolt ports during the boot process.
+The goal of these configuration changes are to remove several of the
+easy attacks such as booting from external disks, modifying kernel or
+initrd on disk, changing kernel command line parameters, as well as some
+of the more esoteric ones like DMA attacks against the Thunderbolt ports
+during the boot process.
 
-* SecureBoot setup mode, erase keys
+* SecureBoot: Enter setup mode, erase keys
 * Supervisor password (do not lose it! it is very difficult to bypass)
-* Tamper switches
-* Thunderbolt 3
-* ???
-* TPM clear 
+* Tamper switches: require supervisor password
+* Thunderbolt 3: Disabled
+* TPM: Enabled
 
 ### UEFI Secure Boot signing keys
 ![Yubikey and Nano](images/yubikey.jpg)
@@ -86,15 +96,34 @@ using a hardware token like a yubikey greatly enhances the security
 of the system since even with root access an attacker can't
 gain persistence in the `/` or in the kernel.  
 
+### OpenSSL key generation
+
+First step is to generate a new key that will be used for UEFI SecureBoot:
+
+```
+sudo safeboot key-init /CN=foo/OU=bar/O=example.com/
+```
+
+The `key-init` subcommand will generate a password protected RSA2048 key
+and store it in `/etc/safeboot/` along with the public certificate.
+The password provided here will be required to sign new kernel images
+and initrds, so don't lose it!
+
+TODO: What is the purpose of the x509 subject?
+
 #### Yubikey key generation
 ![Output of `yubikey-init` command](images/yubikey-init.png)
 
 !!! note
-    Skip this if you have already initialized your hardware token.
+    Skip this if you have already initialized your hardware token and
+    enrolled your keys in the UEFI SecureBoot database.
+    Running it again will erase the keys from your hardware token.
 
-First step is to generate a new key that will be used for UEFI SecureBoot.
-The Yubikey needs to have CCID mode enabled and a key generated.
-The `safeboot yubikey-init` subcommand will do several steps:
+First step is to generate a new key that will be used for UEFI SecureBoot:
+```
+sudo safeboot yubikey-init /CN=foo/OU=bar/O=example.com/
+```
+The `yubikey-init` subcommand will do several steps:
 
 * Use `ykpersonalize` to enable CCID mode. (TODO)
 * Generate a new private key inside the Yubikey and export the public key
@@ -102,27 +131,26 @@ The `safeboot yubikey-init` subcommand will do several steps:
 * Reimport the certificate into the Yubikey so that UEFI variables and images
 can be signed with the hardware token.
 
+The public certificate is stored in `/etc/safeboot/cert.pem`. The private
+key never leaves the hardware token so it is much more difficult for
+an adversary to clone.
+
+
 #### Signed Linux recovery kernel
 ![Output of `sign-kernel`](images/sign-kernel.png)
-
-The first step is to sign and install a recovery kernel, which will be able
-to read/write mount the root filesystem, and does not have TPM sealing keys,
-so it will always require a recovery password to decrypt the disk.
 
 !!! warning
     If you don't have a recovery entry in the EFI boot manager on the disk,
     you would need to have a USB drive signed with a key in the UEFI `db`
     to recover from errors.
 
-To create the `recovery` entry with the current kernel and initrd, and
-the default command line parameters as the current kernel:
+The next step is to use the Yubikey or OpenSSL key to sign and install
+a recovery kernel, which will be able to read/write mount the root
+filesystem, and does not have TPM sealing keys, so it will always require
+a recovery password to decrypt the disk.
 
 ```
-sudo safeboot sign-kernel \
-	recovery \
-	/boot/vmlinuz \
-	/boot/initrd.img \
-	"root=/dev/mapper/vgubuntu-root ro quiet splash vt.handoff=7"
+sudo safeboot recovery-sign
 ```
 
 This command will:
