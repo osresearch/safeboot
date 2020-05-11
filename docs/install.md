@@ -57,6 +57,8 @@ as long as no one tampers with the device.
 
 For more details as to how this all works, read on...
 
+-----
+
 ## Initial Setup
 This is done once when the system is being setup to use Safe Boot mode.
 Note that the hardware token and key signing portions can be done offline
@@ -74,6 +76,8 @@ during the boot process.
 * Tamper switches: require supervisor password
 * Thunderbolt 3: Disabled
 * TPM: Enabled
+
+-----
 
 ### UEFI Secure Boot signing keys
 ![Yubikey and Nano](images/yubikey.jpg)
@@ -96,7 +100,7 @@ using a hardware token like a yubikey greatly enhances the security
 of the system since even with root access an attacker can't
 gain persistence in the `/` or in the kernel.  
 
-### OpenSSL key generation
+#### OpenSSL key generation
 
 First step is to generate a new key that will be used for UEFI SecureBoot:
 
@@ -136,38 +140,7 @@ key never leaves the hardware token so it is much more difficult for
 an adversary to clone.
 
 
-#### Signed Linux recovery kernel
-![Output of `sign-kernel`](images/sign-kernel.png)
-
-!!! warning
-    If you don't have a recovery entry in the EFI boot manager on the disk,
-    you would need to have a USB drive signed with a key in the UEFI `db`
-    to recover from errors.
-
-The next step is to use the Yubikey or OpenSSL key to sign and install
-a recovery kernel, which will be able to read/write mount the root
-filesystem, and does not have TPM sealing keys, so it will always require
-a recovery password to decrypt the disk.
-
-```
-sudo safeboot recovery-sign
-```
-
-This command will:
-
-* Add UEFI boot menu item for recovery kernel
-* Create a directory for it in the EFI System Partition ("ESP")
-* Merge the vmlinux, initrd and command line into a single EFI executable
-* Sign the merged EFI executable
-
-Typically you will not have to redo this command since the normal
-kernel will be hashed and signed during updates.  The one exception
-is that once SIP mode is enabled you will have to resign the
-recovery image as well to ensure that it doesn't accidentally write
-to the `/` file system and corrupt the hashes.
-
-
-#### UEFI Platform Keys
+#### Enrolling UEFI Platform Keys
 ![UEFI SecureBoot setup screen](images/thinkpad-x1-secureboot.jpg)
 Replacing the UEFI Platform Key with the generated x509 cert requires
 that the UEFI SecureBoot firmware be put into "`Setup mode`".  On the
@@ -198,6 +171,40 @@ The `safeboot uefi-sign-keys` subcommand will:
     **Before you reboot!** If you have not signed the kernel and initrd as
     described above, the system will not boot and you will have to disable
     UEFI Secure Boot to get back into the machine.
+
+-----
+
+### Signed Linux recovery kernel
+![Output of `sign-kernel`](images/sign-kernel.png)
+
+!!! warning
+    If you don't have a recovery entry in the EFI boot manager on the disk,
+    you would need to have a USB drive signed with a key in the UEFI `db`
+    to recover from errors.
+
+The next step is to use the Yubikey or OpenSSL key to sign and install
+a recovery kernel, which will be able to read/write mount the root
+filesystem, and does not have TPM sealing keys, so it will always require
+a recovery password to decrypt the disk.
+
+```
+sudo safeboot recovery-sign
+```
+
+This command will:
+
+* Add UEFI boot menu item for recovery kernel
+* Create a directory for it in the EFI System Partition ("ESP")
+* Merge the vmlinux, initrd and command line into a single EFI executable
+* Sign the merged EFI executable
+
+Typically you will not have to redo this command since the normal
+kernel will be hashed and signed during updates.  The one exception
+is that once SIP mode is enabled you will have to resign the
+recovery image as well to ensure that it doesn't accidentally write
+to the `/` file system and corrupt the hashes.
+
+-----
 
 ### TPM Configuration
 
@@ -234,6 +241,8 @@ own keys to the UEFI key database.  (Subject to various CVE's and TOCTOUs, etc)
     For example, entering the UEFI `Setup` menu will cause different
     measurements, so the TPM will not automatically unseal on the same
     boot that the user has entered the setup application.
+
+-----
 
 ### System Integrity Protection mode
 ![`dmverity` merkle tree diagram](images/dmverity.jpg)
