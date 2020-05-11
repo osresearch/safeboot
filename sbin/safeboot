@@ -652,7 +652,7 @@ linux-sign()
 		"$KERNEL" \
 		"$INITRD" \
 		$LINUX_COMMANDLINE \
-		$ROOT_ARRGS \
+		$ROOT_ARGS \
 		tpm.pcrs=$PCRS \
 		tpm.mode=$TARGET \
 		"$@" \
@@ -732,7 +732,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|hash-and-sign|recovery-sign|recovery|tpm2_trial_extend)
+	yubikey-init|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|linux-sign|recovery-sign|recovery|tpm2_trial_extend)
 		$command "$@"
 		;;
 	*)
