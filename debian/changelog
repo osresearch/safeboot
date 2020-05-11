@@ -1,4 +1,11 @@
-safeboot (0.3-1ubuntu1) UNRELEASED; urgency=medium
+safeboot (0.4) UNRELEASED; urgency=medium
+
+  * Reworked install instructions
+  * safeboot sip-init works (with lots of caveats)
+
+ -- Trammell Hudson <hudson@tank>  Mon, 11 May 2020 17:03:40 +0200
+
+safeboot (0.3-1ubuntu1) unstable; urgency=medium
 
   * Added /etc/safeboot/safeboot.conf
   * Support openssl x509 keys
