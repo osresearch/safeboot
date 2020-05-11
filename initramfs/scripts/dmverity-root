@@ -16,8 +16,8 @@ esac
 
 HASH=""
 SALT=""
-HASHDEV="/dev/mapper/vgubuntu-hashes"
-ROOTDEV="/dev/mapper/vgubuntu-root"
+HASHDEV=""
+ROOTDEV=""
 for arg in $(cat /proc/cmdline)
 do
     case "$arg" in
@@ -38,9 +38,9 @@ do
     esac
 done
 
-if [ "$HASH" == "" ]
+if [ "$HASH" == "" -o "$ROOTDEV" == "" -o "$HASHDEV" == "" ]
 then
-    log_warning_msg "$PREFIX: verity.hash command line not found; not enabling"
+    log_warning_msg "$PREFIX: verity command line parameters not found; not enabling"
     exit 0
 fi
 

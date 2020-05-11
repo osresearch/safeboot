@@ -2,7 +2,11 @@
 sbin/safeboot			usr/sbin/
 sbin/safeboot-tpm-unseal	usr/sbin/
 
+# configuration files
+safeboot.conf			etc/safeboot/
+
 # Compiled with modifications from source
+# to add support for the pkcs11 engine
 bin/sbsign.safeboot		usr/sbin/
 bin/sign-efi-sig-list.safeboot	usr/sbin/
 
@@ -11,3 +15,4 @@ initramfs/hooks/dmverity-root	etc/initramfs-tools/hooks/
 initramfs/hooks/tpm-unseal	etc/initramfs-tools/hooks/
 initramfs/hooks/tpm-unseal	etc/initramfs-tools/hooks/
 initramfs/scripts/dmverity-root	etc/initramfs-tools/scripts/local-premount/
+initramfs/scripts/blockdev-readonly etc/initramfs-tools/scripts/local-premount/

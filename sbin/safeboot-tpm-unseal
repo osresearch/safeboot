@@ -11,8 +11,9 @@
 # If the unsealing fails, fall back to asking for the user's recovery key.
 #
 
-# Default PCRs
-PCRS='0,2,5,7,14'
+# Default is no PCRs, which means do not unseal anything
+PCRS=
+BOOTMODE_PCR=14
 MODE=unknown
 HANDLE=0x81000000
 
@@ -42,7 +43,6 @@ done
 
 log "TPM mode=$MODE pcrs=$PCRS"
 
-
 /usr/bin/tpm2_pcrread >&2 \
 	'sha256:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16'
 
@@ -50,26 +50,26 @@ log "TPM mode=$MODE pcrs=$PCRS"
 # Extend PCR14 with the boot mode so that recovery
 # boots aren't able to access the sealed disk key.
 #
-/usr/bin/tpm2_pcrextend >&2 14:sha256=`sha256 "$MODE"`
+/usr/bin/tpm2_pcrextend >&2 $BOOTMODE_PCR:sha256=`sha256 "$MODE"`
 
 
 #
 # Attempt to unseal, outputing the binary key to stdout
 #
-if /usr/bin/tpm2_unseal \
+if [ ! -z "$PCRS" ] && /usr/bin/tpm2_unseal \
 	--object-context "$HANDLE" \
 	--auth pcr:"sha256:$PCRS" \
 ; then
 	# ensure that a local attacker can't re-read the key from the TPM
 	# by extending pcr 14 with "postboot"
 	log "TPM disk key unsealed"
-	/usr/bin/tpm2_pcrextend >&2 14:sha256=`sha256 postboot`
+	/usr/bin/tpm2_pcrextend >&2 $BOOTMODE_PCR:sha256=`sha256 postboot`
 	exit 0
 else
-	# the key was not unsealed; log the failure
-	# and ask the user for the recovery key
+	# the key was not unsealed or no PCRs specified;
+	# log the failure and ask the user for the recovery key
 	log "Falling back to user pass phrase"
-	/usr/bin/tpm2_pcrextend >&2 14:sha256=`sha256 bootfail`
+	/usr/bin/tpm2_pcrextend >&2 $BOOTMODE_PCR:sha256=`sha256 bootfail`
 
 	/lib/cryptsetup/askpass \
 		"TPM Unsealing failed! Enter recovery key for $CRYPTTAB_SOURCE ($CRYPTTAB_NAME): "

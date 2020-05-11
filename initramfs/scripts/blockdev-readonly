@@ -1,0 +1,29 @@
+#!/bin/sh
+# goes in /etc/initramfs-tools/scripts/local-premount/dmverity-root
+# This allows the dmverity root hash to be passed in on the command line.
+
+case $1 in
+    prereqs)
+        exit 0
+        ;;
+esac
+
+. /scripts/functions
+
+# If any block devices should be read only, use blockdev to
+# set the ro flag
+
+for arg in $(cat /proc/cmdline)
+do
+	case "$arg" in
+	blockdev.ro=*)
+		DEV=${arg#bd.ro=}
+		log_warning_msg "$DEV: setting to read only"
+		blockdev --setro "$DEV"
+		;;
+	*)
+		;;
+	esac
+done
+
+exit 0

@@ -4,11 +4,44 @@
 # Be careful with this, it is possible to lock yourself
 # out of your computer if you lose the firmware password
 # and platform signing keys.
+#
+# For more details: https://safeboot.dev/
+#
 set -e -o pipefail
-DIR="`dirname $0`"
-if [ "$VERBOSE" == "" ]; then
-	VERBOSE=0
+
+: ${PREFIX:=}
+: ${DIR:=/etc/safeboot}
+
+if [ -r "$PREFIX$DIR/safeboot.conf" ]; then
+	. $PREFIX$DIR/safeboot.conf
 fi
+
+# Apply $PREFIX to files and use default value
+CERT=$PREFIX${CERT:-$DIR/cert.pem}
+KERNEL=$PREFIX${KERNEL:-/boot/vmlinuz}
+INITRD=$PREFIX${INITRD:-/boot/initrd.img}
+EFIDIR=$PREFIX${EFIDIR:-/boot/efi/EFI}
+
+if [ "$KEY" == "pkcs11:" ]; then
+	# KEY is a hardware token, use the yubikey engine
+	KEY_ENGINE="-e pkcs11"
+else
+	# KEY is a normal file, don't use an openssl engine
+	KEY=$PREFIX${KEY:-$DIR/cert.priv}
+	KEY_ENGINE=""
+fi
+
+# Set the default values for the other parameters
+: ${ROOTDEV:=/dev/mapper/vgubuntu-root}
+: ${HASHDEV:=/dev/mapper/vgubuntu-hashes}
+: ${LINUX_TARGET:=linux}
+: ${RECOVERY_TARGET:=recovery}
+: ${SIP:=0}
+: ${PCRS:=0,2,5,7}
+: ${BOOTMODE_PCR:=14}
+: ${LINUX_COMMANDLINE:=""}
+: ${RECOVERY_COMMANDLINE:=${LINUX_COMMANDLINE}}
+
 
 die() { echo "$@" >&2 ; exit 1 ; }
 warn() { echo "$@" >&2 ; }
@@ -59,10 +92,65 @@ show_help() {
 		exit 0
 	fi
 }
-	
+
+key_init_usage="
+## safeboot key-init subject
+
+  Generate a new x509 signing key with openssl.
+  The subject must be written as:
+       /CN=host.example.com/OU=test/O=example.com/
+
+"
+usage+=$key_init_usage
+
+key-init() {
+	show_help "$1" "$key_init_usage"
+	if [ $# == 0 ]; then
+		die "$key_init_usage"
+	fi
+
+	subject=$1
+
+	if [ "$KEY" == "pkcs11:" ]; then
+		die "\$KEY=pkcs11:, use safeboot yubikey-init"
+	fi
+	if [ -r "$KEY" ]; then
+		read -p "WARNING: This will erase the existing key $KEY. Are you sure? " really_do_it
+		if [ "$really_do_it" != "y" ]; then
+			die "Not overwriting existing key"
+		fi
+
+		warn "$KEY: backing up to $KEY.orig"
+	fi
+
+	mkdir -p "`dirname $KEY`" "`dirname $CERT`"
+
+	if [ -r "$KEY" ]; then
+		mv "$KEY" "$KEY.orig" \
+		|| die "$KEY: unable to backup"
+	fi
+	if [ -r "$CERT" ]; then
+		mv "$CERT" "$CERT.orig" \
+		|| die "$CERT: unable to backup"
+	fi
+
+	openssl \
+		req \
+		-new \
+		-x509 \
+		-newkey rsa:2048 \
+		-subj "$subject" \
+		-keyout "$KEY" \
+		-outform PEM \
+		-out "$CERT" \
+		-days 3650 \
+		-sha256 \
+	|| die "$KEY: unable to create"
+}
+
 
 yubikey_init_usage="
-safeboot yubikey-init subject
+## safeboot yubikey-init subject
 
   Generate a new x509 signing key on an attached Yubikey device
   and set the certificate subject to the provided argument.
@@ -77,10 +165,20 @@ commands+="|yubikey-init"
 yubikey-init() {
 	show_help "$1" "$yubikey_init_usage"
 	if [ $# == 0 ]; then
-		die $yubikey_init_usage;
+		die "$yubikey_init_usage"
 	fi
 
 	subject=$1
+
+	if [ "$KEY" != "pkcs11:" ]; then
+		die "\$KEY != pkcs11: use key-init"
+	fi
+
+	if [ -r "$CERT" ]; then
+		warn "WARNING! $CERT already exists; copying to $CERT.orig"
+		mv "$CERT" "$CERT.orig" \
+		|| die "$CERT: unable to make backup"
+	fi
 
 	read -p "WARNING: This will erase any existing key on the yubikey. Are you sure? " really_do_it
 	if [ "$really_do_it" != "y" ]; then
@@ -102,14 +200,14 @@ yubikey-init() {
 		-a selfsign-certificate \
 		-S "$subject" \
 		-i "$TMP/pubkey.pem" \
-		-o "$TMP/cert.pem" \
+		-o "$CERT" \
 	|| die "Unable to self-sign certificate"
 
 	warn "Importing self-signed certificate into key"
 	yubico-piv-tool \
 		-s 9c \
 		-a import-certificate \
-		-i "$TMP/cert.pem" \
+		-i "$CERT" \
 	|| die "Unable to import certificate into key"
 
 	yubico-piv-tool \
@@ -117,8 +215,9 @@ yubikey-init() {
 	|| die "Unable to retrieve key status"
 }
 
+
 uefi_sign_keys_usage="
-safeboot uefi-sign-keys
+## safeboot uefi-sign-keys
 
   Create three signed certificates for the PK, KEK, and db using
   the attached Yubikey and store them in the UEFI SecureBoot configuration.
@@ -130,33 +229,27 @@ commands+="|uefi-sign-keys"
 uefi-sign-keys() {
 	show_help "$1" "$uefi_sign_keys_usage"
 
-	yubico-piv-tool \
-		-s 9c \
-		-a read-certificate \
-		-o $TMP/cert.pem \
-	|| die "Unable to retrieve PIN from yubikey"
-
 	cert-to-efi-sig-list \
 		-g `uuidgen` \
-		$TMP/cert.pem \
-		$TMP/cert.esl \
+		"$CERT" \
+		"$TMP/cert.esl" \
 	|| die "cert-to-efi-sig-list failed"
 
-	# Cache the yubico pin since it will be used multiple times
-	read -s -p 'Yubikey login PIN: ' pin
-	echo
+	## Cache the yubico pin since it will be used multiple times
+	#read -s -p 'Yubikey login PIN: ' pin
+	#echo
 
 	# Use the sign-efi-sig-list from our build so that the
 	# -e option exists
 	for key in db KEK PK; do
 		warn "Signing UEFI variable $key"
 		sign-efi-sig-list.safeboot \
-			-e pkcs11 \
-			-k "pkcs11:pin-value=$pin" \
-			-c $TMP/cert.pem \
+			$KEY_ENGINE \
+			-k "$KEY" \
+			-c "$CERT" \
 			$key \
 			$TMP/cert.esl \
-			$key.auth \
+			$PREFIX$DIR/$key.auth \
 		|| die "$key: Signing failed"
 	done
 
@@ -164,7 +257,7 @@ uefi-sign-keys() {
 }
 
 uefi_set_keys_usage="
-safeboot uefi-set-keys
+## safeboot uefi-set-keys
 
   Store the PK, KEK, and db into the UEFI Secure Boot configuration
   variables.  This must be done once during system setup.
@@ -179,20 +272,20 @@ uefi-set-keys()
 
 	# The order of update must be from lowest to highest
 	for key in db KEK PK; do
-		if [ ! -r "$key.auth" ]; then
-			die "$key.auth not found: run safeboot uefi-sign-keys"
+		if [ ! -r "$PREFIX$DIR/$key.auth" ]; then
+			die "$PREFIX$DIR/$key.auth not found: run safeboot uefi-sign-keys"
 		fi
 
 		warn "Installing UEFI variable $key"
 
-		efi-updatevar -f $key.auth $key \
+		efi-updatevar -f "$PREFIX$DIR/$key.auth" "$key" \
 		|| die "$key: updating key failed; is the BIOS in setup mode?"
 	done
 }
 
 
 luks_seal_usage="
-safeboot luks-seal [0,2,5,7...]
+## safeboot luks-seal [0,2,5,7... 14]
 
   Generate a new LUKS encryption key for the block devices in /etc/crypttab,
   sealed with the optional comma separated list of TPM PCRs.  PCR 14 will be
@@ -209,9 +302,13 @@ commands+="|luks-seal"
 luks-seal() {
 	show_help "$1" "$luks_seal_usage"
 
-	PCRS=$1
-	if [ -z "$PCRS" ]; then
-		PCRS=0,2,5,7
+	if [ ! -z "$1" ]; then
+		PCRS=$1
+		shift
+	fi
+	if [ ! -z "$1" ]; then
+		BOOTMODE_PCR=$1
+		shift
 	fi
 	
 	KEYSLOT=1
@@ -353,7 +450,7 @@ luks-seal() {
 		|| die "$PREFIX/etc/crypttab: unable to add keyscript"
 
 		warn "***** You should update your ramdisk and resign the kernel:"
-		warn "sudo update-initramfs -u"
+		warn "   sudo update-initramfs -u"
 	fi
 
 
@@ -387,11 +484,12 @@ luks-seal() {
 }
 
 sign_kernel_usage="
-safeboot sign-kernel 'boot-name' /boot/vmlinuz /boot/initrd  parameters...
+## safeboot sign-kernel 'boot-name' parameters...
 
   Create an EFI boot menu entry for 'boot-name', with the specified
   kernel, initrd and command line bundled into an executable and signed.
-  This is the raw command; you might want to use hash-and-sign instead.
+  This is the raw command; you might want to use hash-and-sign or
+  recovery-sign instead.
 
 "
 usage+=$sign_kernel_usage
@@ -400,25 +498,22 @@ commands+="|sign-kernel"
 sign-kernel() {
 	show_help "$1" "$sign_kernel_usage"
 
-	TARGET=$1 ; shift
-	KERNEL=$1 ; shift
-	INITRD=$1 ; shift
+	TARGET="$1" ; shift
 
-	if [ -z "$TARGET" -o -z "$KERNEL" -o -z "$INITRD" ]; then
+	if [ -z "$TARGET" ]; then
 		die $sign_kernel_usage
 	fi
 
-	OUTDIR="/boot/efi/EFI/$TARGET"
-	CERT="$TMP/cert.pem"
+	OUTDIR="${EFIDIR}/${TARGET}"
 
-	if [ ! -r "$CERT" ]; then
-		warn "Extracting signing cert from yubikey"
-		yubico-piv-tool \
-			-s 9c \
-			-a read-certificate \
-			-o "$CERT" \
-		|| die "$CERT: unable to read from yubikey"
-	fi
+#	if [ ! -r "$CERT" ]; then
+#		warn "Extracting signing cert from yubikey"
+#		yubico-piv-tool \
+#			-s 9c \
+#			-a read-certificate \
+#			-o "$CERT" \
+#		|| die "$CERT: unable to read from yubikey"
+#	fi
 
 	if [ ! -d "$OUTDIR" ]; then
 		warn "$OUTDIR: Creating directory on EFI System Partition"
@@ -450,7 +545,7 @@ sign-kernel() {
 
 	warn "$TMP/linux.efi: Creating merged Linux/initrd image"
 	objcopy \
-		--add-section .osrel=/etc/os-release \
+		--add-section .osrel="$PREFIX/etc/os-release" \
 		--add-section .cmdline="$TMP/cmdline.txt" \
 		--add-section .linux="$KERNEL" \
 		--add-section .initrd="$INITRD" \
@@ -458,14 +553,14 @@ sign-kernel() {
 		--change-section-vma .cmdline=0x30000 \
 		--change-section-vma .linux=0x40000 \
 		--change-section-vma .initrd=0x3000000 \
-		/usr/lib/systemd/boot/efi/linuxx64.efi.stub \
+		"$PREFIX/usr/lib/systemd/boot/efi/linuxx64.efi.stub" \
 		"$TMP/linux.efi" \
 	|| die "linux.efi: unable to create"
 
 	warn "$OUTDIR/linux.efi: Signing (ignore warnings about gaps)"
 	sbsign.safeboot \
-		--engine pkcs11 \
-		--key 'pkcs11:' \
+		$KEY_ENGINE \
+		--key "$KEY" \
 		--cert "$CERT" \
 		--output "$OUTDIR/linux.efi.new" \
 		"$TMP/linux.efi" \
@@ -491,8 +586,8 @@ sign-kernel() {
 	fi
 }
 
-hash_and_sign_usage="
-safeboot hash-and-sign target /dev/mapper/vgubuntu-root /dev/mapper/vgubuntu-hashes ...
+linux_sign_usage="
+## safeboot linux-sign [target [parameters...]]
 
   Generate dm-verity hashes and then sign the Linux with the root hash added
   to the kernel command line.
@@ -501,61 +596,101 @@ safeboot hash-and-sign target /dev/mapper/vgubuntu-root /dev/mapper/vgubuntu-has
   the dmverity hashes (which can take some time).
   
 "
-usage+=$hash_and_sign_usage
-commands+="|hash-and-sign"
+usage+=$linux_sign_usage
+commands+="|linux-sign"
 
-hash-and-sign()
+linux-sign()
 {
-	show_help "$1" "$hash_and_sign_usage"
-	if [ $# -lt 3 ]; then
-		die "Usage:$hash_and_sign_usage"
-	fi
+	show_help "$1" "$linux_sign_usage"
 
-	TARGET=$1 ; shift # linux
-	ROOTDEV=$1 ; shift # /dev/mapper/vgubuntu-root
-	HASHDEV=$1 ; shift # /dev/mapper/vgubuntu-hashes
+	# default is linux
+	TARGET=${1:-${LINUX_TARGET}}
 
-	if mount | grep "${ROOTDEV}" ; then \
-		warn "$ROOTDEV: unmounting and checking"
-		mount -o ro,noatime,remount "${ROOTDEV}" ; \
-		fsck.ext4 -f "${ROOTDEV}"
-	fi
+	if [ "$SIP" == 1 ]; then
+		if mount | grep "${ROOTDEV}" ; then \
+			warn "$ROOTDEV: unmounting and checking"
+			mount -o ro,noatime,remount "${ROOTDEV}" ; \
+			fsck.ext4 -f "${ROOTDEV}"
+		fi
 
-	if [ -z "$HASH" ]; then
-		echo "$ROOTDEV: Computing hashes: this will take a while..."
-		veritysetup format \
-			--debug \
-			"${ROOTDEV}" \
-			"${HASHDEV}" \
-			| tee $TMP/verity.log \
-		|| die "$ROOTDEV: unable to compute hashes"
+		if [ ! -z "$HASH" ]; then
+			warn "$ROOTDEV: Using hash $HASH"
+		elif [ ! -z "$HASHFILE" ]; then
+			warn "$ROOTDEV: Using hash file $HASFILE"
+			HASH="`awk '/Root hash:/ { print $3 }' $HASHFILE`"
+		else
+			echo "$ROOTDEV: Computing hashes: this will take a while..."
+			veritysetup format \
+				--debug \
+				"${ROOTDEV}" \
+				"${HASHDEV}" \
+				| tee $TMP/verity.log \
+			|| die "$ROOTDEV: unable to compute hashes"
 
-		HASH="`awk '/Root hash:/ { print $3 }' $TMP/verity.log`"
+			HASH="`awk '/Root hash:/ { print $3 }' $TMP/verity.log`"
+		fi
 
 		if [ -z "$HASH" ]; then
 			die "$ROOTDEV: root hash not in log?"
 		fi
+
+		ROOT_ARGS="\
+			root=/dev/mapper/vroot \
+			fsck.mode=skip \
+			verity.hashdev=${HASHDEV} \
+			verity.rootdev=${ROOTDEV} \
+			verity.hash=$HASH \
+		"
 	else
-		warn "$ROOTDEV: Using hash $HASH"
+		warn "SIP mode is not enabled"
+		ROOT_ARGS="\
+			root=${ROOTDEV}
+		"
 	fi
 
 	sign-kernel "$TARGET" \
-		/boot/vmlinuz \
-		/boot/initrd.img \
-		root=/dev/mapper/vroot \
-		ro \
-		fsck.mode=skip \
-		verity.hashdev="${HASHDEV}" \
-		verity.rootdev="${ROOTDEV}" \
-		verity.hash="$HASH" \
-		tpm.pcrs=0,2,5,7,14 \
-		tpm.mode=normal \
+		"$KERNEL" \
+		"$INITRD" \
+		$LINUX_COMMANDLINE \
+		$ROOT_ARRGS \
+		tpm.pcrs=$PCRS \
+		tpm.mode=$TARGET \
+		"$@" \
+	|| die "Kernel signing failed!"
+}
+
+recovery_sign_usage="
+## safeboot recovery-sign
+
+  Sign the Linux kernel and initrd into the recovery target.
+
+  If HASH is set in the environment, it will be used instead of recomputing
+  the dmverity hashes (which can take some time).
+  
+"
+usage+=$recovery_sign_usage
+commands+="|recovery-sign"
+
+recovery-sign()
+{
+	show_help "$1" "$recovery_sign_usage"
+
+	# default is recovery
+	TARGET=${1:-${RECOVERY_TARGET}}
+
+	sign-kernel "$TARGET" \
+		"$KERNEL" \
+		"$INITRD" \
+		$LINUX_COMMANDLINE \
+		root=${ROOTDEV} \
+		blockdev.ro=${ROOTDEV} \
+		tpm.mode=$target \
 		"$@" \
 	|| die "Kernel signing failed!"
 }
 
 recovery_usage="
-safeboot recovery [reboot]
+## safeboot recovery [reboot]
 
   Configure the next boot for a recovery.  If reboot is passed in,
   the system will be rebooted now.
@@ -597,7 +732,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|hash-and-sign|recovery|tpm2_trial_extend)
+	yubikey-init|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|hash-and-sign|recovery-sign|recovery|tpm2_trial_extend)
 		$command "$@"
 		;;
 	*)
