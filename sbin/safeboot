@@ -369,14 +369,14 @@ luks-seal() {
 	# the unseal script will also extend PCR14 after unsealing
 	# to prevent the TPM from unsealing the secret a second time
 	pcr14=`echo -n "${LINUX_TARGET}" | tpm2_trial_extend $PCR_DEFAULT`
-	warn "PCR14=$pcr14"
+	warn "PCR$BOOTMODE_PCR=$pcr14"
 	echo -n "$pcr14" | hex2bin \
 		>> "$TMP/pcrs.bin"
 	xxd -g1 "$TMP/pcrs.bin"
 
 	tpm2_createpolicy \
 		--policy-pcr \
-		--pcr-list "sha256:$PCRS,14" \
+		--pcr-list "sha256:$PCRS,$BOOTMODE_PCR" \
 		--pcr "$TMP/pcrs.bin" \
 		--policy "$TMP/policy.digest" \
 		>> /tmp/tpm.log \
@@ -430,18 +430,18 @@ luks-seal() {
 
 	# Verify that the key actually works -- this might break
 	# if there are different PCRs
-	warn "Verifying sealed secret"
-	if tpm2_unseal \
-		--object-context $HANDLE \
-		--auth pcr:"$PCRS,14" \
-		--output "$TMP/key2.bin" \
-		>> /tmp/tpm.log \
-	; then
-		cmp "$TMP/key.bin" "$TMP/key2.bin" \
-		|| die "Keys do not match; something failed"
-	else
-		warn "Unable to unseal (probably due to PCR14); ignored"
-	fi
+#	warn "Verifying sealed secret"
+#	if tpm2_unseal \
+#		--object-context $HANDLE \
+#		--auth pcr:"$PCRS,$BOOTMODE_PCR" \
+#		--output "$TMP/key2.bin" \
+#		>> /tmp/tpm.log \
+#	; then
+#		cmp "$TMP/key.bin" "$TMP/key2.bin" \
+#		|| die "Keys do not match; something failed"
+#	else
+#		warn "Unable to unseal (probably due to PCR$BOOTMODE_PCR); ignored"
+#	fi
 
 	# make sure the crypttab has the unlock script referenced
 	if ! grep keyscript "$PREFIX/etc/crypttab" > /dev/null ; then
@@ -480,7 +480,7 @@ luks-seal() {
 		fi
 	done
 
-	warn "$dev: sealed with PCR $PCRS,14"
+	warn "$dev: sealed with PCR $PCRS,$BOOTMODE_PCR"
 }
 
 sign_kernel_usage="
