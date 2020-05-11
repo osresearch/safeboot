@@ -20,9 +20,9 @@ This guide will show you how to:
 
 * Install the safeboot Debian package (currently [`safeboot_0.2-1_amd64.deb`](https://github.com/osresearch/safeboot/releases/download/release-0.2/safeboot_0.2-1_amd64.deb))
 * Configure the UEFI firmware for beter security
-* Create a signing key stored in a Yubikey
-* Install the signing key into the UEFI SecureBoot configuration
+* Create a signing key stored in a Yubikey or password protected file
 * Sign a recovery kernel and create a UEFI Boot Manager entry for it
+* Install the signing key into the UEFI SecureBoot configuration
 * Seal a disk encryption secret into the TPM
 * Rebuild the initial ramdisk with TPM unsealing support
 * Enable System Integrity Protection mode, hash the root filesystem, and
@@ -211,12 +211,16 @@ install time, but for some reason it no longer does so.
 
 The root filesystem needs to be resized so that hash computation doesn't
 take forever, `/home` and `/var` need to be split into a separate mounts,
-`/tmp` needs to be a symlink to `/var/tmp`, etc.
+`/tmp` needs to be a symlink to `/var/tmp`, etc.  So boot into a live CD,
+open a terminal and run these commands (change `/dev/sda3` to the physical
+disk that you've installed on):
 
 ```
-fsck -f /dev/vgubuntu/root
-resize2fs /dev/vgubuntu/root 8G
-lvresize --size 8G /dev/vgubuntu/root
+sudo cryptsetup luksOpen /dev/sda3 sda3_crypt
+sudo vgscan
+sudo fsck -f /dev/vgubuntu/root
+sudo resize2fs /dev/vgubuntu/root 8G  # This will take a while
+sudo lvresize --size 8G /dev/vgubuntu/root
 ```
 
 Once that is done you can reboot into the system and configure SIP
