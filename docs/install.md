@@ -18,7 +18,7 @@ The outline for configuring safeboot requires some knowledge of the
 command line and familiarity with running commands as `root` with `sudo`.
 This guide will show you how to:
 
-* Install the safeboot Debian package (currently [`safeboot_0.2-1_amd64.deb`](https://github.com/osresearch/safeboot/releases/download/release-0.2/safeboot_0.2-1_amd64.deb))
+* Install the safeboot Debian package from [safeboot/releases](https://github.com/osresearch/safeboot/releases) (currently [`safeboot-0.4.deb`](https://github.com/osresearch/safeboot/releases/download/release-0.4/safeboot_0.4_amd64.deb))
 * Configure the UEFI firmware for beter security
 * Create a signing key stored in a Yubikey or password protected file
 * Sign a recovery kernel and create a UEFI Boot Manager entry for it
