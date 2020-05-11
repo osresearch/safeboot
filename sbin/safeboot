@@ -649,8 +649,6 @@ linux-sign()
 	fi
 
 	sign-kernel "$TARGET" \
-		"$KERNEL" \
-		"$INITRD" \
 		$LINUX_COMMANDLINE \
 		$ROOT_ARGS \
 		tpm.pcrs=$PCRS \
@@ -660,7 +658,7 @@ linux-sign()
 }
 
 recovery_sign_usage="
-## safeboot recovery-sign
+## safeboot recovery-sign [kernel command line...]
 
   Sign the Linux kernel and initrd into the recovery target.
 
@@ -679,12 +677,10 @@ recovery-sign()
 	TARGET=${1:-${RECOVERY_TARGET}}
 
 	sign-kernel "$TARGET" \
-		"$KERNEL" \
-		"$INITRD" \
 		$LINUX_COMMANDLINE \
 		root=${ROOTDEV} \
 		blockdev.ro=${ROOTDEV} \
-		tpm.mode=$target \
+		tpm.mode=${TARGET} \
 		"$@" \
 	|| die "Kernel signing failed!"
 }
