@@ -3,7 +3,7 @@ repo_url: https://github.com/osresearch/safeboot/
 edit_uri: ""
 theme:
   name: material
-#  custom_dir: docs/custom/
+  custom_dir: docs/custom/
   logo: images/logo.png
   palette:
     primary: indigo
