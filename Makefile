@@ -31,10 +31,12 @@ efitools/Makefile:
 
 
 #
-# Extra package requirements
+# Extra package building requirements
 #
 requirements:
 	apt install -y \
+		devscripts \
+		debhelper \
 		tpm2-tools \
 		efitools \
 		gnu-efi \
