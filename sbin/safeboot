@@ -766,7 +766,7 @@ sip-init()
 
 	warn "sip-init: Checking configuration before writing..."
 
-	root_size=`lvdisplay --units g ${ROOTDEV} | awk '/LV Size/{print $3}'`
+	root_size=`lvdisplay --units b ${ROOTDEV} | awk '/LV Size/{print $3}'`
 	vg=`lvdisplay ${ROOTDEV} | awk '/VG Name/{print $3}'`
 
 	if [ -z "$vg" ]; then
@@ -775,8 +775,8 @@ sip-init()
 	if [ -z "$root_size" ]; then
 		die "${ROOTDEV}: unknown size"
 	fi
-	if [ "$root_size" -gt 16 ]; then
-		die "${ROOTDEV}: root is $root_size GB, too large for hashes"
+	if [ "$root_size" -gt $[16*1024*1024*1024] ]; then
+		die "${ROOTDEV}: root is $root_size bytes, too large for hashes"
 	fi
 
 	# if the volume groups already exist, we don't want to overwrite them
@@ -788,9 +788,9 @@ sip-init()
 	fi
 
 	# or if they have entries in the fstab for /home or /var
-	grep '\s/var\s' $PREFIX/etc/fstab && \
+	grep -q '\s/var\s' $PREFIX/etc/fstab && \
 		die "/var already exists in $PREFIX/etc/fstab"
-	grep '\s/home\s' $PREFIX/etc/fstab && \
+	grep -q '\s/home\s' $PREFIX/etc/fstab && \
 		die "/home already exists in $PREFIX/etc/fstab"
 
 	# make sure the signing cert exists
