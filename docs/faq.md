@@ -1,6 +1,8 @@
 # Frequently Asked Questions
 
 ## What is the threat model?
+![Your threat model is not my threat model, but your threat model is ok](https://live.staticflickr.com/5575/31437292510_99ffd0dd11_b.jpg)
+
 `safeboot` intends to protect the integrity of the boot process and
 runtime integrity of the system against adversaries with external physical
 access to the device, as well as limited internal physical access.
@@ -18,6 +20,8 @@ access to the device, as well as limited internal physical access.
 * TODO: prevent external media access, list of modules to not load, etc
 
 ## Why does the TPM unsealing fail often?
+![TPM with wires soldered to the pins](images/tpm.jpg)
+
 It's super fragile right now.  Need to reconsider which PCRs are included
 and what they mean.  Suggestions welcome!
 
@@ -45,3 +49,8 @@ On modern Thinkpads the UEFI password is in the EC, not in the
 SPI flash.  You need a Bootguard bypass to get into Setup in that
 case; perhaps someone has some zerodays that will give them access...
 
+## Does it work on the Thinkpad 701c?
+![Butterfly keyboard animation](https://farm1.staticflickr.com/793/39371776450_a8b0cd4184_o_d.gif)
+Unfortunately the wonderful [butterfly keyboard Thinkpad](https://trmm.net/Butterfly)
+predates UEFI by a few years, so it does not have a very secure
+boot process.  The X1 Carbon is a much nicer replacement.
