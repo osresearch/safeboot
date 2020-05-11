@@ -37,5 +37,6 @@ attackers, etc. `safeboot` is that tool!
 
 * [Installation Instructions](install.md)
 * [Frequently Asked Questions](faq.md)
+* [`safeboot` subcommands](safeboot.md)
 * [Source](https://github.com/osresesearch/safeboot)
 
