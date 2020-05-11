@@ -8,6 +8,7 @@
 # For more details: https://safeboot.dev/
 #
 set -e -o pipefail
+export LC_ALL=C
 
 : ${PREFIX:=}
 : ${DIR:=/etc/safeboot}
@@ -42,8 +43,8 @@ fi
 : ${LINUX_COMMANDLINE:=""}
 : ${RECOVERY_COMMANDLINE:=${LINUX_COMMANDLINE}}
 
-
-die() { echo "$@" >&2 ; exit 1 ; }
+die_msg=""
+die() { echo "$die_msg""$@" >&2 ; exit 1 ; }
 warn() { echo "$@" >&2 ; }
 debug() { [ "$VERBOSE" == 1 ] && echo "$@" >&2 ; }
 
@@ -694,11 +695,17 @@ recovery_reboot_usage="
 usage+=$recovery_reboot_usage
 commands+="|recovery-reboot"
 
+efiboot-entry() {
+	TARGET=${1:-recovery}
+	efibootmgr \
+	| perl -ne "/^Boot([0-9A-F]+). ${TARGET}\$/ and print \$1"
+}
+
 recovery-reboot()
 {
 	show_help "$1" "$recovery_reboot_usage"
 	# Find the recovery entry in the efibootmgr
-	entry=`efibootmgr | perl -ne "/^Boot([0-9A-F]+). ${RECOVERY_TARGET}\$/ and print \$1"`
+	entry=`efiboot-entry ${RECOVERY_TARGET}`
 	if [ -z "$entry" ]; then
 		die "${RECOVERY_TARGET} boot entry not in efibootmgr?"
 	fi
@@ -739,6 +746,143 @@ remount()
 	fi
 }
 
+sip_init_usage="
+## safeboot sip-init home-size [var-size]
+
+  DANGER! This command can mess up your root filesystem.
+  There must be space in the volume group for the new entries
+  Create the volume groups for /var and /home,
+  adds entries to /etc/fstab for them, and makes /tmp a symlink
+  into /var/tmp.
+"
+usage+=$sip_init_usage
+commands+="|sip-init"
+
+sip-init()
+{
+	show_help "$1" "$sip_init_usage"
+	var_size=${1:-16g}
+	home_size=${2:-80g}
+
+	warn "sip-init: Checking configuration before writing..."
+
+	root_size=`lvdisplay --units g ${ROOTDEV} | awk '/LV Size/{print $3}'`
+	vg=`lvdisplay ${ROOTDEV} | awk '/VG Name/{print $3}'`
+
+	if [ -z "$vg" ]; then
+		die "${ROOTDEV}: unknown volume group?"
+	fi
+	if [ -z "$root_size" ]; then
+		die "${ROOTDEV}: unknown size"
+	fi
+	if [ "$root_size" -gt 16 ]; then
+		die "${ROOTDEV}: root is $root_size GB, too large for hashes"
+	fi
+
+	# if the volume groups already exist, we don't want to overwrite them
+	if [ -e "/dev/mapper/$vg-var" ]; then
+		die "$vg-var already exists"
+	fi
+	if [ -e "/dev/mapper/$vg-home" ]; then
+		die "$vg-home already exists"
+	fi
+
+	# or if they have entries in the fstab for /home or /var
+	grep '\s/var\s' $PREFIX/etc/fstab && \
+		die "/var already exists in $PREFIX/etc/fstab"
+	grep '\s/home\s' $PREFIX/etc/fstab && \
+		die "/home already exists in $PREFIX/etc/fstab"
+
+	# make sure the signing cert exists
+	if [ ! -r "$CERT" ]; then
+		die "$CERT: signing certificate not available!"
+	fi
+
+	# and refuse to do this unless they already have a recovery image
+	entry=`efiboot-entry ${RECOVERY_TARGET}`
+	if [ -z "$entry" ]; then
+		die "No ${RECOVERY_TARGET} in efibootmgr? Too dangerous!"
+	fi
+
+	##### And now it gets really dangerous #####
+
+	read -p "WARNING: This will make irrevocable changes to the disk. Are you really really sure?" really_do_it
+	if [ "$really_do_it" != "y" ]; then
+		die "Not configuring SIP!"
+	fi
+	read -p "WARNING: Do you have the security key? " really_do_it
+	if [ "$really_do_it" != "y" ]; then
+		die "Not configuring SIP!"
+	fi
+
+	remount \
+	|| die "Root file system is not writable"
+
+	die_msg="
+********************************************************
+***** THIS IS BAD: Your system might be broken now *****
+********************************************************
+
+Please contact the developers with a report of what happened.
+You can try to look back through the log messages to see if
+you can unwind the changes that were made.
+"
+
+	# create the volume groups
+	lvcreate --size 1g -n hashes "$vg" \
+	|| die "$vg-hashes: unable to create volume"
+
+	lvcreate --size "$var_size" -n var "$vg" \
+	|| die "$vg-var: unable to create volume"
+
+	lvcreate --size "$home_size" -n home "$vg" \
+	|| die "$vg-home: unable to create volume"
+
+	# relocate /var and /home to the new volumes
+	for lv in var home ; do
+		mkfs.ext4 "/dev/mapper/$vg-$lv" \
+		|| die "$vg-$lv: unable to make filesystem"
+
+		warn "Adding /$lv to fstab"
+		echo >> "$PREFIX/etc/fstab" \
+			"/dev/mapper/$vg-$lv /$lv ext4 defaults 0 1" \
+		|| die "unable to add /$lv to fstab"
+
+		mkdir "/tmp-$lv" \
+		|| die "/tmp-$lv: unable to create temporary mount point"
+
+		mount "/dev/mapper/$vg-$lv" "/tmp-$lv" \
+		|| die "$vg-$lv: unable to mount temporary mount point"
+
+		warn "Moving contents of /$lv to new filesystem"
+		mv "/$lv/*" "/tmp-$lv/" \
+		|| die "$vg-$lv: unable to move everything from old mount"
+
+		umount "/tmp-$lv" \
+		|| die "$vg-$lv: unable to unmount"
+
+		mount "/$lv" \
+		|| die "/$lv: unable to remount new file system"
+	done
+
+	# and fix up /tmp
+	warn "/tmp: Creating new temporary directory"
+	rm -rf /tmp \
+	|| die "/tmp: unable to clean up"
+
+	ln -sf ./var/tmp /tmp \
+	|| die "/tmp: unable to create symlink"
+
+	if [ "$SIP" != 1 ]; then
+		sed -i.orig 's/^SIP=0$/SIP=1/' $PREFIX$DIR/safeboot.conf \
+		|| die "$PREFIX$DIR/safeboot.conf: unable to enable SIP?"
+	fi
+
+	warn "${ROOTDEV}: now configured for SIP. Generating hashes..."
+
+	sign-linux linux \
+	|| die "Initial SIP hash generation failed"
+}
 
 
 if [ $# -lt 1 ]; then
@@ -754,7 +898,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|linux-sign|recovery-sign|recovery-reboot|remount|tpm2_trial_extend)
+	yubikey-init|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|linux-sign|recovery-sign|recovery-reboot|remount|tpm2_trial_extend|sip-init)
 		$command "$@"
 		;;
 	*)

@@ -219,31 +219,13 @@ resize2fs /dev/vgubuntu/root 8G
 lvresize --size 8G /dev/vgubuntu/root
 ```
 
-Then the new `/var`, `/home` and dmverity hash partitions have to be created:
+Once that is done you can reboot into the system and configure SIP
+(which will setup the `/var` and `/home` filesystems, add them to
+`/etc/fstab`, relocate `/tmp`, build the initial dmverity hashes,
+and add the signed `linux` to the efi boot menu):
 ```
-lvcreate --size 16G -n var vgubuntu
-lvcreate --size 80G -n home vgubuntu
-lvcreate --size 1G hashes vgubuntu
-mkfs.ext4 /dev/gvubuntu/home
-mkfs.ext4 /dev/gvubuntu/var
+safeboot sip-init
 ```
-
-And then the various partitions need to be adjusted in the fstab:
-```
-mkdir /root /tmp/var /tmp/home
-mount /dev/vgubuntu/root /root
-mount /dev/vgubuntu/var /tmp/var
-mount /dev/vgubuntu/home /tmp/home
-mv /root/var/* /tmp/var/
-mv /root/home/* /tmp/home
-echo >> /root/etc/fstab '/dev/mapper/vgubuntu-var /var ext4 defaults 0 1'
-echo >> /root/etc/fstab '/dev/mapper/vgubuntu-home /home ext4 defaults 0 1'
-rm -rf /root/tmp
-ln -s ./var/tmp /root
-```
-
-Once this is done you should be able to reboot and continue
-with the safeboot setup.
 
 
 #### Hasing and signing the RO root filesystem
