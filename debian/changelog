@@ -1,3 +1,11 @@
+safeboot (0.3-1ubuntu1) UNRELEASED; urgency=medium
+
+  * Added /etc/safeboot/safeboot.conf
+  * Support openssl x509 keys
+  * Real read-only mode for recovery
+
+ -- Trammell Hudson <hudson@unicycle>  Mon, 11 May 2020 13:04:39 +0200
+
 safeboot (0.2-1) unstable; urgency=medium
 
   * Ran through instructions, worked on fresh 20.04 install

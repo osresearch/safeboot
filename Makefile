@@ -1,4 +1,4 @@
-# segfault when using the PKCS11 engine to talk to the Yubikey.
+VERSION ?= 0.3
 
 BINS += bin/sbsign.safeboot
 BINS += bin/sign-efi-sig-list.safeboot
@@ -58,10 +58,11 @@ clean:
 
 # Regenerate the source file
 tar: clean
-	tar zcvf ../safeboot_0.2.orig.tar.gz \
+	tar zcvf ../safeboot_$(VERSION).orig.tar.gz \
 		--exclude .git \
 		--exclude debian \
 		.
 
 package: tar
 	debuild -uc -us
+
