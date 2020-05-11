@@ -685,34 +685,60 @@ recovery-sign()
 	|| die "Kernel signing failed!"
 }
 
-recovery_usage="
-## safeboot recovery [reboot]
+recovery_reboot_usage="
+## safeboot recovery-reboot
 
-  Configure the next boot for a recovery.  If reboot is passed in,
-  the system will be rebooted now.
+  Configure the next boot for a recovery and reboot the machine.
   
 "
-usage+=$recovery_usage
-commands+="|recovery"
+usage+=$recovery_reboot_usage
+commands+="|recovery-reboot"
 
-recovery()
+recovery-reboot()
 {
-	show_help "$1" "$recovery_usage"
+	show_help "$1" "$recovery_reboot_usage"
 	# Find the recovery entry in the efibootmgr
-	entry=`efibootmgr | perl -ne '/^Boot([0-9A-F]+). recovery$/ and print $1'`
+	entry=`efibootmgr | perl -ne "/^Boot([0-9A-F]+). ${RECOVERY_TARGET}\$/ and print \$1"`
 	if [ -z "$entry" ]; then
-		die "recovery boot entry not in efibootmgr?"
+		die "${RECOVERY_TARGET} boot entry not in efibootmgr?"
 	fi
 
-	warn "recovery: boot mode $entry"
+	warn "${RECOVERY_TARGET}: boot mode $entry"
 	efibootmgr --bootnext "$entry" \
 		|| die "Boot$entry: unable to set bootnext"
 
-	if [ "$1" == "reboot" ]; then
-		warn "Initiating reboot!"
-		reboot
+	warn "Initiating reboot!"
+	reboot
+}
+
+remount_usage="
+## safeboot remount
+
+  Attempt to remount the root filesystem read/write.
+  If SIP is enabled this will likely invalidate any hashes
+  and require a re-signing of the root filesystem.
+  
+"
+usage+=$remount_usage
+commands+="|remount"
+
+remount()
+{
+	show_help "$1" "$remount_usage"
+
+	blockdev --setrw "${ROOTDEV}" \
+	|| die "${ROOTDEV}: Unable to mark as read-write"
+
+	mount -o rw,remount "${ROOTDEV}" \
+	|| die "${ROOTDEV}: Unable to remount read-write"
+
+	if [ "$SIP" == 1 ]; then
+		warn "${ROOTDEV}: Remounted read/write; remember to re-sign the root hashes before rebooting!"
+	else
+		warn "${ROOTDEV}: Remounted read/write"
 	fi
 }
+
 
 
 if [ $# -lt 1 ]; then
@@ -728,7 +754,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|linux-sign|recovery-sign|recovery|tpm2_trial_extend)
+	yubikey-init|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|linux-sign|recovery-sign|recovery-reboot|remount|tpm2_trial_extend)
 		$command "$@"
 		;;
 	*)
