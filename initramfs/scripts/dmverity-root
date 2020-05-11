@@ -77,7 +77,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Verity protected volume group is setup - mount it as root
-mount -o ro,noload /dev/mapper/vroot ${rootmnt}
+mount -o ro,noatime /dev/mapper/vroot ${rootmnt}
 if [ $? -ne 0 ]; then
 	log_failure_msg "$PREFIX: ${ROOT} unable to mount verity dm, remounting"
 	veritysetup close vroot
