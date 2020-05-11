@@ -1,13 +1,47 @@
 # Frequently Asked Questions
 
 ## What is the threat model?
+`safeboot` intends to protect the integrity of the boot process and
+runtime integrity of the system against adversaries with external physical
+access to the device, as well as limited internal physical access.
+
+* Reprogramming the code in SPI flash is detected by Intel Bootguard's verification of the IBB during boot
+* Writing new platform keys in the SPI flash is detected by measurement of the UEFI configuration into the TPM
+* TPM tampering on the LPC bus is not necessarily detectable by this system; an adversary with unlimited internal physical access can also probe sealed secrets
+(TODO: add TPM PIN for high assurance users)
+* fTPM tampering is out of scope since the ME is the root of all trust in the system
+* Booting from an unauthorized external device is prevented since only PK signed executables will be loaded.
+* Adversaries with physical write access to the disk can't change the kernel or initrd on the drive since the signature is checked when they are loaded into RAM.
+* Adversaries with write access to the root filesystem can't change any of the lockdown configuration since their modifications will be detectable by the dmverity hashes.  They can't recompute the hashes since the root is signed by the PK.
+* Run time access to the disk encryption key is prevented by the Linux kernel keyring mechanism, even against an adversary with root access.
+* The Linux lockdown patches prevent a user with root access from loading new kernel modules, modifying the disk image, or poking at raw memory.
+* TODO: prevent external media access, list of modules to not load, etc
 
 ## Why does the TPM unsealing fail often?
+It's super fragile right now.  Need to reconsider which PCRs are included
+and what they mean.  Suggestions welcome!
 
 ## How do I write to the root filesystem?
+With SIP enabled it is not possible to modify the root filesystem.
+You must reboot into recovery mode with `safeboot recovery-reboot`
+and decrypt the disk with the recovery password.  Once decrypted,
+you can run `safeboot remount` to unlock the raw device and remount
+it `rw`.  After making modifications, it is necessary to sign
+the new root hashes with `safeboot linux-sign`.
 
 ## What happens if I lose the signing key?
+The best solution is to authenticate with the supervisor password
+to the UEFI Setup, re-enter SecureBoot setup mode and clear the key
+database, then boot into recovery mode.
+
+You can then re-run `safeboot yubikey-init` or `safeboot key-init`
+and `safeboot uefi-sign-keys` to repopulate the database, and
+`safeboot recovery-sign` as well as `safeboot linux-sign` to re-sign
+the two kernel images, boot into the linux image and re-seal the LUKS
+key into the TPM with `safeboot luks-seal`.
 
 ## Is it possible to reset the UEFI or BIOS password?
-
+On modern Thinkpads the UEFI password is in the EC, not in the
+SPI flash.  You need a Bootguard bypass to get into Setup in that
+case; perhaps someone has some zerodays that will give them access...
 
