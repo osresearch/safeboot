@@ -669,10 +669,9 @@ recovery_sign_usage="
 ## safeboot recovery-sign [kernel command line...]
 
   Sign the Linux kernel and initrd into the recovery target.
-
-  If HASH is set in the environment, it will be used instead of recomputing
-  the dmverity hashes (which can take some time).
-  
+  If SIP is enabled the root device will be marked read-only and
+  not-fsck'ed.  Use 'safeboot remount' to remount it read-write
+  when in recovery mode.
 "
 usage+=$recovery_sign_usage
 commands+="|recovery-sign"
@@ -680,9 +679,6 @@ commands+="|recovery-sign"
 recovery-sign()
 {
 	show_help "$1" "$recovery_sign_usage"
-
-	# default is recovery
-	TARGET=${1:-${RECOVERY_TARGET}}
 
 	if [ "$SIP" == 1 ]; then
 		# ensure that the root file system is really
@@ -694,7 +690,7 @@ recovery-sign()
 		ROOT_ARGS=""
 	fi
 			
-	sign-kernel "$TARGET" \
+	sign-kernel "${RECOVERY_TARGET}" \
 		$LINUX_COMMANDLINE \
 		root=${ROOTDEV} \
 		$ROOT_ARGS \
