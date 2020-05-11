@@ -28,6 +28,24 @@ This guide will show you how to:
 * Enable System Integrity Protection mode, hash the root filesystem, and
 sign the runtime kernel
 
+## tl;dr
+
+* Set UEFI SecureBoot setup mode and install Ubuntu 20.04, resizing '/' to 8GB during the install
+* `sudo apt install safeboot-0.4.deb`
+* `sudo safeboot key-init` or `sudo safeboot yubikey-init`
+* `sudo safeboot uefi-key-sign`
+* `sudo safeboot recovery-sign`
+* `sudo safeboot recovery-reboot`
+* Should reboot into the recovery image
+* `sudo safeboot luks-seal`
+* `sudo update-initramfs -u`
+* `sudo safeboot sip-init` (if you want to enable SIP mode)
+* `sudo safeboot recovery-reboot`
+* Should reboot into the recovery image, with `/` no longer held open
+* `sudo safeboot linux-sign`
+* Reboot one more time, into dmverity protect Linux image...
+* `sudo safeboot luks-seal`
+* Reboot and now the disk should unlock automatically as long as no one tampers with the device
 
 ## Initial Setup
 This is done once when the system is being setup to use Safe Boot mode.
