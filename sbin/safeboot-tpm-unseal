@@ -33,6 +33,9 @@ do
         tpm.pcrs=*)
             PCRS=${arg#tpm.pcrs=}
             ;;
+        tpm.mode-pcr=*)
+            BOOTMODE_PCR=${arg#tpm.mode-pcr=}
+            ;;
         tpm.handle=*)
             HANDLE=${arg#tpm.handle=}
             ;;
@@ -41,7 +44,7 @@ do
     esac
 done
 
-log "TPM mode=$MODE pcrs=$PCRS"
+log "TPM mode=$MODE pcrs=$PCRS $BOOTMODE_PCR"
 
 /usr/bin/tpm2_pcrread >&2 \
 	'sha256:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16'
@@ -58,7 +61,7 @@ log "TPM mode=$MODE pcrs=$PCRS"
 #
 if [ ! -z "$PCRS" ] && /usr/bin/tpm2_unseal \
 	--object-context "$HANDLE" \
-	--auth pcr:"sha256:$PCRS" \
+	--auth pcr:"sha256:$PCRS,$BOOTMODE_PCR" \
 ; then
 	# ensure that a local attacker can't re-read the key from the TPM
 	# by extending pcr 14 with "postboot"
