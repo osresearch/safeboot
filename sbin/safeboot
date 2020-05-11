@@ -299,7 +299,7 @@ luks_seal_usage="
 
   If this is the first time the disk has been sealed, /etc/crypttab
   will be updated to include a call to the unsealing script to retrieve
-  the keys from the TPM.  You will have to run `update-initramfs -u`
+  the keys from the TPM.  You will have to run 'sudo update-initramfs -u'
   to rebuild the initrd.
 
   Right now only a single crypt disk is supported.
