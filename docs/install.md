@@ -161,7 +161,11 @@ This command will:
 * Sign the merged EFI executable
 
 Typically you will not have to redo this command since the normal
-kernel will be hashed and signed during updates.
+kernel will be hashed and signed during updates.  The one exception
+is that once SIP mode is enabled you will have to resign the
+recovery image as well to ensure that it doesn't accidentally write
+to the `/` file system and corrupt the hashes.
+
 
 #### UEFI Platform Keys
 ![UEFI SecureBoot setup screen](images/thinkpad-x1-secureboot.jpg)
@@ -172,6 +176,12 @@ then boot into Linux.
 
 ![Output of `uefi-sign-keys` command](images/uefi-sign-keys.png)
 
+To load the public key from `/etc/safeboot/cert.pem` into the UEFI
+secure boot key database:
+```
+sudo safeboot uefi-sign-keys
+```
+
 Once the key has been generated, the x509 certificate needs to be
 reformatted to be added to the UEFI Secure Boot platform key (`PK`),
 Key-Exchange Key (`KEK`) and as a key database entry (`db`).  Each
@@ -180,10 +190,9 @@ case of the PK it is self-signed.
 
 The `safeboot uefi-sign-keys` subcommand will:
 
-* Generate the three EFI public key variables updates
-* Sign the EFI variables with the yubikey (will require a PIN authentication
-for each variable)
-* Store public certificate in UEFI platform key (`PK`), key-exchange key (`KEK`) and database (`db`)
+* Generate the three EFI public key variables updates (UEFI platform key (`PK`), key-exchange key (`KEK`) and database (`db`))
+* Sign the EFI variables with the Yubikey or OpenSSL key (will require a PIN authentication for each variable)
+* Store the signed public certificates into the firmware.
 
 !!! danger
     **Before you reboot!** If you have not signed the kernel and initrd as
@@ -194,6 +203,23 @@ for each variable)
 
 ![Output of `luks-seal` subcommand](images/luks-seal.png)
 
+The command to seal the LUKS disk encryption key into the TPM is:
+
+```
+sudo safeboot luks-seal
+sudo update-initramfs -u
+```
+
+The very first time this is run you will need to also rebuild the initrd
+with the new crypttab and hooks in place.
+The `luks-seal` subcommand will:
+
+* Create a new disk encryption key with random data
+* Read the current PCRs, seal new key into the TPM with these PCRs
+* Add new key slot to disk with new key (will require the recovery password)
+* Add initramfs building hooks
+* Modify `/etc/crypttab` entry to call unlock script if necessary
+
 The Trusted Platform Module serves two purposes in securing the process:
 it helps validate that the firmware and boot configuration is unchanged,
 and it streamlines the boot process by providing the key for encrypted disks.
@@ -201,26 +227,6 @@ On modern systems Boot Guard ensures that the initial boot block is
 measured into the TPM, so a local attacker shouldn't be able to modify
 the SPI flash contents to bypass the measurements, or to add their
 own keys to the UEFI key database.  (Subject to various CVE's and TOCTOUs, etc)
-
-The command to seal the LUKS disk encryption key into the TPM is:
-
-```
-safeboot luks-seal
-```
-
-This will:
-* Create a new disk encryption key with random data
-* Read the current PCRs, seal new key into the TPM with these PCRs
-* Add new key slot to disk with new key (will require the recovery password)
-* Add initramfs building hooks
-* Modify `/etc/crypttab` entry to call unlock script if necessary
-
-The very first time this is run you will need to also rebuild the initrd
-with the new crypttab and hooks in place:
-
-```
-update-initramfs -u
-```
 
 !!! note
     The TPM PCRs are somewhat fragile; they include hashes of the ROM images,
@@ -282,7 +288,13 @@ safeboot sip-init
 
 ![Output of `hash-and-sign` command](images/hash-and-sign.png)
 
-The `safeboot hash-and-sign` command will:
+When exiting recovery mode it is necessary to rehash the root filesystem
+and sign the kernel command line:
+```
+sudo safeboot linux-sign
+```
+
+The `linux-sign` command will:
 
 * unmount `/` and remount it `ro`
 * `fsck /` to ensure that it is clean
@@ -298,19 +310,12 @@ reboot into the SIP mode and then re-seal the TPM key with
 
 TODO: Detect changes and notify the use rather than just `EIO`.
 
-When changes to `/` need to be made, such as to install new packages
-with `apt-get`, the system has to be rebooted into recovery mode
-with `safeboot recovery reboot`.  After entering the recovery key
-during the reboot, the root file system has to be remounted `rw`, the
-updates applied, and then a new hash tree generated and signed.
-Alternatively, two `/` filesystems can be on the disk. Updates are
-applied to the unused one and signed, and then on the next boot
-the correct root filesystem is selected.
-
+<!--
 * For dm-verity and read-only root:
 * Separate `/`, `/var` and `/home`
 * (need to show how to do this post install for 20.04)
 * Two copies of `/` for A-B switching and atomic updates
+-->
 
 ## Updates
 Nothing ever stays static, so it is important to consider the steps
@@ -320,14 +325,38 @@ TPM re-sealing doesn't have to happen as often, since it requires
 access to the disk encryption recovery key.
 
 ### Root filesystem updates
-* Remount `/` read-write
-* Perform updates
-* Remount `/` read-only
-* Compute block hashes and root hash
-* Optionally regenerate the initrd
-* Add root hash to command line
-* Sign kernel/initramfs/commandline
-* These could be done offline and the block image pushed to the system for installation
+
+To re-enter recovery mode, remount the `/` filesystem read/write
+and re-hash the filesystem for normal mode:
+
+```
+sudo safeboot recovery-reboot
+# enter the disk recovery password and login
+sudo safeboot remount
+# do stuff to / like apt-get ...
+sudo safeboot linux-sign
+reboot
+```
+
+The `recovery-reboot` and `remount` subcommands:
+
+* Set the UEFI Boot Manager `BootNext` to `recovery`
+* Reboot the machine
+* Require a manual disk decryption recovery code
+* Runs `blockdev --setrw` to re-enable writes to the root device
+* Runs `mount -o rw,remount /` to re-enable writes to the root filesystem
+
+After updating the file system with tools like `apt install ...`,
+the `linux-sign` subcommand will:
+
+* Run `mount -o ro,remount /` to make the root filesystem readonly
+* `fsck /` to ensure that it is clean
+* `veritysetup format` to compute the merkle-tree
+* Use the Yubikey or OpenSSL key to sign the merkle-tree root hash
+* Reboot to the new read-only runtime
+
+If you are maintaining a fleet of machines, these could be done offline
+and the block image pushed to the system for installation.
 
 ### Kernel and initramfs update
 * Re-generate `/boot/initrd` and `/boot/vmlinuz`
