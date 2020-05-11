@@ -17,7 +17,7 @@ for arg in $(cat /proc/cmdline)
 do
 	case "$arg" in
 	blockdev.ro=*)
-		DEV=${arg#bd.ro=}
+		DEV=${arg#blockdev.ro=}
 		log_warning_msg "$DEV: setting to read only"
 		blockdev --setro "$DEV"
 		;;
