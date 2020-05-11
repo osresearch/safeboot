@@ -113,7 +113,11 @@ key-init() {
 	subject=$1
 
 	if [ "$KEY" == "pkcs11:" ]; then
-		die "\$KEY=pkcs11:, use safeboot yubikey-init"
+		warn "\$KEY=pkcs11:; replacing in safeboot.conf"
+		sed -i.orig 's!KEY="pkcs11:"$!KEY="/etc/safeboot/signing.key"!' \
+			$PREFIX$DIR/safeboot.conf \
+		|| die "Unable to update safeboot.conf"
+		KEY="$PREFIX$DIR/signing.key"
 	fi
 	if [ -r "$KEY" ]; then
 		read -p "WARNING: This will erase the existing key $KEY. Are you sure? " really_do_it
@@ -293,8 +297,11 @@ luks_seal_usage="
   used to indicate a 'postboot' status to prevent the key from being unsealed
   after the initramfs has run.
 
-  If this is the first time the disk has been sealed, /etc/crypttab will be updated
-  to include a call to this script to retrieve the keys from the TPM.
+  If this is the first time the disk has been sealed, /etc/crypttab
+  will be updated to include a call to the unsealing script to retrieve
+  the keys from the TPM.  You will have to run `update-initramfs -u`
+  to rebuild the initrd.
+
   Right now only a single crypt disk is supported.
 "
 usage+=$luks_seal_usage
@@ -370,7 +377,7 @@ luks-seal() {
 	# the unseal script will also extend PCR14 after unsealing
 	# to prevent the TPM from unsealing the secret a second time
 	pcr14=`echo -n "${LINUX_TARGET}" | tpm2_trial_extend $PCR_DEFAULT`
-	warn "PCR$BOOTMODE_PCR=$pcr14"
+	warn "mode="${LINUX_TARGET}" PCR$BOOTMODE_PCR=$pcr14"
 	echo -n "$pcr14" | hex2bin \
 		>> "$TMP/pcrs.bin"
 	xxd -g1 "$TMP/pcrs.bin"
@@ -677,10 +684,20 @@ recovery-sign()
 	# default is recovery
 	TARGET=${1:-${RECOVERY_TARGET}}
 
+	if [ "$SIP" == 1 ]; then
+		# ensure that the root file system is really
+		# read-only; otherwise it will corrupt the hashes
+		ROOT_ARGS="blockdev.ro=${ROOTDEV} fsck=skip"
+	else
+		# allow the root filesystem to be rw, since
+		# /var is probably not separated and services won't start
+		ROOT_ARGS=""
+	fi
+			
 	sign-kernel "$TARGET" \
 		$LINUX_COMMANDLINE \
 		root=${ROOTDEV} \
-		blockdev.ro=${ROOTDEV} \
+		$ROOT_ARGS \
 		tpm.mode=${TARGET} \
 		"$@" \
 	|| die "Kernel signing failed!"
@@ -848,14 +865,14 @@ you can unwind the changes that were made.
 			"/dev/mapper/$vg-$lv /$lv ext4 defaults 0 1" \
 		|| die "unable to add /$lv to fstab"
 
-		mkdir "/tmp-$lv" \
+		mkdir -p "/tmp-$lv" \
 		|| die "/tmp-$lv: unable to create temporary mount point"
 
 		mount "/dev/mapper/$vg-$lv" "/tmp-$lv" \
 		|| die "$vg-$lv: unable to mount temporary mount point"
 
 		warn "Moving contents of /$lv to new filesystem"
-		mv "/$lv/*" "/tmp-$lv/" \
+		mv "/$lv/"* "/tmp-$lv/" \
 		|| die "$vg-$lv: unable to move everything from old mount"
 
 		umount "/tmp-$lv" \
@@ -878,10 +895,8 @@ you can unwind the changes that were made.
 		|| die "$PREFIX$DIR/safeboot.conf: unable to enable SIP?"
 	fi
 
-	warn "${ROOTDEV}: now configured for SIP. Generating hashes..."
-
-	sign-linux linux \
-	|| die "Initial SIP hash generation failed"
+	warn "${ROOTDEV}: now configured for SIP, but not yet signed!"
+	warn "${ROOTDEV}: reboot and immediately run 'safeboot linux-sign'"
 }
 
 
