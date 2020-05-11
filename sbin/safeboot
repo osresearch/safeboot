@@ -368,7 +368,7 @@ luks-seal() {
 	# will only unseal during a normal boot, not a recovery boot.
 	# the unseal script will also extend PCR14 after unsealing
 	# to prevent the TPM from unsealing the secret a second time
-	pcr14=`echo -n "normal" | tpm2_trial_extend $PCR_DEFAULT`
+	pcr14=`echo -n "${LINUX_TARGET}" | tpm2_trial_extend $PCR_DEFAULT`
 	warn "PCR14=$pcr14"
 	echo -n "$pcr14" | hex2bin \
 		>> "$TMP/pcrs.bin"
