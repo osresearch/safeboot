@@ -56,22 +56,40 @@ the new root hashes with `safeboot linux-sign`.
 ## What happens if I lose the signing key?
 The best solution is to authenticate with the supervisor password
 to the UEFI Setup, re-enter SecureBoot setup mode and clear the key
-database, then boot into recovery mode.
+database, then boot into recovery mode and follow the instructions
+for switching to a new signing key.  If you don't have the
+UEFI Supervisor password, well, then you're in trouble.
 
-You can then re-run `safeboot yubikey-init` or `safeboot key-init`
-and `safeboot uefi-sign-keys` to repopulate the database, and
-`safeboot recovery-sign` as well as `safeboot linux-sign` to re-sign
-the two kernel images, boot into the linux image and re-seal the LUKS
-key into the TPM with `safeboot luks-seal`.
+## How do I switch to a new signing key?
+There is probably a way to sign a new PK with the old PK, but I haven't
+figured it out...  Instead here are the steps:
+
+* Put the UEFI SecureBoot firmware back in `Setup Mode`
+* Boot into the recovery kernel
+* `safeboot remount` to get write-access to the disk
+* `safeboot key-init` or `safeboot yubikey-init` to build a new key.
+Answer "`y`" to overwrite the existing one in `/etc/safeboot/cert.pem`.
+* `safeboot uefi-sign-keys` to upload it into the firmware
+* `safeboot recover-sign`
+* `safeboot linux-sign`, which should re-generate the dmverity hashes
+* Reboot into the normal kernel
+* `safeboot luks-seal` to measure the new PCRs and normal kernel into the TPM
 
 ## Is it possible to reset the UEFI or BIOS password?
 On modern Thinkpads the UEFI password is in the EC, not in the
-SPI flash.  You need a Bootguard bypass to get into Setup in that
-case; perhaps someone has some zerodays that will give them access...
+SPI flash.  Lenovo does a mainboard swap to reset it, or you need a
+Bootguard bypass to get into Setup in that case; perhaps someone has
+some zerodays that gives them access...
 
 ## Does it work on the Thinkpad 701c?
 ![Butterfly keyboard animation](https://farm1.staticflickr.com/793/39371776450_a8b0cd4184_o_d.gif)
 
 Unfortunately the wonderful [butterfly keyboard Thinkpad](https://trmm.net/Butterfly)
 predates UEFI by a few years, so it does not have a very secure
-boot process.  The X1 Carbon is a much nicer replacement.
+boot process.  The X1 Carbon is a much nicer replacement in nearly
+every way, other than missing the amazing sliding keyboard mechanism.
+
+## ???
+
+Please [file an issue!](https://github.com/osresearch/safeboot/issues)
+Or submit a pull-request!
