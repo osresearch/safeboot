@@ -31,12 +31,12 @@ complete.
 End users need a tool that wraps up all of the complexity into the few
 operations that they need from day to day: signing new kernels,
 decrypting their disks at boot, protecting the system from runtime
-attackers, etc. `safeboot` is that tool!
+attackers, etc. `safeboot` is (an early version of) that tool!
 
 ## Links
 
 * [Installation Instructions](install.md)
 * [Frequently Asked Questions](faq.md)
 * [`safeboot` subcommands](safeboot.md)
-* [Source](https://github.com/osresesearch/safeboot)
+* [Source code](https://github.com/osresearch/safeboot)
 
