@@ -293,7 +293,7 @@ safeboot sip-init
 ```
 
 
-#### Hasing and signing the RO root filesystem
+#### Hashing and signing the RO root filesystem
 
 ![Output of `hash-and-sign` command](images/hash-and-sign.png)
 
