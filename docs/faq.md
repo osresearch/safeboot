@@ -16,8 +16,28 @@ access to the device, as well as limited internal physical access.
 * Adversaries with physical write access to the disk can't change the kernel or initrd on the drive since the signature is checked when they are loaded into RAM.
 * Adversaries with write access to the root filesystem can't change any of the lockdown configuration since their modifications will be detectable by the dmverity hashes.  They can't recompute the hashes since the root is signed by the PK.
 * Run time access to the disk encryption key is prevented by the Linux kernel keyring mechanism, even against an adversary with root access.
-* The Linux lockdown patches prevent a user with root access from loading new kernel modules, modifying the disk image, or poking at raw memory.
-* TODO: prevent external media access, list of modules to not load, etc
+* The Linux lockdown patches in Confidentiality mode prevent a user with root access from loading new kernel modules, modifying the disk image, or poking at raw memory.
+* The default kernel parameter turns on the IOMMU which should protect
+against attacks like Thunderspy as well as some classes of malicious devices
+on the Thunderbolt port or internal Mini-PCIe ports.
+* TODO: prevent external media access, network reconfig, approved list of modules, unapproved modules, etc.
+
+## How does `safeboot` compare to coreboot?
+
+[coreboot](https://coreboot.org) is entirely free software and can
+provide far better control of the boot process, although it is not supported
+on as many modern platforms as UEFI SecureBoot.  If you have a machine
+that supports both coreboot and Bootguard, then you're probably better off
+running it instead.  Once coreboot or UEFI hand off to the Linux kernel,
+the TPM unsealing of the disk encryption key, the dmverity protections
+on the root filesystem and the lockdown patches work the same.
+
+## Does `safeboot` work with AMD cpus?
+
+It has only been tested on the Intel systems with Bootguard.
+The UEFI platform keys and the rest of the lock down *should*
+work with AMD, although AMD's hardware secured boot process hasn't
+been reviewed as extensively as Intel's ME and Bootguard.
 
 ## Why does the TPM unsealing fail often?
 ![TPM with wires soldered to the pins](images/tpm.jpg)
