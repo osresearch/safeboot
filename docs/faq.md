@@ -71,6 +71,7 @@ case; perhaps someone has some zerodays that will give them access...
 
 ## Does it work on the Thinkpad 701c?
 ![Butterfly keyboard animation](https://farm1.staticflickr.com/793/39371776450_a8b0cd4184_o_d.gif)
+
 Unfortunately the wonderful [butterfly keyboard Thinkpad](https://trmm.net/Butterfly)
 predates UEFI by a few years, so it does not have a very secure
 boot process.  The X1 Carbon is a much nicer replacement.
