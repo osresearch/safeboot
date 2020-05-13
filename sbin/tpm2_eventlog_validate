@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+# Parse the yaml output of tpm2_eventlog and create a CSV of
+# the events for easier processing, plus compute the expected
+# PCR values for the log to validate if this is a true log.
+import sys
+from binascii import unhexlify, hexlify
+import hashlib
+from yaml import load, dump
+try:
+	from yaml import CLoader as Loader, CDumper as Dumper
+except ImportError:
+	from yaml import Loader, Dumper
+
+data = load(sys.stdin, Loader=Loader)
+alg = 'sha256'
+hash_len = hashlib.sha256().digest_size
+pcrs = [None for pcr in range(0,32)]
+
+def hash(data):
+	m = hashlib.sha256()
+	m.update(data)
+	return m.digest()
+
+def extend(pcr, hashed):
+	if pcrs[pcr] is None:
+		pcrs[pcr] = bytes(hash_len)
+	pcrs[pcr] = hash(pcrs[pcr] + hashed)
+
+def entry2csv(entry):
+	pcr = entry['PCRIndex']
+	evtype = entry['EventType']
+	if evtype == 'EV_NO_ACTION':
+		return
+	digest = ''
+	parsed = ''
+	
+	for d in entry['Digests']:
+		if d['AlgorithmId'] == alg:
+			digest = d['Digest']
+
+	extend(pcr, unhexlify(bytes(digest, 'utf-8')))
+
+	if evtype == 'EV_EFI_BOOT_SERVICES_APPLICATION':
+		event = entry['Event'][0]
+		parsed = "0x%08x/0x%08x" % (event['ImageLocationInMemory'],event['ImageLengthInMemory'])
+
+	elif evtype == 'EV_EFI_PLATFORM_FIRMWARE_BLOB':
+		event = entry['Event'][0]
+		base = event['BlobBase']
+		length = event['BlobLength']
+		parsed = "0x%08x-0x%08x" % (base, base + length)
+
+	elif evtype == 'EV_EFI_VARIABLE_AUTHORITY' \
+        or   evtype == 'EV_EFI_VARIABLE_BOOT' \
+        or   evtype == 'EV_EFI_VARIABLE_DRIVER_CONFIG':
+		event = entry['Event'][0]
+		data = ''
+		if 'VariableData' in event:
+			data = event['VariableData']
+		parsed = "%s='%s'" % (event['UnicodeName'],data)
+
+	elif evtype == 'EV_EFI_ACTION' \
+	or   evtype == 'EV_EFI_GPT_EVENT' \
+	or   evtype == 'EV_POST_CODE' \
+	or   evtype == 'EV_EFI_HANDOFF_TABLES' :
+		parsed = "'%s'" % (entry['Event'])
+	elif   evtype == 'EV_S_CRTM_VERSION' :
+		s = unhexlify(entry['Event']).decode("utf-16")
+		parsed = "'%s'" % s
+	elif evtype == 'EV_SEPARATOR':
+		parsed = "%d" % (entry['Event'])
+	else:
+		print(entry)
+	print(str(pcr) + "," + digest + "," + evtype + "," + parsed)
+
+for entry in data:
+	try:
+		entry2csv(entry)
+	except:
+		print(entry)
+		raise
+
+print("%s:" % (alg), file=sys.stderr)
+for pcr in range(0,len(pcrs)):
+	if pcrs[pcr] is None:
+		continue
+	print(" %-2d: 0x%s" % (pcr, hexlify(pcrs[pcr]).decode()), file=sys.stderr)
