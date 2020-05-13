@@ -429,7 +429,7 @@ luks-seal() {
 	tpm2_evictcontrol \
 		--object-context "$HANDLE" \
 		>> /tmp/tpm.log \
-	|| die "Unable to remove old TPM key context $HANDLE"
+	|| warn "Unable to remove old TPM key context $HANDLE"
 
 	tpm2_evictcontrol \
 		--object-context "$TMP/key.context" \
