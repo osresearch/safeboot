@@ -2,6 +2,14 @@
 # Parse the yaml output of tpm2_eventlog and create a CSV of
 # the events for easier processing, plus compute the expected
 # PCR values for the log to validate if this is a true log.
+#
+# Usage:
+# sudo cat /sys/kernel/security/tpm0/binary_bios_measurements > /tmp/tpm.log
+# tpm2_eventlog /tmp/tpm.log | tpm2_eventlog_validate
+#
+# compare pcr results to output of
+#
+#  tpm2_pcrread sha256
 import sys
 from binascii import unhexlify, hexlify
 import hashlib
@@ -14,7 +22,7 @@ except ImportError:
 data = load(sys.stdin, Loader=Loader)
 alg = 'sha256'
 hash_len = hashlib.sha256().digest_size
-pcrs = [None for pcr in range(0,32)]
+pcrs = [None for pcr in range(0,24)]
 
 def hash(data):
 	m = hashlib.sha256()
@@ -64,13 +72,21 @@ def entry2csv(entry):
 	or   evtype == 'EV_POST_CODE' \
 	or   evtype == 'EV_EFI_HANDOFF_TABLES' :
 		parsed = "'%s'" % (entry['Event'])
+
 	elif   evtype == 'EV_S_CRTM_VERSION' :
 		s = unhexlify(entry['Event']).decode("utf-16")
 		parsed = "'%s'" % s
+
+	elif   evtype == 'EV_IPL' :
+		s = unhexlify(entry['Event']).decode("utf-8")
+		parsed = "'%s'" % s
+
 	elif evtype == 'EV_SEPARATOR':
 		parsed = "%d" % (entry['Event'])
+
 	else:
-		print(entry)
+		raise ValueError("Unknown event type: %s" % (evtype))
+
 	print(str(pcr) + "," + digest + "," + evtype + "," + parsed)
 
 for entry in data:
