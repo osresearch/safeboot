@@ -22,3 +22,4 @@ copy_exec /usr/bin/tpm2_unseal
 copy_exec /usr/bin/tpm2_pcrread
 copy_exec /usr/bin/tpm2_pcrextend
 copy_exec /lib/x86_64-linux-gnu/libtss2-tcti-device.so.0
+copy_exec /usr/bin/tpm2-totp

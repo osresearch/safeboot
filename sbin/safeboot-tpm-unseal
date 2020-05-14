@@ -74,6 +74,14 @@ else
 	log "Falling back to user pass phrase"
 	/usr/bin/tpm2_pcrextend >&2 $BOOTMODE_PCR:sha256=`sha256 bootfail`
 
-	/lib/cryptsetup/askpass \
-		"TPM Unsealing failed! Enter recovery key for $CRYPTTAB_SOURCE ($CRYPTTAB_NAME): "
+	# retrieve a tpmtotp attestation so that the user knows
+	# that the firmware is unmodified and that it is safe to
+	# enter their credentials.
+	# TODO: should a PCR be extended so that this will only work
+	# during boot?
+	totp="$(usr/bin/tpm2-totp --time calculate || echo TPM TOTP FAILED)"
+	msg="$totp
+Enter recovery key for $CRYPTTAB_SOURCE ($CRYPTTAB_NAME): "
+
+	/lib/cryptsetup/askpass "$msg"
 fi

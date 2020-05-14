@@ -1,7 +1,8 @@
-VERSION ?= 0.4
+VERSION ?= 0.5
 
 BINS += bin/sbsign.safeboot
 BINS += bin/sign-efi-sig-list.safeboot
+BINS += bin/tpm2-totp
 
 all: $(BINS)
 
@@ -9,6 +10,7 @@ all: $(BINS)
 # sbsign needs to be built from a patched version to avoid a
 # segfault when using the PKCS11 engine to talk to the Yubikey.
 #
+SUBMODULES += sbsigntools
 bin/sbsign.safeboot: sbsigntools/Makefile
 	$(MAKE) -C $(dir $<)
 	mkdir -p $(dir $@)
@@ -22,12 +24,25 @@ sbsigntools/autogen.sh:
 # sign-efi-sig-list needs to be built from source to have support for
 # the PKCS11 engine to talk to the Yubikey.
 #
+SUBMODULES += efitools
 bin/sign-efi-sig-list.safeboot: efitools/Makefile
 	$(MAKE) -C $(dir $<) sign-efi-sig-list
 	mkdir -p $(dir $@)
 	cp $(dir $<)sign-efi-sig-list $@
 efitools/Makefile:
 	git submodule update --init efitools
+
+#
+# tpm2-totp is build from a branch with hostname support
+#
+SUBMODULES += tpm2-totp
+bin/tpm2-totp: tpm2-totp/Makefile
+	$(MAKE) -C $(dir $<)
+	mkdir -p $(dir $@)
+	cp $(dir $<)/tpm2-totp $@
+tpm2-totp/Makefile:
+	git submodule update --init tpm2-totp
+	cd $(dir $@) ; ./bootstrap && ./configure
 
 
 #
@@ -54,8 +69,8 @@ requirements:
 
 # Remove the temporary files
 clean:
-	rm -rf bin efitools sbsigntools
-	mkdir efitools sbsigntools
+	rm -rf bin $(SUBMODULES)
+	mkdir $(SUBMODULES)
 	git submodule update --init --recursive --recommend-shallow 
 
 # Regenerate the source file

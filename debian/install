@@ -6,9 +6,10 @@ sbin/safeboot-tpm-unseal	usr/sbin/
 safeboot.conf			etc/safeboot/
 
 # Compiled with modifications from source
-# to add support for the pkcs11 engine
+# to add support for the pkcs11 engine and small qrcodes
 bin/sbsign.safeboot		usr/sbin/
 bin/sign-efi-sig-list.safeboot	usr/sbin/
+bin/tpm2-totp			usr/bin/
 
 # scripts to interface with secure boot in the initramfs
 initramfs/hooks/dmverity-root	etc/initramfs-tools/hooks/
