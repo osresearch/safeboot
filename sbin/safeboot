@@ -691,10 +691,10 @@ recovery-sign()
 	fi
 			
 	sign-kernel "${RECOVERY_TARGET}" \
-		$LINUX_COMMANDLINE \
+		$REOCVERY_COMMANDLINE \
 		root=${ROOTDEV} \
 		$ROOT_ARGS \
-		tpm.mode=${TARGET} \
+		tpm.mode=${RECOVERY_TARGET} \
 		"$@" \
 	|| die "Kernel signing failed!"
 }
@@ -858,7 +858,7 @@ you can unwind the changes that were made.
 
 		warn "Adding /$lv to fstab"
 		echo >> "$PREFIX/etc/fstab" \
-			"/dev/mapper/$vg-$lv /$lv ext4 defaults 0 1" \
+			"/dev/mapper/$vg-$lv /$lv ext4 nosuid,nodev 0 1" \
 		|| die "unable to add /$lv to fstab"
 
 		mkdir -p "/tmp-$lv" \
