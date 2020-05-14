@@ -48,7 +48,8 @@ def entry2csv(entry):
 
 	extend(pcr, unhexlify(bytes(digest, 'utf-8')))
 
-	if evtype == 'EV_EFI_BOOT_SERVICES_APPLICATION':
+	if evtype == 'EV_EFI_BOOT_SERVICES_APPLICATION' \
+	or evtype == 'EV_EFI_BOOT_SERVICES_DRIVER':
 		event = entry['Event'][0]
 		parsed = "0x%08x/0x%08x" % (event['ImageLocationInMemory'],event['ImageLengthInMemory'])
 
