@@ -19,7 +19,7 @@ jobs:
       - name: Install make
         run: apt install -y build-essential
       - name: Install dependencies
-        run: make requirements
+        run: DEBIAN_FRONTEND=noninteractive make requirements
 
       - name: Build package
         run: make package
