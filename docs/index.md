@@ -12,6 +12,10 @@ on normal laptops:
 * **Reducing the attack surface** (by enabling Linux kernel features to enable hardware protection features and to de-privilege the root account)
 * **Protecting the runtime system integrity** (by optionally booting from a read-only root with dmverity and signed root hash)
 
+The [threat model page](threats.md) has more detail about the firmware, kernel,
+and runtime changes, as well as how they help achieve these goals and the threats
+that they help protect against.
+
 ## Why safeboot?
 
 The [slightly more secure Heads firmware](http://osresearch.net)
@@ -36,6 +40,7 @@ attackers, etc. `safeboot` is (an early version of) that tool!
 ## Links
 
 * [Installation Instructions](install.md)
+* [Threat Model](threats.md)
 * [Frequently Asked Questions](faq.md)
 * [`safeboot` subcommands](safeboot.md)
 * [Source code](https://github.com/osresearch/safeboot)

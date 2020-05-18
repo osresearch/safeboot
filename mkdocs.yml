@@ -18,4 +18,5 @@ site_favicon: favicon.ico
 nav:
   - Overview: 'index.md'
   - Installation: 'install.md'
+  - Threat Model: 'threats.md'
   - FAQ: 'faq.md'

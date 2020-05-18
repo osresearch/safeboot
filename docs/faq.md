@@ -6,38 +6,57 @@
 `safeboot` intends to protect the integrity of the boot process and
 runtime integrity of the system against adversaries with external physical
 access to the device, as well as limited internal physical access.
+The assumption is that the attacker can get code execution on the device
+as the user and as root, but does not have access to the signing keys
+or the disk encryption key. The goal is to prevent the attacker from
+exfiltrating data from the device or making persistent changes to the
+system configuration.
 
-* Reprogramming the code in SPI flash is detected by Intel Bootguard's verification of the IBB during boot
-* Writing new platform keys in the SPI flash is detected by measurement of the UEFI configuration into the TPM
-* TPM tampering on the LPC bus is not necessarily detectable by this system; an adversary with unlimited internal physical access can also probe sealed secrets
-(TODO: add TPM PIN for high assurance users)
-* fTPM tampering is out of scope since the ME is the root of all trust in the system
-* Booting from an unauthorized external device is prevented since only PK signed executables will be loaded.
-* Adversaries with physical write access to the disk can't change the kernel or initrd on the drive since the signature is checked when they are loaded into RAM.
-* Adversaries with write access to the root filesystem can't change any of the lockdown configuration since their modifications will be detectable by the dmverity hashes.  They can't recompute the hashes since the root is signed by the PK.
-* Run time access to the disk encryption key is prevented by the Linux kernel keyring mechanism, even against an adversary with root access.
-* The Linux lockdown patches in Confidentiality mode prevent a user with root access from loading new kernel modules, modifying the disk image, or poking at raw memory.
-* The default kernel parameter turns on the IOMMU which should protect
-against attacks like Thunderspy as well as some classes of malicious devices
-on the Thunderbolt port or internal Mini-PCIe ports.
-* TODO: prevent external media access, network reconfig, approved list of modules, unapproved modules, etc.
+More details are in [the threat model page](threats.md).
+
+## How is this better than normal UEFI Secure Boot?
+
+UEFI Secure Boot is sufficient for Microsoft's needs since they are the only
+signing authority for their runtime, while Linux computer owners frequently
+want to compile their own kernel or runtime.  The compromise solution developed
+by Linux distributions has Microsoft sign a ["shim" bootloader](https://mjg59.dreamwidth.org/19448.html) that has its own key management.
+Since most distributions have their keys enrolled with Microsoft, systems that
+have Secure Boot enabled will boot the distribution's ISOs, which might not
+be desirable since it gives an adversary runtime access to the system.
+
+A larger problem is that by default only the Linux kernel is signed, not the
+command line parameters or initrd.  This means that potentially a local attacker can
+launch the kernel with `init=/bin/sh` to drop into a shell, or an attacker with
+root access can add trojan'ed binaries to the initrd to gain persistence.
+By replacing the Platform Key, only images signed by the computer owner will boot.
 
 ## How does `safeboot` compare to coreboot?
+![Installing coreboot requires so much flashing](images/coreboot.jpg)
 
 [coreboot](https://coreboot.org) is entirely free software and can
-provide far better control of the boot process, although it is not supported
-on as many modern platforms as UEFI SecureBoot.  If you have a machine
-that supports both coreboot and Bootguard, then you're probably better off
-running it instead.  Once coreboot or UEFI hand off to the Linux kernel,
-the TPM unsealing of the disk encryption key, the dmverity protections
-on the root filesystem and the lockdown patches work the same.
+provide far better control of the boot process, although it is not
+supported on as many modern platforms as UEFI SecureBoot and requires
+reprogramming the SPI flash on the device.  If you have a machine that
+supports both coreboot and Bootguard, then you're probably better off
+running it instead.  However, be prepared to spend quite a bit of quality
+time with your SPI flash programmer to get it working...
+
+Once coreboot or UEFI hand off to the Linux kernel, the TPM unsealing of
+the disk encryption key, the dmverity protections on the root filesystem
+and the lockdown patches work the same.
 
 ## Does `safeboot` work with AMD cpus?
+![AMD PSP Inside](images/amd.jpg)
 
 It has only been tested on the Intel systems with Bootguard.
 The UEFI platform keys and the rest of the lock down *should*
 work with AMD, although AMD's hardware secured boot process hasn't
 been reviewed as extensively as Intel's ME and Bootguard.
+
+For an indepth analysis of the AMD Platform Support Processor (PSP)
+and SEV, [Buhren, Eichner and Werling's 35c3 presentation](https://media.ccc.de/v/36c3-10942-uncover_understand_own_-_regaining_control_over_your_amd_cpu)
+is the most detailed look so far.
+
 
 ## Why does the TPM unsealing fail often?
 ![TPM with wires soldered to the pins](images/tpm.jpg)
@@ -52,13 +71,6 @@ and decrypt the disk with the recovery password.  Once decrypted,
 you can run `safeboot remount` to unlock the raw device and remount
 it `rw`.  After making modifications, it is necessary to sign
 the new root hashes with `safeboot linux-sign`.
-
-## What happens if I lose the signing key?
-The best solution is to authenticate with the supervisor password
-to the UEFI Setup, re-enter SecureBoot setup mode and clear the key
-database, then boot into recovery mode and follow the instructions
-for switching to a new signing key.  If you don't have the
-UEFI Supervisor password, well, then you're in trouble.
 
 ## How do I switch to a new signing key?
 There is probably a way to sign a new PK with the old PK, but I haven't
@@ -75,11 +87,25 @@ Answer "`y`" to overwrite the existing one in `/etc/safeboot/cert.pem`.
 * Reboot into the normal kernel
 * `safeboot luks-seal` to measure the new PCRs and normal kernel into the TPM
 
+## What happens if I lose the signing key?
+The best solution is to authenticate with the supervisor password
+to the UEFI Setup, re-enter SecureBoot setup mode and clear the key
+database, then boot into recovery mode and follow the instructions
+for switching to a new signing key.  If you don't have the
+UEFI Supervisor password, well, then you're in trouble.
+
 ## Is it possible to reset the UEFI or BIOS password?
+![EC block diagram from Matrosov presentation](images/ec.png)
+
 On modern Thinkpads the UEFI password is in the EC, not in the
-SPI flash.  Lenovo does a mainboard swap to reset it, or you need a
-Bootguard bypass to get into Setup in that case; perhaps someone has
-some zerodays that gives them access...
+SPI flash.  Lenovo does a mainboard swap to reset it; you could find
+a [EC bypass](https://medium.com/@matrosov/breaking-through-another-side-bypassing-firmware-security-boundaries-85807d3fe604)(Matrosov 2019)
+or perhaps a [Bootguard bypass](https://pbx.sh/efitoctou/)(Bosch & Hudson, 2019)
+to get into Setup in that case.
+
+[Matrosov's 2019 BlackHat Talk](https://www.blackhat.com/us-19/briefings/schedule/index.html#breaking-through-another-side-bypassing-firmware-security-boundaries-from-embedded-controller-15902)
+is a deep dive into the Lenovo EC and why it is not as much of a protection boundary
+as some vendors think it is.
 
 ## Does it work on the Thinkpad 701c?
 ![Butterfly keyboard animation](https://farm1.staticflickr.com/793/39371776450_a8b0cd4184_o_d.gif)
