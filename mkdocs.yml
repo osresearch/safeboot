@@ -6,8 +6,7 @@ theme:
   custom_dir: docs/custom/
   logo: images/logo.png
   palette:
-    primary: indigo
-    accent: purple
+    scheme: slate
 extra_css: [extra.css]
 markdown_extensions:
   - admonition
