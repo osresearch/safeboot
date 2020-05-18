@@ -49,6 +49,7 @@ tpm2-totp/Makefile:
 # Extra package building requirements
 #
 requirements:
+	DEBIAN_FRONTEND=noninteractive \
 	apt install -y \
 		devscripts \
 		debhelper \
@@ -63,9 +64,11 @@ requirements:
 		build-essential \
 		binutils-dev \
 		git \
+		pkg-config \
 		automake \
 		autoconf \
 		autoconf-archive \
+		initramfs-tools \
 		help2man \
 		libssl-dev \
 		uuid-dev \
