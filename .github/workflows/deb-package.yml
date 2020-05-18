@@ -7,7 +7,8 @@ on:
 jobs:
   build:
     name: Build package
-    runs-on: ubuntu-latest
+    container:
+      image: 'ubuntu:20.04'
     steps:
       - name: Checkout master
         uses: actions/checkout@v1
