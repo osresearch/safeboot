@@ -627,9 +627,13 @@ linux-sign()
 
 	if [ "$SIP" == 1 ]; then
 		if mount | grep "${ROOTDEV}" ; then \
-			warn "$ROOTDEV: unmounting and checking"
-			mount -o ro,noatime,remount "${ROOTDEV}" ; \
-			fsck.ext4 -f "${ROOTDEV}"
+			remount_ro "$ROOTDEV" \
+				|| die "${ROOTDEV}: Could not remount"
+			fsck.ext4 -f "${ROOTDEV}" \
+				|| die "${ROOTDEV}: Could not fsck"
+			warn "${ROOTDEV}: setting block dev readonly"
+			blockdev --setro "${ROOTDEV}" \
+				|| die "${ROOTDEV}: Could not set read-only"
 		fi
 
 		if [ ! -z "$HASH" ]; then
@@ -742,13 +746,32 @@ recovery-reboot()
 	reboot
 }
 
+
+remount_ro()
+{
+	DEV="${1:-${ROOTDEV}}"
+
+	warn "${DEV}: remounting read-only"
+
+	mount -o ro,noatime,remount "${DEV}" \
+	&& return 0
+
+	warn "${DEV}: something blocked remount. Likely processes:"
+	lsof +f -- "${DEV}" 2>&- \
+		| awk '$4 == "DEL" || $4 ~ /[0-9][uw]$/ { print $2, $1, $3, "("$4")" }'
+	return 1
+}
+
+
 remount_usage="
-## safeboot remount
+## safeboot remount [ro]
 
   Attempt to remount the root filesystem read/write.
   If SIP is enabled this will likely invalidate any hashes
   and require a re-signing of the root filesystem.
-  
+
+  If 'ro' is specified, then the file system will be re-mounted read-only
+  If there are processes blocking the remount, they will be listed.
 "
 usage+=$remount_usage
 commands+="|remount"
@@ -756,6 +779,13 @@ commands+="|remount"
 remount()
 {
 	show_help "$1" "$remount_usage"
+
+	if [ "$1" == "ro" ]; then
+		remount_ro "${ROOTDEV}"
+		exit $?
+	elif [ "$1" != "" ]; then
+		die "Unexpected argument.$remount_usage"
+	fi
 
 	blockdev --setrw "${ROOTDEV}" \
 	|| die "${ROOTDEV}: Unable to mark as read-write"
