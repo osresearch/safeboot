@@ -185,8 +185,9 @@ magic sysctl isn't allowed to do it.
 mounting filesystems with SUID binaries.  The `/etc/fstab` entries for `/home`
 and `/var` are configured to not allow such executables.
 
-
 ### Todo
+
+* TODO: rollback attacks; how to use TPM counters to prevent them
 
 * TODO: Document rebuilding the kernel
 
@@ -197,3 +198,9 @@ and `/var` are configured to not allow such executables.
 * TODO: SELinux config
 
 * TODO: qubes/secureview separation
+
+* TODO: /home encryption
+
+* TODO: TPM PIN
+
+* TODO: tpm-totp
