@@ -4,3 +4,7 @@
 [submodule "efitools"]
 	path = efitools
 	url = https://git.kernel.org/pub/scm/linux/kernel/git/jejb/efitools.git
+[submodule "tpm2-totp"]
+	path = tpm2-totp
+	url = https://github.com/osresearch/tpm2-totp
+	branch = static-link
