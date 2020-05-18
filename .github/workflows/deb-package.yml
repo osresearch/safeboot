@@ -1,0 +1,16 @@
+name: Build debain package
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    name: Build package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v1
+
+      - name: Build package
+        run: make package
