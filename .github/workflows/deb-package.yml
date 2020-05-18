@@ -1,4 +1,4 @@
-name: Build debain package
+name: Build Debian package on ubuntu 20.04
 on:
   push:
     branches:
@@ -14,6 +14,8 @@ jobs:
       - name: Checkout master
         uses: actions/checkout@v1
 
+      - name: Update image
+        run: apt update
       - name: Install make
         run: apt install build-essential
       - name: Install dependencies
