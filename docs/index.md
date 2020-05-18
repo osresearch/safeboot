@@ -40,3 +40,8 @@ attackers, etc. `safeboot` is (an early version of) that tool!
 * [`safeboot` subcommands](safeboot.md)
 * [Source code](https://github.com/osresearch/safeboot)
 
+## Status
+
+![Build Debian package on ubuntu 20.04](https://github.com/osresearch/safeboot/workflows/Build%20Debian%20package%20on%20ubuntu%2020.04/badge.svg)
+
+![Publish mkdocs via GitHub Pages](https://github.com/osresearch/safeboot/workflows/Publish%20mkdocs%20via%20GitHub%20Pages/badge.svg)

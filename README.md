@@ -1,3 +1,5 @@
+![Build Debian package on ubuntu 20.04](https://github.com/osresearch/safeboot/workflows/Build%20Debian%20package%20on%20ubuntu%2020.04/badge.svg)![Publish mkdocs via GitHub Pages](https://github.com/osresearch/safeboot/workflows/Publish%20mkdocs%20via%20GitHub%20Pages/badge.svg)
+
 # Safe Boot: Booting Linux Safely
 
 Safe Boot has four goals to improve the safety of booting Linux
