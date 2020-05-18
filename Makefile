@@ -53,6 +53,8 @@ requirements:
 		devscripts \
 		debhelper \
 		tpm2-tools \
+		libqrencode-dev \
+		libtss2-dev \
 		efitools \
 		gnu-efi \
 		opensc \
