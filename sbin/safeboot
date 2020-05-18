@@ -16,6 +16,9 @@ export LC_ALL=C
 if [ -r "$PREFIX$DIR/safeboot.conf" ]; then
 	. $PREFIX$DIR/safeboot.conf
 fi
+if [ -r "$PREFIX$DIR/local.conf" ]; then
+	. $PREFIX$DIR/local.conf
+fi
 
 # Apply $PREFIX to files and use default value
 CERT=$PREFIX${CERT:-$DIR/cert.pem}
@@ -113,9 +116,11 @@ key-init() {
 	subject=$1
 
 	if [ "$KEY" == "pkcs11:" ]; then
-		warn "\$KEY=pkcs11:; replacing in safeboot.conf"
-		sed -i.orig 's!KEY="pkcs11:"$!KEY="/etc/safeboot/signing.key"!' \
-			$PREFIX$DIR/safeboot.conf \
+		warn "\$KEY=pkcs11:; updating in local.conf"
+		( \
+		echo "# Added by key-init" ; \
+		echo "KEY=$DIR/signing.key" ; \
+		) >> "$PREFIX$DIR/local.conf" \
 		|| die "Unable to update safeboot.conf"
 		KEY="$PREFIX$DIR/signing.key"
 	fi
@@ -176,7 +181,13 @@ yubikey-init() {
 	subject=$1
 
 	if [ "$KEY" != "pkcs11:" ]; then
-		die "\$KEY != pkcs11: use key-init"
+		warn "Adding KEY=pkcs11: to local.conf"
+		( \
+		echo '# Added by yubikey-init' ; \
+		echo 'KEY="pkcs11:"' ; \
+		) >> $PREFIX$DIR/local.conf \
+		|| die "$PREFIX$DIR/local.conf: Unable to append"
+		KEY="pkcs11:"
 	fi
 
 	if [ -r "$CERT" ]; then
@@ -887,7 +898,11 @@ you can unwind the changes that were made.
 	|| die "/tmp: unable to create symlink"
 
 	if [ "$SIP" != 1 ]; then
-		sed -i.orig 's/^SIP=0$/SIP=1/' $PREFIX$DIR/safeboot.conf \
+		warn "Adding SIP=1 to local.conf"
+		( \
+		echo "# Added by sip-init" ; \
+		echo "SIP=1" ; \
+		) >> "$PREFIX$DIR/local.conf" \
 		|| die "$PREFIX$DIR/safeboot.conf: unable to enable SIP?"
 	fi
 
