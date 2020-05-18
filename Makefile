@@ -64,6 +64,8 @@ requirements:
 		binutils-dev \
 		git \
 		automake \
+		autoconf \
+		autoconf-archive \
 		help2man \
 		libssl-dev \
 		uuid-dev \
