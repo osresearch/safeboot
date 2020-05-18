@@ -14,8 +14,9 @@ jobs:
       - name: Checkout master
         uses: actions/checkout@v1
 
-      - name: Install dependencies
+      - name: Install make
         run: apt install make
+      - name: Install dependencies
         run: make requirements
 
       - name: Build package
