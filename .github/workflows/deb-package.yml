@@ -17,7 +17,7 @@ jobs:
       - name: Update image
         run: apt update
       - name: Install make
-        run: apt install build-essential
+        run: apt install -y build-essential
       - name: Install dependencies
         run: make requirements
 
