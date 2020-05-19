@@ -89,4 +89,5 @@ tar: clean
 
 package: tar
 	debuild -uc -us
+	cp ../safeboot_$(VERSION)_amd64.deb safeboot-unstable.deb
 

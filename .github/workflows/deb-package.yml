@@ -23,3 +23,9 @@ jobs:
 
       - name: Build package
         run: make package
+
+      - name: Upload debian package
+        uses: actions/upload-artifact@v2
+        with:
+          name: debian-package
+          path: safeboot-unstable.deb
