@@ -118,6 +118,17 @@ much longer internal access.
 An adversary with code execution on the ME is able to bypass all of the other
 protections.
 
+* ["Coldboot" attacks on the memory](https://en.wikipedia.org/wiki/Cold_boot_attack)
+allow an adversary to cool the DRAM on a running or sleeping system to slow the
+decay of its contents.  In one variant of the attack, they then trigger a reboot and
+boot into their own kernel that dumps the memory to look for secrets; this attack
+is prevented by requiring valid signatures on any kernel.  In another variant,
+the attacker removes the physical DRAM chips and install them into a new system
+that is configured to not clear the memory on power up.  This is is not easily
+doable on the X1 since all of the RAM is soldered onto mainboard, but is possible
+on the T490 since it has some of its memory on a DIMM.
+TODO: Can Linux restrict the keys to the hard soldered chips?
+
 ### Physical software attacks
 
 * Modifying the unencrypted kernel or initrd on `/boot` or attempting to pass in
