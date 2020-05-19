@@ -40,6 +40,7 @@ setup instructions include:
 * Adding `usb-storage` and other external media to the kernel module deny list
 
 ### Todo
+* TODO: Flush encryption keys during sleep
 * TODO: VPN config
 * TODO: Prevent network reconfiguration
 * TODO: Device VM separation
@@ -117,6 +118,21 @@ much longer internal access.
 * fTPM tampering is out of scope since the ME is the root of all trust in the system
 An adversary with code execution on the ME is able to bypass all of the other
 protections.
+
+* ["Coldboot" attacks on the memory](https://en.wikipedia.org/wiki/Cold_boot_attack)
+allow an adversary to cool the DRAM on a running or sleeping system to slow the
+decay of its contents.  In one variant of the attack, they then trigger a reboot and
+boot into their own kernel that dumps the memory to look for secrets; this attack
+is prevented by requiring valid signatures on any kernel.  In another variant,
+the attacker removes the physical DRAM chips and install them into a new system
+that is configured to not clear the memory on power up.  This is is not easily
+doable on the X1 since all of the RAM is soldered onto mainboard, but is possible
+on the T490 since it has some of its memory on a DIMM.
+TODO: Can Linux restrict the keys to the hard soldered chips?
+
+* The encryption keys are stored in RAM even while the system is asleep, which makes
+the potentially available to an attacker with certain resources; it would
+be worthwhile to consider flushing them prior to entering S3 suspend.
 
 ### Physical software attacks
 

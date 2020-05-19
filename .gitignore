@@ -13,3 +13,5 @@ debian/debhelper-build-stamp
 debian/files
 debian/*.substvars
 debian/safeboot
+*.o
+a.out

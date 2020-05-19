@@ -25,16 +25,16 @@ Releases for the the safeboot Debian package are in [safeboot/releases](https://
 * Resizing '/' to 8GB during the install if you want to enable SIP
 
 ```
-wget https://github.com/osresearch/safeboot/releases/download/release-0.4/safeboot_0.4_amd64.deb`
-sudo apt install safeboot_0.4_amd64.deb`
+wget https://github.com/osresearch/safeboot/releases/download/release-0.4/safeboot_0.4_amd64.deb
+sudo apt install safeboot_0.4_amd64.deb
 sudo safeboot yubikey-init /CN=foo/ # or safeboot key-init if you don't have a token
 sudo safeboot uefi-key-sign
 sudo safeboot recovery-sign
 sudo safeboot recovery-reboot
 
 # Should reboot into the recovery image. Login as usual.
-sudo safeboot luks-seal`
-sudo update-initramfs -u`
+sudo safeboot luks-seal
+sudo update-initramfs -u
 sudo safeboot sip-init # if you want to enable SIP mode
 sudo safeboot recovery-sign
 sudo safeboot recovery-reboot
@@ -47,6 +47,7 @@ sudo reboot
 sudo safeboot luks-seal
 sudo reboot
 ```
+
 After this final reboot, the UEFI SecureBoot database will have the
 public signing keys, the UEFI boot manager will have entries for `linux`
 (which boots with a read-only dmverity protected root filesystem)
@@ -245,12 +246,12 @@ own keys to the UEFI key database.  (Subject to various CVE's and TOCTOUs, etc)
 -----
 
 ### System Integrity Protection mode
-![`dmverity` merkle tree diagram](images/dmverity.jpg)
+![`dmverity` merkle tree diagram](images/dmverity.png)
 
 !!! note
     The "SIP" mode is optional and ensures that even an attacker with root
     priviledges can't make persistent changes to the contents of the root
-    filesystem. It uses the same dmverity as Android's verified boot mode.
+    filesystem. It uses the same dmverity as [Android's verified boot mode](https://source.android.com/security/verifiedboot/dm-verity).
 
 The root of the dm-verity Merkle-tree is passed to the kernel as part of the
 signed command line, ensuring that an attacker can't change anything
