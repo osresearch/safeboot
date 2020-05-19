@@ -1,0 +1,46 @@
+#!/bin/bash
+# Create a filesystem, generate hashes for it, mount it, then corrupt it
+set -e -o pipefail
+export LC_ALL=C
+die() { echo "--- $@" >&2 ; dmesg | tail ; exit 1 ; }
+warn() { echo "$@" >&2 ; }
+
+cleanup() {
+	umount $TMP/root || warn "umount root failed!"
+	umount $TMP/ro || warn "umount ro failed!"
+	warn closing
+	veritysetup close test-root || warn "verity close failed!"
+        rm -rf "$TMP" || warn "clean up failed!"
+}
+
+TMP=`mktemp -d`
+trap cleanup EXIT
+mkdir $TMP/root $TMP/ro
+
+dd if=/dev/zero of=$TMP/fs.img bs=1M count=16 || die "dd failed"
+mkfs.ext4 -b 4096 $TMP/fs.img || die "mkfs failed"
+mount -o rw,noatime $TMP/fs.img $TMP/root || die "mount normal failed"
+echo "hello, world" > $TMP/root/hello || die "echo failed"
+mount -o ro,noatime,remount $TMP/fs.img $TMP/root || die "remount ro failed"
+
+veritysetup --debug format $TMP/fs.img $TMP/hashes.bin | tee $TMP/verity.log || die "veritysetup format failed"
+
+HASH="`awk '/Root hash:/ { print $3 }' $TMP/verity.log`"
+if [ -z "$HASH" ]; then
+	die "root hash failed"
+fi
+
+veritysetup open $TMP/fs.img test-root $TMP/hashes.bin $HASH || die "veritysetup open failed"
+mount -o ro,noatime /dev/mapper/test-root $TMP/ro || die "mount verity failed"
+
+cat $TMP/ro/hello || die "hello failed"
+
+warn "---- about to cause an error ----"
+sleep 2
+
+mount -o rw,remount $TMP/root
+echo "evil stuff" > $TMP/root/hello
+sync ; sync ; sync
+mount -o ro,remount $TMP/root
+
+cat $TMP/ro/hello || die "hello failed"
