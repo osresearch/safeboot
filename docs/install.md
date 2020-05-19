@@ -245,12 +245,12 @@ own keys to the UEFI key database.  (Subject to various CVE's and TOCTOUs, etc)
 -----
 
 ### System Integrity Protection mode
-![`dmverity` merkle tree diagram](images/dmverity.jpg)
+![`dmverity` merkle tree diagram](images/dmverity.png)
 
 !!! note
     The "SIP" mode is optional and ensures that even an attacker with root
     priviledges can't make persistent changes to the contents of the root
-    filesystem. It uses the same dmverity as Android's verified boot mode.
+    filesystem. It uses the same dmverity as [Android's verified boot mode](https://source.android.com/security/verifiedboot/dm-verity).
 
 The root of the dm-verity Merkle-tree is passed to the kernel as part of the
 signed command line, ensuring that an attacker can't change anything
