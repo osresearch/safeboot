@@ -626,14 +626,9 @@ linux-sign()
 	TARGET=${1:-${LINUX_TARGET}}
 
 	if [ "$SIP" == 1 ]; then
-		if mount | grep "${ROOTDEV}" ; then \
+		if mount | grep "^${ROOTDEV} " ; then \
 			remount_ro "$ROOTDEV" \
 				|| die "${ROOTDEV}: Could not remount"
-			fsck.ext4 -f "${ROOTDEV}" \
-				|| die "${ROOTDEV}: Could not fsck"
-			warn "${ROOTDEV}: setting block dev readonly"
-			blockdev --setro "${ROOTDEV}" \
-				|| die "${ROOTDEV}: Could not set read-only"
 		fi
 
 		if [ ! -z "$HASH" ]; then
@@ -753,8 +748,21 @@ remount_ro()
 
 	warn "${DEV}: remounting read-only"
 
-	mount -o ro,noatime,remount "${DEV}" \
-	&& return 0
+	if mount -o ro,noatime,remount "${DEV}" ; then
+
+		warn "${DEV}: checking for fsck need"
+		if ! fsck -n "${DEV}" ; then
+			warn "${DEV}: UNCLEAN. fsck!"
+			fsck.ext4 -f "${DEV}" \
+				|| die "${DEV}: Could not fsck"
+		fi
+
+		warn "${DEV}: setting block dev readonly"
+		blockdev --setro "${DEV}" \
+			|| die "${DEV}: Could not set read-only"
+
+		return 0
+	fi
 
 	warn "${DEV}: something blocked remount. Likely processes:"
 	lsof +f -- "${DEV}" 2>&- \
