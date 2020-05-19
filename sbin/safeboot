@@ -576,14 +576,22 @@ sign-kernel() {
 		"$TMP/linux.efi" \
 	|| die "linux.efi: unable to create"
 
-	warn "$OUTDIR/linux.efi: Signing (ignore warnings about gaps)"
-	sbsign.safeboot \
-		$KEY_ENGINE \
-		--key "$KEY" \
-		--cert "$CERT" \
-		--output "$OUTDIR/linux.efi.new" \
-		"$TMP/linux.efi" \
-	|| die "$OUTDIR/linux.efi: Unable to sign"
+	for try in 1 2 3 ; do
+		warn "$OUTDIR/linux.efi: Signing (ignore warnings about gaps)"
+		sbsign.safeboot \
+			$KEY_ENGINE \
+			--key "$KEY" \
+			--cert "$CERT" \
+			--output "$OUTDIR/linux.efi.new" \
+			"$TMP/linux.efi" \
+		&& break
+
+		if [ "$try" == 3 ]; then
+			die "$OUTDIR/linux.efi: failed after $try tries"
+		fi
+
+		warn "$OUTDIR/linux.efi: signature failed! Try $try."
+	done
 
 	# Duplicate the old image and atomically move the new kernel
 	# image to avoid potentially leaving an unbootable system
