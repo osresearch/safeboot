@@ -40,6 +40,7 @@ setup instructions include:
 * Adding `usb-storage` and other external media to the kernel module deny list
 
 ### Todo
+* TODO: Flush encryption keys during sleep
 * TODO: VPN config
 * TODO: Prevent network reconfiguration
 * TODO: Device VM separation
@@ -128,6 +129,10 @@ that is configured to not clear the memory on power up.  This is is not easily
 doable on the X1 since all of the RAM is soldered onto mainboard, but is possible
 on the T490 since it has some of its memory on a DIMM.
 TODO: Can Linux restrict the keys to the hard soldered chips?
+
+* The encryption keys are stored in RAM even while the system is asleep, which makes
+the potentially available to an attacker with certain resources; it would
+be worthwhile to consider flushing them prior to entering S3 suspend.
 
 ### Physical software attacks
 
