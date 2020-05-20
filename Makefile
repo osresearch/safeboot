@@ -72,6 +72,7 @@ requirements:
 		help2man \
 		libssl-dev \
 		uuid-dev \
+		shellcheck \
 
 
 # Remove the temporary files
