@@ -642,14 +642,22 @@ sign-kernel() {
 		"$TMP/linux.efi" \
 	|| die "linux.efi: unable to create"
 
-	warn "$OUTDIR/linux.efi: Signing (ignore warnings about gaps)"
-	sbsign.safeboot \
-		$KEY_ENGINE \
-		--key "$KEY" \
-		--cert "$CERT" \
-		--output "$OUTDIR/linux.efi.new" \
-		"$TMP/linux.efi" \
-	|| die "$OUTDIR/linux.efi: Unable to sign"
+	for try in 1 2 3 ; do
+		warn "$OUTDIR/linux.efi: Signing (ignore warnings about gaps)"
+		sbsign.safeboot \
+			$KEY_ENGINE \
+			--key "$KEY" \
+			--cert "$CERT" \
+			--output "$OUTDIR/linux.efi.new" \
+			"$TMP/linux.efi" \
+		&& break
+
+		if [ "$try" == 3 ]; then
+			die "$OUTDIR/linux.efi: failed after $try tries"
+		fi
+
+		warn "$OUTDIR/linux.efi: signature failed! Try $try."
+	done
 
 	# Duplicate the old image and atomically move the new kernel
 	# image to avoid potentially leaving an unbootable system
@@ -709,14 +717,9 @@ linux-sign()
 	fi
 
 	if [ "$SIP" == 1 ]; then
-		if mount | grep "${ROOTDEV}" ; then \
+		if mount | grep "^${ROOTDEV} " ; then \
 			remount_ro "$ROOTDEV" \
 				|| die "${ROOTDEV}: Could not remount"
-			fsck.ext4 -f "${ROOTDEV}" \
-				|| die "${ROOTDEV}: Could not fsck"
-			warn "${ROOTDEV}: setting block dev readonly"
-			blockdev --setro "${ROOTDEV}" \
-				|| die "${ROOTDEV}: Could not set read-only"
 		fi
 
 		if [ ! -z "$HASH" ]; then
@@ -870,8 +873,21 @@ remount_ro()
 
 	warn "${DEV}: remounting read-only"
 
-	mount -o ro,noatime,remount "${DEV}" \
-	&& return 0
+	if mount -o ro,noatime,remount "${DEV}" ; then
+
+		warn "${DEV}: checking for fsck need"
+		if ! fsck -n "${DEV}" ; then
+			warn "${DEV}: UNCLEAN. fsck!"
+			fsck.ext4 -f "${DEV}" \
+				|| die "${DEV}: Could not fsck"
+		fi
+
+		warn "${DEV}: setting block dev readonly"
+		blockdev --setro "${DEV}" \
+			|| die "${DEV}: Could not set read-only"
+
+		return 0
+	fi
 
 	warn "${DEV}: something blocked remount. Likely processes:"
 	lsof +f -- "${DEV}" 2>&- \
