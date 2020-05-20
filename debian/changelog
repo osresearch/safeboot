@@ -1,4 +1,15 @@
-safeboot (0.5) UNRELEASED; urgency=medium
+safeboot (0.6) unstable; urgency=medium
+
+  * Lots of documentation updates
+  * Documentation updated to markdown format
+  * safeboot and safeboot-tpm-unseal pass shellcheck
+  * 'remount ro' now provides help finding processes with locks
+  * 'remount ro' handles block devices that are already read-only
+  * 'sign-kernel' tries three times
+
+ -- Trammell Hudson <hudson@unicycle>  Wed, 20 May 2020 23:07:27 +0200
+
+safeboot (0.5) unstable; urgency=medium
 
   * Added tpm2-totp to attest that the firmware is unmodified
   * Fixed many small bugs
