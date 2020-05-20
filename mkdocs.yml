@@ -18,4 +18,5 @@ nav:
   - Overview: 'index.md'
   - Installation: 'install.md'
   - Threat Model: 'threats.md'
+  - Subcommands: 'safeboot.md'
   - FAQ: 'faq.md'
