@@ -6,6 +6,7 @@ die() { echo "--- $@" >&2 ; dmesg | tail ; exit 1 ; }
 warn() { echo "$@" >&2 ; }
 
 cleanup() {
+	udevadm info -a /dev/mapper/test-rw
 	umount $TMP/rw || warn "umount rw failed!"
 	umount $TMP/ro || warn "umount ro failed!"
 	warn closing
@@ -17,7 +18,7 @@ TMP=`mktemp -d`
 trap cleanup EXIT
 mkdir $TMP/rw $TMP/ro
 
-dd if=/dev/zero of=$TMP/fs.img bs=1M count=1024 || die "dd failed"
+dd if=/dev/zero of=$TMP/fs.img bs=1M count=16 || die "dd failed"
 mkfs.ext4 -b 4096 $TMP/fs.img || die "mkfs failed"
 mount -o rw,noatime $TMP/fs.img $TMP/rw || die "mount normal failed"
 echo "hello, world" > $TMP/rw/hello || die "echo failed"
@@ -39,8 +40,13 @@ sleep 2
 
 mount -o rw,remount $TMP/rw
 echo "evil stuff" > $TMP/rw/hello
+dd if=/dev/urandom bs=8 count=65536 > $TMP/rw/random
+
 sync ; sync ; sync
 mount -o ro,remount $TMP/rw
+sleep 2
+
+udevadm info -a /dev/mapper/test-rw
 
 cat $TMP/rw/hello || die "hello failed"
 
