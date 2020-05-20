@@ -61,7 +61,7 @@ log "TPM mode=$MODE pcrs=$PCRS $BOOTMODE_PCR"
 #
 # Attempt to unseal, outputing the binary key to stdout
 #
-if [ ! -z "$PCRS" ] && /usr/bin/tpm2_unseal \
+if [ -n "$PCRS" ] && /usr/bin/tpm2_unseal \
 	--object-context "$HANDLE" \
 	--auth pcr:"sha256:$PCRS,$BOOTMODE_PCR" \
 ; then

@@ -381,11 +381,11 @@ commands+="|luks-seal"
 luks-seal() {
 	show_help "$1" "$luks_seal_usage"
 
-	if [ ! -z "$1" ]; then
+	if [ -n "$1" ]; then
 		PCRS=$1
 		shift
 	fi
-	if [ ! -z "$1" ]; then
+	if [ -n "$1" ]; then
 		BOOTMODE_PCR=$1
 		shift
 	fi
@@ -712,7 +712,7 @@ linux-sign()
 	show_help "$1" "$linux_sign_usage"
 
 	# default is linux
-	if [ ! -z "$1" ]; then
+	if [ -n "$1" ]; then
 		TARGET=$1
 		shift
 	else
@@ -725,9 +725,9 @@ linux-sign()
 				|| die "${ROOTDEV}: Could not remount"
 		fi
 
-		if [ ! -z "$HASH" ]; then
+		if [ -n "$HASH" ]; then
 			warn "$ROOTDEV: Using hash $HASH"
-		elif [ ! -z "$HASHFILE" ]; then
+		elif [ -n "$HASHFILE" ]; then
 			warn "$ROOTDEV: Using hash file $HASFILE"
 			HASH="$(awk '/Root hash:/ { print $3 }' "$HASHFILE")"
 		else
