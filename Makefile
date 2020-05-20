@@ -91,3 +91,8 @@ package: tar
 	debuild -uc -us
 	cp ../safeboot_$(VERSION)_amd64.deb safeboot-unstable.deb
 
+
+# Run shellcheck on the main script
+check:
+	shellcheck sbin/safeboot
+	shellcheck sbin/safeboot-tpm-unseal

@@ -10,6 +10,8 @@
 #
 # If the unsealing fails, fall back to asking for the user's recovery key.
 #
+# turn off "echo flags are undefined"
+# shellcheck disable=SC2039
 
 # Default is no PCRs, which means do not unseal anything
 PCRS=
@@ -23,7 +25,7 @@ export TPM2TSSENGINE_TCTI="device:/dev/tpmrm0"
 sha256() { echo -n "$@" | sha256sum | cut -d' ' -f1 ; }
 log() { echo >&2 "$@" ; }
 
-
+# shellcheck disable=SC2013
 for arg in $(cat /proc/cmdline)
 do
     case "$arg" in
@@ -53,7 +55,7 @@ log "TPM mode=$MODE pcrs=$PCRS $BOOTMODE_PCR"
 # Extend PCR14 with the boot mode so that recovery
 # boots aren't able to access the sealed disk key.
 #
-/usr/bin/tpm2_pcrextend >&2 $BOOTMODE_PCR:sha256=`sha256 "$MODE"`
+/usr/bin/tpm2_pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 "$MODE")"
 
 
 #
@@ -66,13 +68,13 @@ if [ ! -z "$PCRS" ] && /usr/bin/tpm2_unseal \
 	# ensure that a local attacker can't re-read the key from the TPM
 	# by extending pcr 14 with "postboot"
 	log "TPM disk key unsealed"
-	/usr/bin/tpm2_pcrextend >&2 $BOOTMODE_PCR:sha256=`sha256 postboot`
+	/usr/bin/tpm2_pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 postboot)"
 	exit 0
 else
 	# the key was not unsealed or no PCRs specified;
 	# log the failure and ask the user for the recovery key
 	log "Falling back to user pass phrase"
-	/usr/bin/tpm2_pcrextend >&2 $BOOTMODE_PCR:sha256=`sha256 bootfail`
+	/usr/bin/tpm2_pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 bootfail)"
 
 	# retrieve a tpmtotp attestation so that the user knows
 	# that the firmware is unmodified and that it is safe to

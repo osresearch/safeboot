@@ -7,11 +7,14 @@
 #
 # For more details: https://safeboot.dev/
 #
+# turn off "expressions don't expand in single quotes"
+# and "can't follow non-constant sources"
+# shellcheck disable=SC2016 disable=SC1090
 set -e -o pipefail
 export LC_ALL=C
 
-: ${PREFIX:=}
-: ${DIR:=/etc/safeboot}
+: "${PREFIX:=}"
+: "${DIR:=/etc/safeboot}"
 
 if [ -r "$PREFIX$DIR/safeboot.conf" ]; then
 	. $PREFIX$DIR/safeboot.conf
@@ -36,18 +39,18 @@ else
 fi
 
 # Set the default values for the other parameters
-: ${ROOTDEV:=/dev/mapper/vgubuntu-root}
-: ${HASHDEV:=/dev/mapper/vgubuntu-hashes}
-: ${LINUX_TARGET:=linux}
-: ${RECOVERY_TARGET:=recovery}
-: ${SIP:=0}
-: ${PCRS:=0,2,5,7}
-: ${BOOTMODE_PCR:=14}
-: ${LINUX_COMMANDLINE:=""}
-: ${RECOVERY_COMMANDLINE:=${LINUX_COMMANDLINE}}
+: "${ROOTDEV:=/dev/mapper/vgubuntu-root}"
+: "${HASHDEV:=/dev/mapper/vgubuntu-hashes}"
+: "${LINUX_TARGET:=linux}"
+: "${RECOVERY_TARGET:=recovery}"
+: "${SIP:=0}"
+: "${PCRS:=0,2,5,7}"
+: "${BOOTMODE_PCR:=14}"
+: "${LINUX_COMMANDLINE:=}"
+: "${RECOVERY_COMMANDLINE:=${LINUX_COMMANDLINE}}"
 
 die_msg=""
-die() { echo "$die_msg""$@" >&2 ; exit 1 ; }
+die() { echo "$die_msg""$*" >&2 ; exit 1 ; }
 warn() { echo "$@" >&2 ; }
 debug() { [ "$VERBOSE" == 1 ] && echo "$@" >&2 ; }
 
@@ -59,7 +62,7 @@ cleanup() {
 	rm -rf "$TMP"
 }
 
-TMP=`mktemp -d`
+TMP=$(mktemp -d)
 TMP_MOUNT=n
 trap cleanup EXIT
 
@@ -95,7 +98,7 @@ commands() {
 }
 
 show_help() {
-	if [ "$1" == "-h" -o "$1" == "--help" ]; then
+	if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
 		echo "$2"
 		exit 0
 	fi
@@ -143,7 +146,7 @@ key-init() {
 		KEY="$PREFIX$DIR/signing.key"
 	fi
 	if [ -r "$KEY" ]; then
-		read -p "WARNING: This will erase the existing key $KEY. Are you sure? " really_do_it
+		read -r -p "WARNING: This will erase the existing key $KEY. Are you sure? " really_do_it
 		if [ "$really_do_it" != "y" ]; then
 			die "Not overwriting existing key"
 		fi
@@ -151,7 +154,7 @@ key-init() {
 		warn "$KEY: backing up to $KEY.orig"
 	fi
 
-	mkdir -p "`dirname $KEY`" "`dirname $CERT`"
+	mkdir -p "$(dirname "$KEY")" "$(dirname "$CERT")"
 
 	if [ -r "$KEY" ]; then
 		mv "$KEY" "$KEY.orig" \
@@ -226,7 +229,7 @@ yubikey-init() {
 		|| die "$CERT: unable to make backup"
 	fi
 
-	read -p "WARNING: This will erase any existing key on the yubikey. Are you sure? " really_do_it
+	read -r -p "WARNING: This will erase any existing key on the yubikey. Are you sure? " really_do_it
 	if [ "$really_do_it" != "y" ]; then
 		die "Not overwriting existing key"
 	fi
@@ -287,7 +290,7 @@ uefi-sign-keys() {
 	show_help "$1" "$uefi_sign_keys_usage"
 
 	cert-to-efi-sig-list \
-		-g `uuidgen` \
+		-g "$(uuidgen)" \
 		"$CERT" \
 		"$TMP/cert.esl" \
 	|| die "cert-to-efi-sig-list failed"
@@ -304,13 +307,13 @@ uefi-sign-keys() {
 			$KEY_ENGINE \
 			-k "$KEY" \
 			-c "$CERT" \
-			$key \
-			$TMP/cert.esl \
+			"$key" \
+			"$TMP/cert.esl" \
 			$PREFIX$DIR/$key.auth \
 		|| die "$key: Signing failed"
 	done
 
-	uefi-set-keys
+	uefi-set-keys ""
 }
 
 ########################################
@@ -333,7 +336,7 @@ commands+="|uefi-set-keys"
 
 uefi-set-keys()
 {
-	show_help "$1" $uefi_set_keys_usage
+	show_help "$1" "$uefi_set_keys_usage"
 
 	# The order of update must be from lowest to highest
 	for key in db KEK PK; do
@@ -400,16 +403,16 @@ luks-seal() {
 		warn "!!! $PREFIX/usr/sbin/safeboot is not installed; this will probably not work"
 	fi
 
-	if [ `wc -l < "$PREFIX/etc/crypttab"` -ne 1 ]; then
+	if [ "$(wc -l < "$PREFIX/etc/crypttab")" -ne 1 ]; then
 		die "!!! $PREFIX/etc/crypttab must have only one entry"
 	fi
 
 	# Determine which device is the cryptdisk
-	uuid=`perl -ne '/UUID=(.*?) / && print "$1"' $PREFIX/etc/crypttab`
+	uuid=$(perl -ne '/UUID=(.*?) / && print "$1"' $PREFIX/etc/crypttab)
 	if [ -z "$uuid" ]; then
 		die "Unable to find UUID in crypttab"
 	fi
-	dev=`blkid -U $uuid`
+	dev=$(blkid -U "$uuid")
 	if [ -z "$dev" ]; then
 		die "Unable to find device for uuid $uuid"
 	fi
@@ -444,8 +447,8 @@ luks-seal() {
 	# will only unseal during a normal boot, not a recovery boot.
 	# the unseal script will also extend PCR14 after unsealing
 	# to prevent the TPM from unsealing the secret a second time
-	pcr14=`echo -n "${LINUX_TARGET}" | tpm2_trial_extend $PCR_DEFAULT`
-	warn "mode="${LINUX_TARGET}" PCR$BOOTMODE_PCR=$pcr14"
+	pcr14=$(echo -n "${LINUX_TARGET}" | tpm2_trial_extend $PCR_DEFAULT)
+	warn "mode=${LINUX_TARGET} PCR$BOOTMODE_PCR=$pcr14"
 	echo -n "$pcr14" | hex2bin \
 		>> "$TMP/pcrs.bin"
 	xxd -g1 "$TMP/pcrs.bin"
@@ -532,7 +535,7 @@ luks-seal() {
 
 	# ask for the disk encryption key
 	for tries in 1 2 3 fail; do
-		read -s -p "$dev: Current recovery password: " recovery_key
+		read -r -s -p "$dev: Current recovery password: " recovery_key
 		echo
 		echo -n "$recovery_key" > "$TMP/recovery.key"
 
@@ -586,7 +589,7 @@ sign-kernel() {
 	TARGET="$1" ; shift
 
 	if [ -z "$TARGET" ]; then
-		die $sign_kernel_usage
+		die "$sign_kernel_usage"
 	fi
 
 	OUTDIR="${EFIDIR}/${TARGET}"
@@ -608,7 +611,7 @@ sign-kernel() {
 
 	if ! efibootmgr | grep "^Boot.* $TARGET\$" ; then
 		# determine the device the EFI system partition is on
-		DEV="`df "$OUTDIR" | tail -1 | cut -d' ' -f1`"
+		DEV="$(df "$OUTDIR" | tail -1 | cut -d' ' -f1)"
 
 		warn "$OUTDIR: Creating boot menu item on $DEV"
 		efibootmgr \
@@ -669,7 +672,7 @@ sign-kernel() {
 	mv "$OUTDIR/linux.efi.new" "$OUTDIR/linux.efi" \
 	|| die "$OUTDIR/linux.efi: unable to install new image"
 
-	echo "Kernel commandline: '`cat $TMP/cmdline.txt`'"
+	echo "Kernel commandline: '$(cat "$TMP/cmdline.txt")'"
 	sha256sum "$OUTDIR/linux.efi"
 
 	if [ -r "$TMP/verity.log" ]; then
@@ -726,17 +729,17 @@ linux-sign()
 			warn "$ROOTDEV: Using hash $HASH"
 		elif [ ! -z "$HASHFILE" ]; then
 			warn "$ROOTDEV: Using hash file $HASFILE"
-			HASH="`awk '/Root hash:/ { print $3 }' $HASHFILE`"
+			HASH="$(awk '/Root hash:/ { print $3 }' "$HASHFILE")"
 		else
 			echo "$ROOTDEV: Computing hashes: this will take a while..."
 			veritysetup format \
 				--debug \
 				"${ROOTDEV}" \
 				"${HASHDEV}" \
-				| tee $TMP/verity.log \
+				| tee "$TMP/verity.log" \
 			|| die "$ROOTDEV: unable to compute hashes"
 
-			HASH="`awk '/Root hash:/ { print $3 }' $TMP/verity.log`"
+			HASH="$(awk '/Root hash:/ { print $3 }' "$TMP/verity.log")"
 		fi
 
 		if [ -z "$HASH" ]; then
@@ -758,10 +761,10 @@ linux-sign()
 	fi
 
 	sign-kernel "$TARGET" \
-		$LINUX_COMMANDLINE \
-		$ROOT_ARGS \
-		tpm.pcrs=$PCRS \
-		tpm.mode=$TARGET \
+		"$LINUX_COMMANDLINE" \
+		"$ROOT_ARGS" \
+		"tpm.pcrs=$PCRS" \
+		"tpm.mode=$TARGET" \
 		"$@" \
 	|| die "Kernel signing failed!"
 }
@@ -809,10 +812,10 @@ recovery-sign()
 	fi
 			
 	sign-kernel "${RECOVERY_TARGET}" \
-		$REOCVERY_COMMANDLINE \
-		root=${ROOTDEV} \
-		$ROOT_ARGS \
-		tpm.mode=${RECOVERY_TARGET} \
+		"$RECOVERY_COMMANDLINE" \
+		"root=${ROOTDEV}" \
+		"$ROOT_ARGS" \
+		"tpm.mode=${RECOVERY_TARGET}" \
 		"$@" \
 	|| die "Kernel signing failed!"
 }
@@ -848,7 +851,7 @@ recovery-reboot()
 {
 	show_help "$1" "$recovery_reboot_usage"
 	# Find the recovery entry in the efibootmgr
-	entry=`efiboot-entry ${RECOVERY_TARGET}`
+	entry=$(efiboot-entry ${RECOVERY_TARGET})
 	if [ -z "$entry" ]; then
 		die "${RECOVERY_TARGET} boot entry not in efibootmgr?"
 	fi
@@ -895,6 +898,25 @@ remount_ro()
 	return 1
 }
 
+remount_rw()
+{
+	DEV="${1:-${ROOTDEV}}"
+
+	warn "${DEV}: remounting read-write"
+
+	blockdev --setrw "${DEV}" \
+	|| die "${DEV}: Unable to mark as read-write"
+
+	mount -o rw,remount "${DEV}" \
+	|| die "${DEV}: Unable to remount read-write"
+
+	if [ "$SIP" == 1 ]; then
+		warn "${DEV}: Remounted read/write; remember to re-sign the root hashes before rebooting!"
+	else
+		warn "${DEV}: Remounted read/write"
+	fi
+}
+
 ########################################
 
 remount_usage='
@@ -921,23 +943,13 @@ remount()
 
 	if [ "$1" == "ro" ]; then
 		remount_ro "${ROOTDEV}"
-		exit $?
-	elif [ "$1" != "" ]; then
+	elif [ "$1" == "rw" ] || [ "$1" == "" ]; then
+		remount_rw "${ROOTDEV}"
+	else
 		die "Unexpected argument.$remount_usage"
 	fi
-
-	blockdev --setrw "${ROOTDEV}" \
-	|| die "${ROOTDEV}: Unable to mark as read-write"
-
-	mount -o rw,remount "${ROOTDEV}" \
-	|| die "${ROOTDEV}: Unable to remount read-write"
-
-	if [ "$SIP" == 1 ]; then
-		warn "${ROOTDEV}: Remounted read/write; remember to re-sign the root hashes before rebooting!"
-	else
-		warn "${ROOTDEV}: Remounted read/write"
-	fi
 }
+
 
 ########################################
 
@@ -966,8 +978,8 @@ sip-init()
 
 	warn "sip-init: Checking configuration before writing..."
 
-	root_size=`lvdisplay --units b ${ROOTDEV} | awk '/LV Size/{print $3}'`
-	vg=`lvdisplay ${ROOTDEV} | awk '/VG Name/{print $3}'`
+	root_size="$(lvdisplay --units b ${ROOTDEV} | awk '/LV Size/{print $3}')"
+	vg="$(lvdisplay ${ROOTDEV} | awk '/VG Name/{print $3}')"
 
 	if [ -z "$vg" ]; then
 		die "${ROOTDEV}: unknown volume group?"
@@ -975,7 +987,7 @@ sip-init()
 	if [ -z "$root_size" ]; then
 		die "${ROOTDEV}: unknown size"
 	fi
-	if [ "$root_size" -gt $[16*1024*1024*1024] ]; then
+	if [ "$root_size" -gt $((16*1024*1024*1024)) ]; then
 		die "${ROOTDEV}: root is $root_size bytes, too large for hashes"
 	fi
 
@@ -999,23 +1011,23 @@ sip-init()
 	fi
 
 	# and refuse to do this unless they already have a recovery image
-	entry=`efiboot-entry ${RECOVERY_TARGET}`
+	entry="$(efiboot-entry ${RECOVERY_TARGET})"
 	if [ -z "$entry" ]; then
 		die "No ${RECOVERY_TARGET} in efibootmgr? Too dangerous!"
 	fi
 
 	##### And now it gets really dangerous #####
 
-	read -p "WARNING: This will make irrevocable changes to the disk. Are you really really sure?" really_do_it
+	read -r -p "WARNING: This will make irrevocable changes to the disk. Are you really really sure?" really_do_it
 	if [ "$really_do_it" != "y" ]; then
 		die "Not configuring SIP!"
 	fi
-	read -p "WARNING: Do you have the security key? " really_do_it
+	read -r -p "WARNING: Do you have the security key? " really_do_it
 	if [ "$really_do_it" != "y" ]; then
 		die "Not configuring SIP!"
 	fi
 
-	remount \
+	remount "rw" \
 	|| die "Root file system is not writable"
 
 	die_msg="
