@@ -92,7 +92,7 @@ package: tar
 	cp ../safeboot_$(VERSION)_amd64.deb safeboot-unstable.deb
 
 
-# Run shellcheck on the main script
-check:
+# Run shellcheck on the scripts
+shellcheck:
 	shellcheck sbin/safeboot
 	shellcheck sbin/safeboot-tpm-unseal
