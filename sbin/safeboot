@@ -874,15 +874,17 @@ remount_ro()
 {
 	DEV="${1:-${ROOTDEV}}"
 
-	warn "${DEV}: remounting read-only"
+	if [ "$(blockdev --getro "${DEV}")" == 1 ] ; then
+		warn "${DEV}: already read-only"
+		return 0
+	fi
 
+	warn "${DEV}: remounting read-only"
 	if mount -o ro,noatime,remount "${DEV}" ; then
 
-		if [ "$(blockdev --getro "${DEV}")" != 1 ] ; then
-			warn "${DEV}: forcing fsck"
-			fsck.ext4 -f "${DEV}" \
-				|| die "${DEV}: Could not fsck"
-		fi
+		warn "${DEV}: forcing fsck"
+		fsck.ext4 -f "${DEV}" \
+			|| die "${DEV}: Could not fsck"
 
 		warn "${DEV}: setting block dev readonly"
 		blockdev --setro "${DEV}" \
