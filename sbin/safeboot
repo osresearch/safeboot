@@ -878,9 +878,8 @@ remount_ro()
 
 	if mount -o ro,noatime,remount "${DEV}" ; then
 
-		warn "${DEV}: checking for fsck need"
-		if ! fsck -n "${DEV}" ; then
-			warn "${DEV}: UNCLEAN. fsck!"
+		if [ "$(blockdev --getro "${DEV}")" != 1 ] ; then
+			warn "${DEV}: forcing fsck"
 			fsck.ext4 -f "${DEV}" \
 				|| die "${DEV}: Could not fsck"
 		fi
