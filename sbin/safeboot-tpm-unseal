@@ -82,7 +82,7 @@ else
 	# TODO: should a PCR be extended so that this will only work
 	# during boot?
 	totp="$(usr/bin/tpm2-totp --time calculate || echo TPM TOTP FAILED)"
-	msg="$totp
+	msg="$totp $MODE
 Enter recovery key for $CRYPTTAB_SOURCE ($CRYPTTAB_NAME): "
 
 	/lib/cryptsetup/askpass "$msg"
