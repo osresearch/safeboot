@@ -177,9 +177,21 @@ key-init() {
 		-days 3650 \
 		-sha256 \
 	|| die "$KEY: unable to create"
+
+	pem2der "$CERT" "${CERT/.pem/.crt}"
 }
 
 ########################################
+
+pem2der()
+{
+	warn "$2: Creating from $1"
+	openssl x509 \
+		-outform der \
+		-in "$1" \
+		-out "$2" \
+	|| die "$2: Unable to create DER file from $1"
+}
 
 yubikey_init_usage='
 ## yubikey-init
@@ -259,10 +271,51 @@ yubikey-init() {
 		-i "$CERT" \
 	|| die "Unable to import certificate into key"
 
+	pem2der "$CERT" "${CERT/.pem/.crt}"
+
 	yubico-piv-tool \
 		-a status \
 	|| die "Unable to retrieve key status"
 }
+
+########################################
+yubikey_pubkey_usage='
+## yubikey-pubkey
+Usage:
+```
+safeboot yubikey-pubkey cert.pem [cert.crt]
+```
+
+Extract the public key certificate in either PEM or DER format.
+The `sbsign` tool wants PEM, the `kmodsign` tool wants DER.
+The best part about standards...
+'
+usage+="$yubikey_pubkey_usage"
+commands+="|yubikey-pubkey"
+
+yubikey-pubkey()
+{
+	show_help "$1" "$yubikey_pubkey_usage"
+	pem="$1"
+	crt="$2"
+
+	if [ -z "$pem" ]; then
+		die "$yubikey_pubkey_usage"
+	fi
+
+	warn "Extracting signing cert from yubikey"
+	yubico-piv-tool \
+		-s 9c \
+		-a read-certificate \
+		-o "$pem" \
+	|| die "$pem: unable to read from yubikey"
+
+	if [ -n "$crt" ]; then
+		pem2der "$pem" "$crt"
+	fi
+}
+
+	
 
 ########################################
 
@@ -593,15 +646,6 @@ sign-kernel() {
 	fi
 
 	OUTDIR="${EFIDIR}/${TARGET}"
-
-#	if [ ! -r "$CERT" ]; then
-#		warn "Extracting signing cert from yubikey"
-#		yubico-piv-tool \
-#			-s 9c \
-#			-a read-certificate \
-#			-o "$CERT" \
-#		|| die "$CERT: unable to read from yubikey"
-#	fi
 
 	if [ ! -d "$OUTDIR" ]; then
 		warn "$OUTDIR: Creating directory on EFI System Partition"
@@ -1114,7 +1158,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|linux-sign|recovery-sign|recovery-reboot|remount|tpm2_trial_extend|sip-init)
+	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|linux-sign|recovery-sign|recovery-reboot|remount|tpm2_trial_extend|sip-init)
 		$command "$@"
 		;;
 	*)
