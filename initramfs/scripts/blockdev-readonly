@@ -1,6 +1,8 @@
 #!/bin/sh
 # goes in /etc/initramfs-tools/scripts/local-premount/dmverity-root
 # This allows the dmverity root hash to be passed in on the command line.
+# turn off "expressions don't expand in single quotes" and "can't follow non-constant sources"
+# shellcheck disable=SC2016,SC1090,SC1091
 
 case $1 in
     prereqs)
@@ -13,6 +15,7 @@ esac
 # If any block devices should be read only, use blockdev to
 # set the ro flag
 
+# shellcheck disable=SC2013
 for arg in $(cat /proc/cmdline)
 do
 	case "$arg" in

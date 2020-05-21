@@ -95,5 +95,6 @@ package: tar
 
 # Run shellcheck on the scripts
 shellcheck:
-	shellcheck sbin/safeboot
-	shellcheck sbin/safeboot-tpm-unseal
+	for file in sbin/safeboot* initramfs/*/* ; do \
+		shellcheck $$file ; \
+	done

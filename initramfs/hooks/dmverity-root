@@ -1,7 +1,9 @@
 #!/bin/sh
 # goes in /etc/initramfs-tools/hooks/dmverity-root
-
 # Ensure that dm_verity and tools are in the initrd
+#
+# turn off "expressions don't expand in single quotes" and "can't follow non-constant sources"
+# shellcheck disable=SC2016,SC1090,SC1091
 
 PREREQ=""
 prereqs()
@@ -9,7 +11,7 @@ prereqs()
     echo "$PREREQ"
 }
 
-case $1 in
+case "$1" in
     prereqs)
         prereqs
         exit 0
