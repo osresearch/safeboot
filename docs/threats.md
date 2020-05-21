@@ -48,6 +48,7 @@ setup instructions include:
 * TODO: TPM pin requirement
 * TODO: TPM counter for rollback protection
 * TODO: Multiparty signatures for higher assurance
+* TODO: Allowed list of USB device IDs.
 
 The behaviour of things like the tamper switches and supervisor password
 are as observed on the Lenovo X1 firmware (and some were fixed after
@@ -182,24 +183,54 @@ on the Thunderbolt port or internal Mini-PCIe ports.
 
 ### Software attacks
 
-* An adversary with root access might try a runtime escalation into the
-kernel by loading a custom module with a backdoor, or they might try to
-exfiltrate data by loading the `usb-storage` module to mount a removable
-disk, or they might `kexec` into an untrusted kernel.  The safeboot
-kernel is configured to only load modules or `kexec` files signed with
-the hardware protected key, and the default Canonical key is removed so
-that only approved modules can be loaded.
+* An attacker might try to exfiltrate data by plugging in a USB flash drive,
+which is prevented by adding `usb-storage` to the deny list.  The USB ports
+could also be turned off in the UEFI `Setup`, although this would also
+prevent external keyboards and mice, if they are desired.
 
-* Another root to kernel escalation is by directly poking at kernel memory
-in `/dev/mem`.  The Linux Lockdown patches [are turned on by UEFI Secure Boot mode](https://mjg59.dreamwidth.org/50577.html),
-although safeboot goes to the next step and [switches to Confidentiality mode](https://mjg59.dreamwidth.org/55105.html),
-which prevent all raw memory accesses from user space.  An additional
-escalation is required to turn off lockdown.  TODO: ensure that the
-magic sysctl isn't allowed to do it.
+* An attacker with root access could try to load the USB storage module
+with `insmod /lib/modules/..../usb-storage.ko`, which bypasses the
+`/etc/modprobe.d/` configuration.  This can be prevented by removing
+the module from the root filesystem.
+
+* An attacker with root access could download a version of the
+`usb-storage` module from the Ubuntu website, which is signed by 
+the Canononical key and can be loaded into a stock kernel since
+their key is in the default key ring.  This is prevented by building
+a custom kernel with a module signing key that is not stored
+on the machine.
+
+* An attacker with root access could try to `kexec` into a
+custom kernel that doesn't overwrite the disk encryption key and
+that doesn't enforce external device access.  This is prevented by the
+[Linux kernel lockdown mode (turned on by UEFI Secure Boot mode)](https://mjg59.dreamwidth.org/50577.html),
+which requires a signature on the new kernel by one of the keys in the
+UEFI Secure Boot key database, which only contains the public key of
+the hardware token used to sign the real kernel and initrd.
+
+* An attacker with root access could try to bypass the module
+or `kexec` signature checks by opening `/dev/mem` or otherwise
+directly poking into memory to enable the hardware to escalate into
+kernel mode.  The Lockdown patches also disable access to the memory
+device and prevent root from being able to adjust `iopl` or other
+special modes, which should make it more difficult for an attacker
+to escalate into kernel mode.
+
+* An attacker with root access might try to use the Linux kernel
+keyring to read the disk encryption key.  This is prevented by
+[enabling `lockdown=confidentiality` mode](https://mjg59.dreamwidth.org/55105.html),
+which prevent all kernel memory accesses from user space, and
+also ensures that the keyrings are not accessible.  The attacker
+would require an additional privilege escalation is required to turn off
+lockdown.
 
 * An attacker might try to escalate to root by somehow creating device files or
 mounting filesystems with SUID binaries.  The `/etc/fstab` entries for `/home`
 and `/var` are configured to not allow such executables.
+
+* TODO: Prevent network reconfiguration that bypasses mandatory VPN.
+
+* TODO: ensure that the magic sysctl isn't allowed to bypass various security bits.
 
 ### Todo
 
@@ -208,8 +239,6 @@ and `/var` are configured to not allow such executables.
 * TODO: Document rebuilding the kernel
 
 * TODO: configure allow/deny lists to clean up the module directories.
-
-* TODO: Prevent network reconfiguration that bypasses mandatory VPN.
 
 * TODO: SELinux config
 
