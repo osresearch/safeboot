@@ -58,7 +58,7 @@ tpm2_flush_all()
 
 ########################################
 
-tpm_quote_usage='
+quote_usage='
 ## tpm-quote
 Usage:
 ```
@@ -178,6 +178,7 @@ attack -- the remote attestation server should keep track of which
 nonce it used for this quote so that it can verify that the quote
 is actually live.
 '
+usage+="$validate_usage"
 commands+="|validate"
 
 validate()
@@ -218,11 +219,11 @@ validate()
 
 ########################################
 
-reply_usage='
-## reply
+seal_usage='
+## seal
 Usage:
 ```
-echo secret | tpm2-attest reply quote.tgz [nonce] > cipher.bin
+echo secret | tpm2-attest seal quote.tgz [nonce] > cipher.bin
 ```
 
 After a attested quote has been validated, an encrypted reply is sent to
@@ -232,16 +233,17 @@ used to sign the quote.  The TPM will not decrypt the sealed
 message unless the attestation key was one that it generated.
 
 The `cipher.bin` file should be sent back to the device being attested;
-it can then run `tpm2-attest decrypt < cipher.bin > secret.txt`
+it can then run `tpm2-attest unseal ak.ctx < cipher.bin > secret.txt`
 to extract the sealed secret.
 '
-commands+="|reply"
+usage+="$seal_usage"
+commands+="|seal"
 
-reply()
+seal()
 {
-	show_help "$1" "$encrypt_usage"
+	show_help "$1" "$seal_usage"
 	if [ "$#" -lt 1 ]; then
-		die "Insufficent arguments.$encrypt_usage"
+		die "Insufficent arguments.$seal_usage"
 	fi
 
 	QUOTE_TAR="$1"
@@ -278,24 +280,25 @@ reply()
 
 ########################################
 
-decrypt_usage='
-## decrypt
+unseal_usage='
+## unseal
 Usage:
 ```
-cat cipher.bin | tpm2-attest decrypt ak.ctx  > secret.txt
+cat cipher.bin | tpm2-attest unseal ak.ctx  > secret.txt
 ```
 
 When the remote attestation has been successful, the remote machine will
-reply with an encrypted blob that is only decryptable by this TPM
+reply with an encrypted blob that is only unsealable by this TPM
 if and only if the EK matches and the AK is one that it generated.
 '
-commands+="|decrypt"
+usage+="$unseal_usage"
+commands+="|unseal"
 
-decrypt()
+unseal()
 {
-	show_help "$1" "$decrypt_usage"
+	show_help "$1" "$unseal_usage"
 	if [ "$#" -ne 1 ]; then
-		die "Insufficent arguments.$decrypt_usage"
+		die "Insufficent arguments.$unseal_usage"
 	fi
 
 	AK_CTX="$1"
@@ -351,7 +354,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	commands|quote|validate|reply|decrypt)
+	commands|quote|validate|seal|unseal)
 		$command "$@"
 		;;
 	*)
