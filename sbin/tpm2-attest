@@ -1,0 +1,138 @@
+#!/bin/bash
+# turn off "expressions don't expand in single quotes"
+# and "can't follow non-constant sources"
+# shellcheck disable=SC2016 disable=SC1090
+set -e -o pipefail
+export LC_ALL=C
+
+die_msg=""
+die() { echo "$die_msg""$*" >&2 ; exit 1 ; }
+warn() { echo "$@" >&2 ; }
+debug() { [ "$VERBOSE" == 1 ] && echo "$@" >&2 ; }
+
+usage='
+# tpm2-attest subcommands
+
+Usage: `tpm2-attest subcommand [options...]`
+
+'
+
+commands="commands"
+
+commands() {
+	echo "$usage"
+	exit 0
+}
+
+show_help() {
+	if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+		echo "$2"
+		exit 0
+	fi
+}
+
+########################################
+tpm_quote_usage='
+## tpm-quote
+Usage:
+```
+safeboot tpm-quote [nonce [pcrs,...]]
+```
+
+Generate the endorsement key, endorsement cert, attestation key
+and a quote for the PCRs.  Validate it with `safeboot tpm-quote-validate`.
+'
+usage+="$quote_usage"
+commands+="|quote"
+
+quote()
+{
+	show_help "$1" "$quote_usage"
+	QUOTE_NONCE=${1:-123456abcdef}
+	QUOTE_PCRS=${2:-0,1,2}
+
+	# prevent "out of memory for object contexts" by
+	# flushing transient handles, as well as transient sessions
+	warn "tpm2: flushing resources"
+	tpm2_flushcontext \
+		--transient-object \
+	|| die "tpm2_flushcontext: unable to flush transient handles"
+	tpm2_flushcontext \
+		--loaded-session \
+	|| die "tpm2_flushcontext: unable to flush sessions"
+	
+	# the cert is fixed at manufacturing time
+	warn "tpm2: reading endorsement certificate"
+	tpm2_nvread -o ek.crt 0x01c00002 \
+	|| die "tpm2_nvread: unable to read endorsement key cert"
+
+	openssl x509 \
+		-inform DER  \
+		-in ek.crt \
+		-text \
+		-noout \
+	|| die "openssl x509: unable to parse endorsement key cert"
+
+	# this key should always be the same
+	warn "tpm2: reading endorsement key"
+	tpm2_createek \
+		-c ek.handle \
+		-G rsa \
+		-u ek.pub \
+		-f pem \
+	|| die "tpm2_createek: unable to retrieve endorsement key"
+
+	# this public key is generated each time and includes attributes
+	# like "fixedtpm|fixedparent|..."
+	warn "tpm2: creating attestation key"
+	tpm2_createak \
+		--ek-context ek.handle \
+		--ak-context ak.ctx \
+		--ak-name ak.name \
+		--format pem \
+		--public ak.pub \
+	|| die "tpm2_createak: unable to create an attestation key"
+
+	# get a quote using this attestation key
+	warn "tpm2: generating quote"
+	tpm2_quote \
+		--key-context ak.ctx \
+		--pcr-list "sha256:$QUOTE_PCRS" \
+		--qualification "$QUOTE_NONCE" \
+		--message quote.out \
+		--signature quote.sig \
+		--pcr quote.pcr \
+	|| die "tpm2_quote: unable to generate quote"
+
+	# ensure that this quote validates
+	warn "tpm2: validating quote"
+	tpm2_checkquote \
+		--public ak.pub \
+		--message quote.out \
+		--signature quote.sig \
+		--qualification "$QUOTE_NONCE" \
+	|| die "tpm2_checkquote: unable to validate quote"
+}
+
+########################################
+
+if [ $# -lt 1 ]; then
+	die "Usage: $0 [$commands] ...." 
+fi
+
+command=$1 ; shift
+#echo "$commands"
+
+case "$command" in
+	-h|--help)
+		echo "$usage"
+		exit 0
+		;;
+	#$commands)
+	commands|quote)
+		$command "$@"
+		;;
+	*)
+		die "$0: subcommand $command unknown"
+		;;
+esac
