@@ -171,13 +171,19 @@ This command only checks that the quote includes the given nonce and
 was signed by the public attestation key (AK).  It does not validate that
 the AK came from a valid TPM.  That is done in the `tpm2-attest ek-validate`
 subcommand.
+
+If the `nonce` is not specified on the command line, the one in the
+quote file will be used.  Note that this is a potential for a replay
+attack -- the remote attestation server should keep track of which
+nonce it used for this quote so that it can verify that the quote
+is actually live.
 '
 commands+="|validate"
 
 validate()
 {
 	show_help "$1" "$validate_usage"
-	if [ "$#" -lt 2 ]; then
+	if [ "$#" -lt 1 ]; then
 		die "Insufficent arguments.$validate_usage"
 	fi
 
@@ -219,15 +225,15 @@ Usage:
 echo secret | tpm2-attest reply quote.tgz [nonce] > cipher.bin
 ```
 
-After the attestation has been validated, a secret has to be sent to the TPM.
-This command should validate the public endorsement certificate
-`ek.crt` (to some extent), and if it is valid, encrypt the nonce for
-the attestation key `ak.pub`.
+After a attested quote has been validated, an encrypted reply is sent to
+the machine with a sealed secret, encrypted with that machines
+endorsment key (`ek.crt`), with the name of the attestation key
+used to sign the quote.  The TPM will not decrypt the sealed
+message unless the attestation key was one that it generated.
 
-The output file should be sent back to the device being attested;
-if it is the same device that generated the attesation with this endorsement
-key, then that TPM will be able to decrypt the nonce.  No other device
-should be able to do so.
+The `cipher.bin` file should be sent back to the device being attested;
+it can then run `tpm2-attest decrypt < cipher.bin > secret.txt`
+to extract the sealed secret.
 '
 commands+="|reply"
 
