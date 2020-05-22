@@ -157,6 +157,76 @@ quote()
 	mv "$TMP/quote.tgz" "." || die "quote.tgz: unable to move"
 }
 
+########################################
+
+ek_validate_usage='
+## ek-validate
+Usage:
+```
+tpm2-attest ek-validate quote.tgz ca-root ca-path
+```
+
+The TPM endorsement key is signed by the manufacturer OEM key, which is
+in turn signed by a root CA.  Before trusting an attestation it is
+necessary to validate this chain of signatures to ensure that it came
+from a legitimate TPM.
+
+It is also necessary to validate that the `ek.pub` and `ek.pem`
+have the modulus since they are in two files.
+'
+usage+="$ek_validate_usage"
+commands+="|ek-validate"
+
+ek-validate()
+{
+	show_help "$1" "$ek-validate_usage"
+	if [ "$#" -lt 3 ]; then
+		die "Insufficent arguments.$ek_validate_usage"
+	fi
+
+	QUOTE_TAR="$1"
+	CA_ROOT="$2"
+	CA_PATH="$3"
+
+	tar -zxf "$QUOTE_TAR" -C "$TMP" \
+	|| die "$QUOTE_TAR: unable to extract"
+
+	# convert the DER into a PEM since 'openssl verify' only works with PEM
+	openssl x509 \
+		-inform DER \
+		-outform PEM \
+		-in "$TMP/ek.crt" \
+		-out "$TMP/ek.pem" \
+	|| die "$TMP/ek.crt: unable to convert to PEM"
+
+	openssl verify \
+		-CAfile "$CA_ROOT" \
+		-CApath "$CA_PATH" \
+		-show_chain \
+		-verbose \
+		"$TMP/ek.pem" \
+	|| die "$TMP/ek.pem: SSL verification failure"
+
+	warn "ek.crt: certificate chain valid!"
+
+	# make sure that the keys have the same modulus
+	mod1="$(bin2hex "$TMP/ek.pub" | tail -c 512)"
+	mod2="$(openssl x509 \
+		-in "$TMP/ek.pem" \
+		-noout \
+		-modulus \
+		| cut -d= -f2 \
+		| tr '[A-Z]' '[a-z]')"
+
+	if [ "$mod1" != "$mod2" ]; then
+		warn "ek.pub: $mod1"
+		warn "ek.crt: $mod2"
+		die "ek.crt and ek.pub have different moduli"
+	fi
+
+	warn "ek.pub: matches ek.crt!"
+}
+
 
 ########################################
 
@@ -354,7 +424,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	commands|quote|validate|seal|unseal)
+	commands|quote|ek-validate|validate|seal|unseal)
 		$command "$@"
 		;;
 	*)
