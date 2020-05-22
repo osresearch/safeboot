@@ -95,6 +95,10 @@ package: tar
 
 # Run shellcheck on the scripts
 shellcheck:
-	for file in sbin/safeboot* initramfs/*/* ; do \
+	for file in \
+		sbin/safeboot* \
+		sbin/tpm2-attest \
+		initramfs/*/* \
+	; do \
 		shellcheck $$file ; \
 	done
