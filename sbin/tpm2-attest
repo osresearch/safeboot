@@ -14,8 +14,8 @@ cleanup() {
 	rm -rf "$TMP"
 }
 
-hex2bin() { perl -ne 'chomp; print pack("H*", $_)' ; }
-bin2hex() { perl -ne 'print unpack("H*", $_)' ; }
+hex2bin() { perl -ne 'chomp; print pack("H*", $_)' "$@" ; }
+bin2hex() { perl -ne 'print unpack("H*", $_)' "$@" ; }
 
 TMP="$(mktemp -d)"
 trap cleanup EXIT
