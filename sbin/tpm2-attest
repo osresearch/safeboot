@@ -134,11 +134,14 @@ quote()
 		--pcr "$TMP/quote.pcr" \
 	|| die "tpm2_quote: unable to generate quote"
 
-	tar -C "$TMP" -zcf "quote.tgz" \
+	tar \
+		-zcf "$TMP/quote.tgz" \
+		-C "$TMP" \
 		"ak.pem" \
 		"ak.name" \
 		"ek.pub" \
 		"ek.crt" \
+		"nonce" \
 		"quote.out" \
 		"quote.pcr" \
 		"quote.sig" \
@@ -146,8 +149,8 @@ quote()
 
 	# ensure that this quote validates
 	validate \
-		"$QUOTE_NONCE" \
 		"$TMP/quote.tgz" \
+		"$QUOTE_NONCE" \
 		"$TMP/validate" \
 	|| die "unable to self-validate quote"
 
@@ -183,6 +186,7 @@ validate()
 	DIR="${3:-$TMP}"
 
 	mkdir -p "$DIR" || die "$DIR"
+	warn "$QUOTE_TAR: validating into $DIR"
 	
 	tar -zxf "$QUOTE_TAR" -C "$DIR" \
 	|| die "$QUOTE_TAR: unable to extract"
@@ -192,7 +196,7 @@ validate()
 		"$DIR/quote.out" \
 	|| die "tpm2_print: unable to parse quote"
 
-	if [ -z "$QUOTE_NONCE" ]; then
+	if [ "$QUOTE_NONCE" = "" ]; then
 		# if no nonce was specified, read it from the tar file
 		QUOTE_NONCE="$(cat "$DIR/nonce")"
 	fi
@@ -212,7 +216,7 @@ reply_usage='
 ## reply
 Usage:
 ```
-echo secret | tpm2-attest reply quote.tgz > cipher.bin
+echo secret | tpm2-attest reply quote.tgz [nonce] > cipher.bin
 ```
 
 After the attestation has been validated, a secret has to be sent to the TPM.
@@ -230,13 +234,17 @@ commands+="|reply"
 reply()
 {
 	show_help "$1" "$encrypt_usage"
-	if [ "$#" -ne 1 ]; then
+	if [ "$#" -lt 1 ]; then
 		die "Insufficent arguments.$encrypt_usage"
 	fi
 
 	QUOTE_TAR="$1"
+	QUOTE_NONCE="${2:-}"
 
-	validate "$QUOTE_TAR" \
+	validate \
+		"$QUOTE_TAR" \
+		"$QUOTE_NONCE" \
+		>&2 \
 	|| die "$QUOTE_TAR: quote did not validate"
 	
 	warn "tpm2: EK CERT CHECKING NOT DONE. check back later."
@@ -249,7 +257,7 @@ reply()
 
 	warn "tpm2: making credential"
 	tpm2_makecredential \
-		--encrypt-key "$TMP/ek.pub" \
+		--encryption-key "$TMP/ek.pub" \
 		--secret "$TMP/secret" \
 		--name "$(bin2hex "$TMP/ak.name")" \
 		--credential-blob "$TMP/cipher.bin" \
@@ -288,15 +296,16 @@ decrypt()
 
 	tpm2_flush_all ""
 
+	warn "tpm2: starting secret session"
 	tpm2_startauthsession \
-		--policy-session  \
 		--session "$TMP/session.ctx" \
+		--policy-session  \
 	|| die "tpm2_startauthsession: unable to start authenticated session"
 
 	# context is TPM_RH_ENDORSEMENT because why would you want names?
 	tpm2_policysecret \
 		--session "$TMP/session.ctx" \
-		--context "0x4000000b" \
+		--object-context "0x4000000b" \
 	|| die "tpm2_policysecret: unable to set context TPM_RH_ENDORSEMENT"
 
 	# recreate the endorsement key context since it doesn't change per call
@@ -305,9 +314,13 @@ decrypt()
 		--key-algorithm "rsa" \
 	|| die "tpm2_createek: unable to create EK context"
 
+	cat > "$TMP/cipher.bin" \
+	|| die "$TMP/cipher.bin: unable to create cipher text"
+
 	tpm2_activatecredential \
 		--credentialedkey-context "$AK_CTX" \
 		--credentialkey-context "$TMP/ek.ctx" \
+		--credentialkey-auth "session:$TMP/session.ctx" \
 		--credential-blob "$TMP/cipher.bin" \
 		--certinfo-data "$TMP/secret.txt" \
 	|| die "tpm2_activatecredential: unable to decrypt cipher text"
@@ -332,7 +345,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	commands|quote|validate)
+	commands|quote|validate|reply|decrypt)
 		$command "$@"
 		;;
 	*)
