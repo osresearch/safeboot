@@ -20,8 +20,8 @@ calls have been wrapped into `tpm2-attest`.
 * Client: Get `$nonce` and `$pcrs` from server
 * Client: `tpm2-attest $nonce $pcrs > quote.tgz`
 * Client: Send `quote.tgz` to server
-* Server: `tpm2-attest validate quote.tgz /path/to/certs`
-* Server: `tpm2-attest seal quote.tgz $nonce < secret.txt > cipher.bin`
+* Server: `tpm2-attest validate quote.tgz $nonce`
+* Server: `tpm2-attest seal quote.tgz < secret.txt > cipher.bin`
 * Server: Send `cipher.bin` to client
 * Client: `tpm2-attest unseal < cipher.bin > secret.txt`
 * Client: Use `secret.txt` to whatever
