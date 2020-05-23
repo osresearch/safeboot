@@ -1,0 +1,480 @@
+#!/bin/bash
+# TPM2 Remote Attestation
+#
+# This wraps the low level `tpm2-tools` programs into a fairly turn-key
+# remote attestation system to allow a client to use the TPM2 to prove to
+# a server that the PCRs are in a given state, and to then receive a
+# sealed secret that can only be decrypted if the system is still in
+# that state.
+#
+# For more info: https://safeboot.dev/attestation/
+#
+# turn off "expressions don't expand in single quotes"
+# and "can't follow non-constant sources"
+# shellcheck disable=SC2016 disable=SC1090
+set -e -o pipefail
+export LC_ALL=C
+
+die_msg=""
+die() { echo "$die_msg""$*" >&2 ; exit 1 ; }
+warn() { echo "$@" >&2 ; }
+debug() { [ "$VERBOSE" == 1 ] && echo "$@" >&2 ; }
+
+cleanup() {
+	if [ "$NOCLEANUP" == "1" ]; then
+		warn "$TMP: Not cleaning up"
+	else
+		rm -rf "$TMP"
+	fi
+}
+
+hex2bin() { perl -ne 'chomp; print pack("H*", $_)' "$@" ; }
+bin2hex() { perl -ne 'print unpack("H*", $_)' "$@" ; }
+sha256() { sha256sum - | cut -d' ' -f1 ; }
+
+TMP="$(mktemp -d)"
+trap cleanup EXIT
+
+usage='
+# tpm2-attest subcommands
+
+Usage: `tpm2-attest subcommand [options...]`
+
+'
+
+commands="commands"
+
+commands() {
+	echo "$usage"
+	exit 0
+}
+
+show_help() {
+	if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+		echo "$2"
+		exit 0
+	fi
+}
+
+tpm2_flush_all()
+{
+	# prevent "out of memory for object contexts" by
+	# flushing transient handles, as well as transient sessions
+	warn "tpm2: flushing resources"
+	tpm2_flushcontext \
+		--transient-object \
+	|| die "tpm2_flushcontext: unable to flush transient handles"
+
+	tpm2_flushcontext \
+		--loaded-session \
+	|| die "tpm2_flushcontext: unable to flush sessions"
+}
+
+
+########################################
+
+quote_usage='
+## tpm-quote
+Usage:
+```
+tpm2-attest quote [nonce [pcrs,...]]
+scp quote.tgz ...
+```
+After contacting the remote attestation server to receive the
+nonce, the machine will generate the endorsement key,
+endorsement cert, a one-time attestation key, and a signed quote
+for the PCRs using that nonce.
+
+This will result in two output files, `quote.tgz` to be sent to
+the remote side, and `ak.ctx` that is to remain on this machine
+for decrypting the return result from the remote attestation server.
+'
+usage+="$quote_usage"
+commands+="|quote"
+
+quote()
+{
+	show_help "$1" "$quote_usage"
+	if [ "$#" -gt 2 ]; then
+		die "Unexpected arguments.$quote_usage"
+	fi
+
+	QUOTE_NONCE=${1:-0decafbad0}
+	QUOTE_PCRS=${2:-0,1,2}
+
+	tpm2_flush_all ""
+
+	echo -n "$QUOTE_NONCE" > "$TMP/nonce" \
+	|| die "$TMP/nonce: unable to create"
+
+	# the cert is fixed at manufacturing time
+	# and of course there is a random number that identifies it
+	# because why would you want useful names with tpm2-tools?
+	warn "tpm2: reading endorsement certificate"
+	tpm2_nvread -o "$TMP/ek.crt" 0x01c00002 \
+	|| die "tpm2_nvread: unable to read endorsement key cert"
+
+	openssl x509 \
+		-inform "DER"  \
+		-in "$TMP/ek.crt" \
+		-text \
+		-noout \
+	|| die "openssl x509: unable to parse endorsement key cert"
+
+	# this key should always be the same
+	# and for stupid tpm2-tools reasons it has to be in the
+	# non-standard TPM2B_PUBLIC format rather than a useful PEM file.
+	warn "tpm2: reading endorsement key"
+	tpm2_createek \
+		--ek-context "$TMP/ek.ctx" \
+		--key-algorithm "rsa" \
+		--public "$TMP/ek.pub" \
+	|| die "tpm2_createek: unable to retrieve endorsement key"
+
+	# this public key is generated each time and includes attributes
+	# like "fixedtpm|fixedparent|..."
+	warn "tpm2: creating attestation key"
+	tpm2_createak \
+		--ek-context "$TMP/ek.ctx" \
+		--ak-context "ak.ctx" \
+		--format tpmt \
+		--public "$TMP/ak.pub" \
+	|| die "tpm2_createak: unable to create an attestation key"
+
+	# get a quote using this attestation key
+	warn "tpm2: generating quote"
+	tpm2_quote \
+		--key-context "ak.ctx" \
+		--pcr-list "sha256:$QUOTE_PCRS" \
+		--qualification "$QUOTE_NONCE" \
+		--message "$TMP/quote.out" \
+		--signature "$TMP/quote.sig" \
+		--pcr "$TMP/quote.pcr" \
+	|| die "tpm2_quote: unable to generate quote"
+
+	# Include the TPM event log if it exists
+	cp \
+		/sys/kernel/security/tpm0/binary_bios_measurements \
+		"$TMP/eventlog" \
+	|| die "eventlog: unable to copy"
+
+	cp \
+		/sys/kernel/security/ima/ascii_runtime_measurements \
+		"$TMP/ima" \
+	|| die "ima: unable to copy"
+
+	tar \
+		-zcf "$TMP/quote.tgz" \
+		-C "$TMP" \
+		"ak.pub" \
+		"ek.pub" \
+		"ek.crt" \
+		"nonce" \
+		"quote.out" \
+		"quote.pcr" \
+		"quote.sig" \
+		"eventlog" \
+		"ima" \
+	|| die "$TMP/quote.tgz: Unable to create"
+
+	# ensure that this quote validates
+	validate \
+		"$TMP/quote.tgz" \
+		"$QUOTE_NONCE" \
+		"$TMP/validate" \
+	|| die "unable to self-validate quote"
+
+	mv "$TMP/quote.tgz" "." || die "quote.tgz: unable to move"
+}
+
+########################################
+
+ek_validate_usage='
+## ek-validate
+Usage:
+```
+tpm2-attest ek-validate quote.tgz ca-root ca-path
+```
+
+The TPM endorsement key is signed by the manufacturer OEM key, which is
+in turn signed by a root CA.  Before trusting an attestation it is
+necessary to validate this chain of signatures to ensure that it came
+from a legitimate TPM.
+
+It is also necessary to validate that the `ek.pub` and `ek.pem`
+have the modulus since they are in two files.
+'
+usage+="$ek_validate_usage"
+commands+="|ek-validate"
+
+ek-validate()
+{
+	show_help "$1" "$ek-validate_usage"
+	if [ "$#" -lt 3 ]; then
+		die "Insufficent arguments.$ek_validate_usage"
+	fi
+
+	QUOTE_TAR="$1"
+	CA_ROOT="$2"
+	CA_PATH="$3"
+
+	tar -zxf "$QUOTE_TAR" -C "$TMP" \
+	|| die "$QUOTE_TAR: unable to extract"
+
+	# convert the DER into a PEM since 'openssl verify' only works with PEM
+	openssl x509 \
+		-inform DER \
+		-outform PEM \
+		-in "$TMP/ek.crt" \
+		-out "$TMP/ek.pem" \
+	|| die "$TMP/ek.crt: unable to convert to PEM"
+
+	openssl verify \
+		-CAfile "$CA_ROOT" \
+		-CApath "$CA_PATH" \
+		-show_chain \
+		-verbose \
+		"$TMP/ek.pem" \
+	|| die "$TMP/ek.pem: SSL verification failure"
+
+	warn "ek.crt: certificate chain valid!"
+
+	# make sure that the keys have the same modulus
+	mod1="$(bin2hex "$TMP/ek.pub" | tail -c 512)"
+	mod2="$(openssl x509 \
+		-in "$TMP/ek.pem" \
+		-noout \
+		-modulus \
+		| cut -d= -f2 \
+		| tr '[A-Z]' '[a-z]')"
+
+	if [ "$mod1" != "$mod2" ]; then
+		warn "ek.pub: $mod1"
+		warn "ek.crt: $mod2"
+		die "ek.crt and ek.pub have different moduli"
+	fi
+
+	warn "ek.pub: matches ek.crt!"
+}
+
+
+########################################
+
+validate_usage='
+## validate
+Usage:
+```
+tpm2-attest validate quote.tgz [nonce]
+```
+
+This command only checks that the quote includes the given nonce and
+was signed by the public attestation key (AK).  It does not validate that
+the AK came from a valid TPM.  That is done in the `tpm2-attest ek-validate`
+subcommand.
+
+If the `nonce` is not specified on the command line, the one in the
+quote file will be used.  Note that this is a potential for a replay
+attack -- the remote attestation server should keep track of which
+nonce it used for this quote so that it can verify that the quote
+is actually live.
+'
+usage+="$validate_usage"
+commands+="|validate"
+
+validate()
+{
+	show_help "$1" "$validate_usage"
+	if [ "$#" -lt 1 ]; then
+		die "Insufficent arguments.$validate_usage"
+	fi
+
+	QUOTE_TAR="$1"
+	QUOTE_NONCE="${2:-}"
+	DIR="${3:-$TMP}"
+
+	mkdir -p "$DIR" || die "$DIR"
+	warn "$QUOTE_TAR: validating into $DIR"
+	
+	tar -zxf "$QUOTE_TAR" -C "$DIR" \
+	|| die "$QUOTE_TAR: unable to extract"
+
+	tpm2_print \
+		-t "TPMS_ATTEST" \
+		"$DIR/quote.out" \
+	|| die "tpm2_print: unable to parse quote"
+
+	if [ "$QUOTE_NONCE" = "" ]; then
+		# if no nonce was specified, read it from the tar file
+		QUOTE_NONCE="$(cat "$DIR/nonce")"
+	fi
+
+	# convert the TPMT formatted attestation key into a DER public
+	# key, and then use openssl to convert that the DER so that
+	# tpm2_checkquote can work with it (due to this issue):
+	# https://github.com/tpm2-software/tpm2-tools/issues/2049
+	( \
+		echo 30820122300d06092a864886f70d0101 | hex2bin ; \
+		echo 0105000382010f003082010a0282010100 | hex2bin ; \
+		tail -c 256 "$DIR/ak.pub" ; \
+		echo 0203010001 | hex2bin ; \
+	) | openssl rsa \
+		-pubin \
+		-inform "DER" \
+		-outform "PEM" \
+		-out "$DIR/ak.pem" \
+	|| die "$DIR/ak.pub: unable to convert to ak.pem"
+
+	tpm2_checkquote \
+		--qualification "$QUOTE_NONCE" \
+		--message "$DIR/quote.out" \
+		--signature "$DIR/quote.sig" \
+		--pcr "$DIR/quote.pcr" \
+		--public "$DIR/ak.pem" \
+	|| die "$QUOTE_TAR: unable to validate quote with '$QUOTE_NONCE'"
+}
+
+########################################
+
+seal_usage='
+## seal
+Usage:
+```
+echo secret | tpm2-attest seal quote.tgz [nonce] > cipher.bin
+```
+
+After a attested quote has been validated, an encrypted reply is sent to
+the machine with a sealed secret, encrypted with that machines
+endorsment key (`ek.crt`), with the name of the attestation key
+used to sign the quote.  The TPM will not decrypt the sealed
+message unless the attestation key was one that it generated.
+
+The `cipher.bin` file should be sent back to the device being attested;
+it can then run `tpm2-attest unseal ak.ctx < cipher.bin > secret.txt`
+to extract the sealed secret.
+'
+usage+="$seal_usage"
+commands+="|seal"
+
+seal()
+{
+	show_help "$1" "$seal_usage"
+	if [ "$#" -lt 1 ]; then
+		die "Insufficent arguments.$seal_usage"
+	fi
+
+	QUOTE_TAR="$1"
+	QUOTE_NONCE="${2:-}"
+
+	validate \
+		"$QUOTE_TAR" \
+		"$QUOTE_NONCE" \
+		>&2 \
+	|| die "$QUOTE_TAR: quote did not validate"
+	
+	cat > "$TMP/secret" \
+	|| die "Unable to read secret data from stdin"
+
+	# convert the attestation key into a "name"
+	# so that the TPM will only decrypt if it matches an
+	# active attestation key in that device.
+	AK_NAME="000b$(sha256 < "$TMP/ak.pub")"
+
+	warn "tpm2: making credential"
+	tpm2_makecredential \
+		--tcti "none" \
+		--encryption-key "$TMP/ek.pub" \
+		--secret "$TMP/secret" \
+		--name "$AK_NAME" \
+		--credential-blob "$TMP/cipher.bin" \
+	|| die "tpm2_makecredential: unable to seal secret"
+
+	# remove the secret so that it doesn't live on disk for longer
+	rm -f "$TMP/secret"
+
+	# and output the decrypted message
+	cat "$TMP/cipher.bin"
+}
+
+########################################
+
+unseal_usage='
+## unseal
+Usage:
+```
+cat cipher.bin | tpm2-attest unseal ak.ctx  > secret.txt
+```
+
+When the remote attestation has been successful, the remote machine will
+reply with an encrypted blob that is only unsealable by this TPM
+if and only if the EK matches and the AK is one that it generated.
+'
+usage+="$unseal_usage"
+commands+="|unseal"
+
+unseal()
+{
+	show_help "$1" "$unseal_usage"
+	if [ "$#" -ne 1 ]; then
+		die "Insufficent arguments.$unseal_usage"
+	fi
+
+	AK_CTX="$1"
+
+	tpm2_flush_all ""
+
+	warn "tpm2: starting secret session"
+	tpm2_startauthsession \
+		--session "$TMP/session.ctx" \
+		--policy-session  \
+	|| die "tpm2_startauthsession: unable to start authenticated session"
+
+	# context is TPM_RH_ENDORSEMENT because why would you want names?
+	tpm2_policysecret \
+		--session "$TMP/session.ctx" \
+		--object-context "0x4000000b" \
+	|| die "tpm2_policysecret: unable to set context TPM_RH_ENDORSEMENT"
+
+	# recreate the endorsement key context since it doesn't change per call
+	tpm2_createek \
+		--ek-context "$TMP/ek.ctx" \
+		--key-algorithm "rsa" \
+	|| die "tpm2_createek: unable to create EK context"
+
+	cat > "$TMP/cipher.bin" \
+	|| die "$TMP/cipher.bin: unable to create cipher text"
+
+	tpm2_activatecredential \
+		--credentialedkey-context "$AK_CTX" \
+		--credentialkey-context "$TMP/ek.ctx" \
+		--credentialkey-auth "session:$TMP/session.ctx" \
+		--credential-blob "$TMP/cipher.bin" \
+		--certinfo-data "$TMP/secret.txt" \
+	|| die "tpm2_activatecredential: unable to decrypt cipher text"
+
+	cat "$TMP/secret.txt"
+	rm -f "$TMP/secret.txt"
+}
+
+
+########################################
+
+if [ $# -lt 1 ]; then
+	die "Usage: $0 [$commands] ...." 
+fi
+
+command=$1 ; shift
+#echo "$commands"
+
+case "$command" in
+	-h|--help)
+		echo "$usage"
+		exit 0
+		;;
+	#$commands)
+	commands|quote|ek-validate|validate|seal|unseal)
+		$command "$@"
+		;;
+	*)
+		die "$0: subcommand $command unknown"
+		;;
+esac

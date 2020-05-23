@@ -95,6 +95,25 @@ package: tar
 
 # Run shellcheck on the scripts
 shellcheck:
-	for file in sbin/safeboot* initramfs/*/* ; do \
+	for file in \
+		sbin/safeboot* \
+		sbin/tpm2-attest \
+		initramfs/*/* \
+	; do \
 		shellcheck $$file ; \
 	done
+
+# Fetch several of the TPM certs
+CERT_URLS=`cat certs/certs.txt`
+
+foreach(u,$(CERT_URLS),$(eval $(call MAKE_CERT $u)))
+define MAKE_CERT
+all-certs: certs/$(basename $u).pem
+certs/$(basename $u).pem:
+	curl '$u' | \
+	openssl x509 \
+		-inform DER \
+		-outform PEM \
+		-out $@ \
+		-noout
+enddef

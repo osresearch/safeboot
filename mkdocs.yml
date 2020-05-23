@@ -18,5 +18,6 @@ nav:
   - Overview: 'index.md'
   - Installation: 'install.md'
   - Threat Model: 'threats.md'
+  - Remote Attestation: 'attestation.md'
   - Subcommands: 'safeboot.md'
   - FAQ: 'faq.md'
