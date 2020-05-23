@@ -1,4 +1,5 @@
 # TPM2 Remote Attestation
+![TPM on a server mainboard](images/tpm-header.jpg)
 
 When the user wants to connect to another computer over the network,
 they typicaly authenticate with a password and some sort of two factor
@@ -11,9 +12,15 @@ in a known configuration.
 The TPM provides a mechanism to do this sort of remote attestation,
 similar to the way that the disk encryption keys are "sealed" based
 on the PCRs and only decrypted if the platform configuration matches
-the sealed values.  The `tpm2-tools` package has all of the pieces,
-but it is at too low a level for humans to use, so the various library
-calls have been wrapped into `tpm2-attest`.
+the sealed values.  The `tpm2-tools` package has many of the pieces,
+but it is at too low a level for humans to use.  Other parts of the
+validation exist in the `openssl` package, but again are not easily
+used and require format conversions from the TPM formats.
+
+`tpm2-attest` attempts to wrap all of the various parts of
+those two packages into a simple script that provides the four
+main attestation functions: sign a quote, validate a signed quote,
+seal a secret for a specific TPM, and unseal it with that TPM.
 
 ## tl;dr
 
