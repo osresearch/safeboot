@@ -21,11 +21,16 @@ warn() { echo "$@" >&2 ; }
 debug() { [ "$VERBOSE" == 1 ] && echo "$@" >&2 ; }
 
 cleanup() {
-	rm -rf "$TMP"
+	if [ "$NOCLEANUP" == "1" ]; then
+		warn "$TMP: Not cleaning up"
+	else
+		rm -rf "$TMP"
+	fi
 }
 
 hex2bin() { perl -ne 'chomp; print pack("H*", $_)' "$@" ; }
 bin2hex() { perl -ne 'print unpack("H*", $_)' "$@" ; }
+sha256() { sha256sum - | cut -d' ' -f1 ; }
 
 TMP="$(mktemp -d)"
 trap cleanup EXIT
@@ -90,8 +95,12 @@ commands+="|quote"
 quote()
 {
 	show_help "$1" "$quote_usage"
-	QUOTE_NONCE=${2:-0decafbad0}
-	QUOTE_PCRS=${1:-0,1,2}
+	if [ "$#" -gt 2 ]; then
+		die "Unexpected arguments.$quote_usage"
+	fi
+
+	QUOTE_NONCE=${1:-0decafbad0}
+	QUOTE_PCRS=${2:-0,1,2}
 
 	tpm2_flush_all ""
 
@@ -127,10 +136,9 @@ quote()
 	warn "tpm2: creating attestation key"
 	tpm2_createak \
 		--ek-context "$TMP/ek.ctx" \
-		--ak-name "$TMP/ak.name" \
 		--ak-context "ak.ctx" \
-		--format "pem" \
-		--public "$TMP/ak.pem" \
+		--format tpmt \
+		--public "$TMP/ak.pub" \
 	|| die "tpm2_createak: unable to create an attestation key"
 
 	# get a quote using this attestation key
@@ -147,8 +155,7 @@ quote()
 	tar \
 		-zcf "$TMP/quote.tgz" \
 		-C "$TMP" \
-		"ak.pem" \
-		"ak.name" \
+		"ak.pub" \
 		"ek.pub" \
 		"ek.crt" \
 		"nonce" \
@@ -288,6 +295,22 @@ validate()
 		QUOTE_NONCE="$(cat "$DIR/nonce")"
 	fi
 
+	# convert the TPMT formatted attestation key into a DER public
+	# key, and then use openssl to convert that the DER so that
+	# tpm2_checkquote can work with it (due to this issue):
+	# https://github.com/tpm2-software/tpm2-tools/issues/2049
+	( \
+		echo 30820122300d06092a864886f70d0101 | hex2bin ; \
+		echo 0105000382010f003082010a0282010100 | hex2bin ; \
+		tail -c 256 "$DIR/ak.pub" ; \
+		echo 0203010001 | hex2bin ; \
+	) | openssl rsa \
+		-pubin \
+		-inform "DER" \
+		-outform "PEM" \
+		-out "$DIR/ak.pem" \
+	|| die "$DIR/ak.pub: unable to convert to ak.pem"
+
 	tpm2_checkquote \
 		--qualification "$QUOTE_NONCE" \
 		--message "$DIR/quote.out" \
@@ -335,19 +358,20 @@ seal()
 		>&2 \
 	|| die "$QUOTE_TAR: quote did not validate"
 	
-	warn "tpm2: EK CERT CHECKING NOT DONE. check back later."
-	# openssl verify -show_chain_verbose "$EK_CRT"
-	# also need to be sure that ek.pub matches the key in ek.crt
-	# because why not define yet another file format, tpm2-tools?
-
 	cat > "$TMP/secret" \
 	|| die "Unable to read secret data from stdin"
 
+	# convert the attestation key into a "name"
+	# so that the TPM will only decrypt if it matches an
+	# active attestation key in that device.
+	AK_NAME="000b$(sha256 < "$TMP/ak.pub")"
+
 	warn "tpm2: making credential"
 	tpm2_makecredential \
+		--tcti "none" \
 		--encryption-key "$TMP/ek.pub" \
 		--secret "$TMP/secret" \
-		--name "$(bin2hex "$TMP/ak.name")" \
+		--name "$AK_NAME" \
 		--credential-blob "$TMP/cipher.bin" \
 	|| die "tpm2_makecredential: unable to seal secret"
 
