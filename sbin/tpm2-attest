@@ -152,6 +152,17 @@ quote()
 		--pcr "$TMP/quote.pcr" \
 	|| die "tpm2_quote: unable to generate quote"
 
+	# Include the TPM event log if it exists
+	cp \
+		/sys/kernel/security/tpm0/binary_bios_measurements \
+		"$TMP/eventlog" \
+	|| die "eventlog: unable to copy"
+
+	cp \
+		/sys/kernel/security/ima/ascii_runtime_measurements \
+		"$TMP/ima" \
+	|| die "ima: unable to copy"
+
 	tar \
 		-zcf "$TMP/quote.tgz" \
 		-C "$TMP" \
@@ -162,6 +173,8 @@ quote()
 		"quote.out" \
 		"quote.pcr" \
 		"quote.sig" \
+		"eventlog" \
+		"ima" \
 	|| die "$TMP/quote.tgz: Unable to create"
 
 	# ensure that this quote validates
