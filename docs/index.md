@@ -32,10 +32,17 @@ guides that walk through individual pieces of this process, but most
 of them are very fine-grained and require far too many steps to
 complete.
 
-End users need a tool that wraps up all of the complexity into the few
-operations that they need from day to day: signing new kernels,
-decrypting their disks at boot, protecting the system from runtime
-attackers, etc. `safeboot` is (an early version of) that tool!
+Likewise the `tpm2-tools` package has all of the low-level API calls for
+interacting with the TPM and the various endorsement and attestation keys,
+but no easy way to generate signed quotes and perform remote attestation.
+Like they say in the informercials: "_there has to be a better way!_"
+
+End users and administrators need a tool that wraps up all of the
+complexity into the few operations that they need from day to day:
+signing new kernels, decrypting their disks at boot, protecting the
+system from runtime attackers, attesting to the integrity of their
+systems, etc.
+`safeboot` and `tpm2-attest` are (early versions of) those tools!
 
 ## Links
 
@@ -43,6 +50,7 @@ attackers, etc. `safeboot` is (an early version of) that tool!
 * [Threat Model](threats.md)
 * [Frequently Asked Questions](faq.md)
 * [`safeboot` subcommands](safeboot.md)
+* [TPM2 Remote Attestation](attestation.md) for accessing network resources
 * [Source code](https://github.com/osresearch/safeboot)
 
 ## Status
