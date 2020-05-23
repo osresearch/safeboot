@@ -1,9 +1,15 @@
 # shell scripts in the tree
 sbin/safeboot			usr/sbin/
 sbin/safeboot-tpm-unseal	usr/sbin/
+sbin/tpm2-attest		usr/sbin/
 
 # configuration files
 safeboot.conf			etc/safeboot/
+
+# TPM certs and a script to refresh them
+tpm-certs.txt			etc/safeboot/
+refresh-certs			etc/safeboot/
+certs/*				etc/safeboot/certs/
 
 # Compiled with modifications from source
 # to add support for the pkcs11 engine and small qrcodes

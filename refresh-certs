@@ -1,0 +1,34 @@
+#!/bin/bash
+# Fetch vendor certificates and build the OpenSSL CApath structure
+# so that TPM Endorsement Keys can be validated.
+#
+# shellcheck disable=SC2013
+DIR="$(dirname "$0")"
+
+if [ -n "$1" ]; then
+	DIR="$1"
+fi
+
+CERTS="$DIR/tpm-certs.txt"
+CERTDIR="$DIR/certs"
+
+mkdir -p "$CERTDIR"
+
+for url in $(awk '{print $1}' "$CERTS"); do
+	echo "$url"
+	curl --silent "$url" \
+	| openssl x509 \
+		-inform "DER" \
+		-outform "PEM" \
+		-out "$CERTDIR/$(basename "$url" .crt).pem" \
+	|| die "$url: failed"
+done
+
+echo >&2 "Rebuilding symlinks"
+c_rehash "$DIR/certs"
+
+# Make the roots.pem file from the ones flagged as trusted roots
+# in the certs list
+for url in $(awk '/ trusted$/ {print $1}' "$CERTS"); do
+	cat "$CERTDIR/$(basename "$url" .crt).pem"
+done > "$CERTDIR/roots.pem"

@@ -1,0 +1,9 @@
+https://secure.globalsign.com/cacert/gstpmroot.crt        trusted
+https://secure.globalsign.com/cacert/stmtpmekroot.crt
+https://secure.globalsign.com/cacert/stmtpmekint01.crt
+https://secure.globalsign.com/cacert/stmtpmekint02.crt
+https://secure.globalsign.com/cacert/stmtpmekint03.crt
+https://secure.globalsign.com/cacert/stmtpmekint04.crt
+https://secure.globalsign.com/cacert/stmtpmekint05.crt
+https://secure.globalsign.com/cacert/stmtpmekint06.crt
+https://secure.globalsign.com/cacert/stmtpmekint07.crt

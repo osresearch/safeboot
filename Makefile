@@ -4,7 +4,7 @@ BINS += bin/sbsign.safeboot
 BINS += bin/sign-efi-sig-list.safeboot
 BINS += bin/tpm2-totp
 
-all: $(BINS)
+all: $(BINS) certs
 
 #
 # sbsign needs to be built from a patched version to avoid a
@@ -73,6 +73,7 @@ requirements:
 		libssl-dev \
 		uuid-dev \
 		shellcheck \
+		curl \
 
 
 # Remove the temporary files
@@ -103,17 +104,7 @@ shellcheck:
 		shellcheck $$file ; \
 	done
 
-# Fetch several of the TPM certs
-CERT_URLS=`cat certs/certs.txt`
-
-foreach(u,$(CERT_URLS),$(eval $(call MAKE_CERT $u)))
-define MAKE_CERT
-all-certs: certs/$(basename $u).pem
-certs/$(basename $u).pem:
-	curl '$u' | \
-	openssl x509 \
-		-inform DER \
-		-outform PEM \
-		-out $@ \
-		-noout
-enddef
+# Fetch several of the TPM certs and make them usable
+# by the openssl verify tool.
+certs:
+	./refresh-certs
