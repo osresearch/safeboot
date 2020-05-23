@@ -72,19 +72,21 @@ tpm2_flush_all()
 	|| die "tpm2_flushcontext: unable to flush sessions"
 }
 
-unpack_tar()
+unpack-quote()
 {
 	QUOTE_TAR="$1"
 	if [ -z "$QUOTE_TAR" ]; then
-		warn "unpack_tar needs an quote.tgz"
-		return 1
+		die "unpack-quote: needs an quote.tgz"
 	fi
 	if [ ! -r "$TMP/ek.crt" ]; then
-		tar -zxvf "$QUOTE_TAR" -C "$TMP" \
-		|| return 1
+		tar -zxf "$QUOTE_TAR" -C "$TMP" \
+		|| die "unpack-quote: $QOUTE_TAR failed"
 	fi
 
 	# check for the common files?
+	if [ ! -r "$TMP/ek.crt" ]; then
+		die "unpack-quote: $QUOTE_TAR is missing EK certificate"
+	fi
 }
 
 
@@ -131,7 +133,7 @@ quote()
 	tpm2_nvread -o "$TMP/ek.crt" 0x01c00002 \
 	|| die "tpm2_nvread: unable to read endorsement key cert"
 
-	openssl x509 \
+	openssl x509 >&2 \
 		-inform "DER"  \
 		-in "$TMP/ek.crt" \
 		-text \
@@ -142,7 +144,7 @@ quote()
 	# and for stupid tpm2-tools reasons it has to be in the
 	# non-standard TPM2B_PUBLIC format rather than a useful PEM file.
 	warn "tpm2: reading endorsement key"
-	tpm2_createek \
+	tpm2_createek >&2 \
 		--ek-context "$TMP/ek.ctx" \
 		--key-algorithm "rsa" \
 		--public "$TMP/ek.pub" \
@@ -151,7 +153,7 @@ quote()
 	# this public key is generated each time and includes attributes
 	# like "fixedtpm|fixedparent|..."
 	warn "tpm2: creating attestation key"
-	tpm2_createak \
+	tpm2_createak >&2 \
 		--ek-context "$TMP/ek.ctx" \
 		--ak-context "ak.ctx" \
 		--format tpmt \
@@ -160,7 +162,7 @@ quote()
 
 	# get a quote using this attestation key
 	warn "tpm2: generating quote"
-	tpm2_quote \
+	tpm2_quote >&2 \
 		--key-context "ak.ctx" \
 		--pcr-list "sha256:$QUOTE_PCRS" \
 		--qualification "$QUOTE_NONCE" \
@@ -195,12 +197,12 @@ quote()
 	|| die "$TMP/quote.tgz: Unable to create"
 
 	# ensure that this quote validates
-	quote-validate \
+	quote-validate >&2 \
 		"$TMP/quote.tgz" \
 		"$QUOTE_NONCE" \
 	|| die "unable to self-validate quote"
 
-	mv "$TMP/quote.tgz" "." || die "quote.tgz: unable to move"
+	cat "$TMP/quote.tgz" || die "quote.tgz: unable to display"
 }
 
 ########################################
@@ -248,6 +250,8 @@ validate()
 
 	eventlog-validate "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: unable to validate TPM event log"
+
+	warn "$QUOTE_TAR: all tests passed"
 }
 
 ########################################
@@ -276,7 +280,7 @@ eventlog-validate()
 
 	QUOTE_TAR="$1"
 
-	unpack_quote "$QUOTE_TAR" \
+	unpack-quote "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: Unable to unpack"
 
 	warn "$QUOTE_TAR: eventlog parsing is not yet functional"
@@ -317,8 +321,9 @@ ek-validate()
 
 	QUOTE_TAR="$1"
 	CA_PATH="$2"
+	CA_ROOT="$CA_PATH/roots.pem"
 
-	unpack_quote "$QUOTE_TAR" \
+	unpack-quote "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: Unable to unpack"
 
 	# convert the DER into a PEM since 'openssl verify' only works with PEM
@@ -424,6 +429,8 @@ quote-validate()
 		--pcr "$TMP/quote.pcr" \
 		--public "$TMP/ak.pem" \
 	|| die "$QUOTE_TAR: unable to validate quote with '$QUOTE_NONCE'"
+
+	warn "$QUOTE_TAR: quote signature verified"
 }
 
 ########################################
@@ -457,6 +464,9 @@ seal()
 
 	QUOTE_TAR="$1"
 	QUOTE_NONCE="${2:-}"
+
+	unpack-quote "$QUOTE_TAR" \
+	|| die "$QUOTE_TAR: unable to unpack"
 
 	cat > "$TMP/secret" \
 	|| die "Unable to read secret data from stdin"
