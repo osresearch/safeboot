@@ -32,6 +32,7 @@ hex2bin() { perl -ne 'chomp; print pack("H*", $_)' "$@" ; }
 bin2hex() { perl -ne 'print unpack("H*", $_)' "$@" ; }
 sha256() { sha256sum - | cut -d' ' -f1 ; }
 
+DIR="/etc/safeboot"
 TMP="$(mktemp -d)"
 trap cleanup EXIT
 
@@ -80,7 +81,7 @@ unpack-quote()
 	fi
 	if [ ! -r "$TMP/ek.crt" ]; then
 		tar -zxf "$QUOTE_TAR" -C "$TMP" \
-		|| die "unpack-quote: $QOUTE_TAR failed"
+		|| die "unpack-quote: $QUOTE_TAR failed"
 	fi
 
 	# check for the common files?
@@ -231,7 +232,7 @@ commands+="|validate"
 validate()
 {
 	show_help "$1" "$validate_usage"
-	if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+	if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
 		die "Wrong arguments.$validate_usage"
 	fi
 
@@ -568,7 +569,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	commands|quote|validate|validate|seal|unseal|ek-validate|quote-validate|eventlog-validate)
+	commands|quote|validate|seal|unseal|ek-validate|quote-validate|eventlog-validate)
 		$command "$@"
 		;;
 	*)
