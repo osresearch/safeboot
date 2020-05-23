@@ -69,8 +69,8 @@ The protocol between the client and the server goes in four phases: communicatio
 * Server encrypts a secret message (which could be a disk encryption key, a network access token, or whatever) with the TPM's AK, along with the hash of the AK.
 * Server sends this encrypted blob to the Client
 * Client initiates an encrypted session with the TPM and sends the blob to it.
-* The TPM checks that the hash of the AK matches one that it generated, and if so, uses its EK to decrypt the blob
-* Client receives the secret message over the encrypted channel to the TPM (so that a hardware LPC bus snooper wouldn't see the cleartext)
+* The TPM checks that the hash of the AK matches one that it generated and that it hasn't rebooted since then. If these checks pass, the TPM uses its private EK to decrypt the blob.
+* Client receives the secret message over the encrypted channel to the TPM
 * Client uses the shared secret to authenticate to the Server, or decrypt it's disk, or whatever.
 
 Some notes:
@@ -82,6 +82,7 @@ totally undocumented in the man page.
 * Not all TPMs store their EK certs in the NVRAM; some of them require a query to the OEM.
 * The CA Root Certs and OEM intermediate Certs are not well documented; a complete collection needs to be built.
 * The Server does not require any TPM interaction at all -- all of its work is done in software.
+* The secret session for unsealing the blob provides protection against a passive adversary snooping on the LPC bus, although an active attacker with hardware on the LPC bus can interfere with the PCR extensions and generate quotes with untrustworthy PCRs.
 
 ## TPM OEM Certificates
 
