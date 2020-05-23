@@ -1,4 +1,14 @@
 #!/bin/bash
+# TPM2 Remote Attestation
+#
+# This wraps the low level `tpm2-tools` programs into a fairly turn-key
+# remote attestation system to allow a client to use the TPM2 to prove to
+# a server that the PCRs are in a given state, and to then receive a
+# sealed secret that can only be decrypted if the system is still in
+# that state.
+#
+# For more info: https://safeboot.dev/attestation/
+#
 # turn off "expressions don't expand in single quotes"
 # and "can't follow non-constant sources"
 # shellcheck disable=SC2016 disable=SC1090
