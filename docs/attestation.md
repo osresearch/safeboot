@@ -51,27 +51,74 @@ The protocol between the client and the server goes in four phases: communicatio
 * Server sends the nonce (in the clear is fine, since it is literally a random number)
 
 ### Quote signing
+```
+tpm2-attest quote $nonce $pcrs > quote.tgz
+```
 
-* Client extracts the public part of the TPM Endorsement Key and the x509 certificate signed by the TPM manufacturer
-* Client generates a signing-only Attestation Key (`AK`) inside the TPM and exports the public key (`ak.pem`)
-* Client uses the TPM to sign a "quote" of the requested PCRs plus the nonce with the Attestation Key
-* Client sends the AK public key, the EK cert and public key, and the signed quote to the Server
+With this command the client machine will:
+
+* Extracts the public part of the TPM Endorsement Key and the x509 certificate signed by the TPM manufacturer
+* Generates a signing-only Attestation Key (`AK`) inside the TPM and exports the public key (`ak.pub`)
+* Uses the TPM to sign a "quote" of the requested PCRs plus the nonce with the Attestation Key
+* Extract the TPM event log and IMA event log, if they are available
+* Bundle up all of the pieces into a tar file: `ek.crt`, `ek.pub`, `ak.pub`, `quote.sig`, `quote.pcr`, `quote.msg`, `eventlog` and the `nonce`
+
+The Client then sends this quote file to the Server.
 
 ### Quote validation
+When the Server receives the quote file from the client, it runs:
+```
+tpm2-attest validate quote.tgz $nonce
+```
 
-* Server validates the SSL certificate chain on the EK cert to ensure that it came from a real TPM
-* Server validates that the quote is signed by the AK with the correct nonce
+With this command the server will:
+
+* Validates the SSL certificate chain on the client TPM EK cert to ensure that it came from a real TPM
+* Validates that the quote is signed by the AK with the correct nonce (if the nonce is not checked, then this could be a replay attack by the Client)
 * Server optionally consults its list of approved devices to verify that this EK is in an owner controlled machine
-* Server optionally validates that the PCRs match the expected values; the quote could include the TPM event log for more analysis
+* Server optionally validates that the PCRs match the expected values
+* Server optoinally validates that the TPM event log produces the set of
+PCR values in the quote
+
+If the command fails, then something is likely wrong on the Client side
+and requires remediation.  The Server should not proceed to sealing a
+secret for the Client.
 
 ### Secret sealing
 
-* Server encrypts a secret message (which could be a disk encryption key, a network access token, or whatever) with the TPM's AK, along with the hash of the AK.
-* Server sends this encrypted blob to the Client
-* Client initiates an encrypted session with the TPM and sends the blob to it.
+Assuming the validation passed, the server can seal secret data such
+that only the TPM that produced the signed attestation will be able to
+unseal it, and has faith that the TPM will not unseal it if it has been
+reset (to prevent attacks that reboot into untrusted firmware):
+
+```
+cat secret.txt | tpm2-attest seal quote.tgz > cipher.bin
+```
+
+With this command the Server will:
+
+* Encrypt a secret message (which could be a disk encryption key, a network access token, or whatever) with the TPM's EK, along with the hash of the AK.
+
+The Server then sends this encrypted blob to the Client.
+
+### Secret unsealing
+Once the Client receives the sealed blob from the Server, it attempts
+to unseal it with the Attestation Key context that is left over from the
+initial quote signing:
+
+```
+cat cipher.bin | tpm2-attest unseal ak.ctx > secret.txt
+```
+
+With this command, the Client and TPM will:
+
+* Initiates an encrypted session with the TPM and sends the blob to it.
 * The TPM checks that the hash of the AK matches one that it generated and that it hasn't rebooted since then. If these checks pass, the TPM uses its private EK to decrypt the blob.
 * Client receives the secret message over the encrypted channel to the TPM
-* Client uses the shared secret to authenticate to the Server, or decrypt it's disk, or whatever.
+
+At this point the Client can use the shared secret to authenticate to
+the Server, a network, or decrypt it's disk, or whatever.  The TPM is
+no longer involved.
 
 Some notes:
 
@@ -87,3 +134,6 @@ totally undocumented in the man page.
 ## TPM OEM Certificates
 
 TODO: catalog a list of them and how to maintain the `/path/to/certs`
+
+The `/etc/safeboot/refresh-certs` will use its list of OEM certificate URLs
+to rebuild the CA directory in `/etc/safeboot/certs/`.
