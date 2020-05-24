@@ -1,15 +1,42 @@
 site_name: safeboot
+site_description: >-
+  Debian package to enable UEFI SecureBoot, enroll your own hardware
+  backed platform key, sign the kernel and initrd, decrypt the disk with
+  the TPM, and enable system integrity protection with dmverity
 repo_url: https://github.com/osresearch/safeboot/
 edit_uri: ""
 theme:
   name: material
   custom_dir: docs/custom/
   logo: images/logo.png
-  palette:
-    scheme: slate
+  font:
+    text: IBM Plex Serif
+    code: IBM Plex Mono
+    heading: IBM Plex Sans
 extra_css: [extra.css]
 markdown_extensions:
+  - toc
   - admonition
+  - md_in_html
+  - extra
+  - pymdownx.arithmatex
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.critic
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:materialx.emoji.twemoji
+      emoji_generator: !!python/name:materialx.emoji.to_svg
+  - pymdownx.inlinehilite
+  - pymdownx.magiclink
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
 plugins:
   - search # necessary for search to work
   - git-revision-date-localized

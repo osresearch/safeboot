@@ -1,6 +1,13 @@
-![Linux on a classic Butterfly Thinkpad](images/installation-header.jpg)
+---
+title: "Configuring safeboot to boot Linux more safely"
+summary: >-
+  Instructions for configuring the safeboot package on Ubuntu 20.04
+  and setting up the hardware Yubikey, the TPM sealed disk encryption,
+  and the System Integrity Protection Mode.
+image: "images/installation-header.jpg"
+---
 
-# Safe Boot: Booting Linux Safely
+![Linux on a classic Butterfly Thinkpad](images/installation-header.jpg)
 
 !!! danger
     **Be careful!**

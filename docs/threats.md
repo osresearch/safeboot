@@ -1,6 +1,12 @@
-# safeboot threat model
+---
+title: "safeboot threat model"
+summary: >-
+  Overview of the protections enabled by safeboot and the threats that
+  they are intended to prevent, detect, or repair.
+image: "images/threat-model.jpg"
+---
 
-![Your threat model is not my threat model, but your threat model is ok](https://live.staticflickr.com/5575/31437292510_99ffd0dd11_b.jpg)
+![Your threat model is not my threat model, but your threat model is ok](images/threat-model.jpg)
 
 `safeboot` intends to protect the integrity of the boot process and
 runtime integrity of the system against adversaries with external physical

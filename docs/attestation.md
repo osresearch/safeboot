@@ -1,4 +1,13 @@
-# TPM2 Remote Attestation
+---
+title: "tpm2-attest: TPM2 Remote Attestation"
+summary: >-
+  tpm2-attest is a simple way to have an untrusted Linux machine
+  generate signed TPM quotes, validate those quotes and endorsement keys
+  on a remote attestation server, and seal a secret message that will
+  only be unsealable on that specific TPM.
+image: "images/tpm-header.jpg"
+---
+
 ![TPM on a server mainboard](images/tpm-header.jpg)
 
 When the user wants to connect to another computer over the network,
@@ -33,7 +42,7 @@ seal a secret for a specific TPM, and unseal it with that TPM.
 * Client: `tpm2-attest unseal < cipher.bin > secret.txt`
 * Client: Use `secret.txt` to whatever
 
-## Attestation overview
+## Attestation protocol
 
 The protocol requires a few round-trips between the local machine (the client)
 and the remote attestation machine (the server), although none of the information
@@ -127,14 +136,13 @@ At this point the Client can use the shared secret to authenticate to
 the Server, a network, or decrypt it's disk, or whatever.  The TPM is
 no longer involved.
 
-Some notes:
+## Some notes
 
 * Generating an AK each time is not necessary; one could be pregenerated and persistent in the TPM, although that requires additoinal setup.
 * The AK is not signed by the EK, so the Server has to trust that the EK is stored inside of a real TPM and that
 the real TPM will not decrypt the message unless the AK matches. I think, this part of `tpm2_makecredential` is
 totally undocumented in the man page.
 * Not all TPMs store their EK certs in the NVRAM; some of them require a query to the OEM.
-* The CA Root Certs and OEM intermediate Certs are not well documented; a complete collection needs to be built.
 * The Server does not require any TPM interaction at all -- all of its work is done in software.
 * The secret session for unsealing the blob provides protection against a passive adversary snooping on the LPC bus, although an active attacker with hardware on the LPC bus can interfere with the PCR extensions and generate quotes with untrustworthy PCRs.
 
