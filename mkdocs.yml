@@ -4,6 +4,7 @@ site_description: >-
   backed platform key, sign the kernel and initrd, decrypt the disk with
   the TPM, and enable system integrity protection with dmverity
 repo_url: https://github.com/osresearch/safeboot/
+site_url: https://safeboot.dev/
 edit_uri: ""
 theme:
   name: material

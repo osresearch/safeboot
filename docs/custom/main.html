@@ -12,7 +12,7 @@
 <meta property="og:description"
 	content="{% if page.meta.summary %}{{ page.meta.summary }}{% else %}{{ config.site_description }}{% endif %}">
 <meta property="og:image"
-      content="{% if page.meta.image|length > 1 %}{{ config.site_url}}{{ page.meta.image }}{% else %}{{ config.site_url }}{{ config.theme.logo }}{% endif %}">
+      content="{% if page.meta.image|length > 1 %}{{ config.site_url|url }}{{ page.meta.image }}{% else %}{{ config.site_url|url }}{{ config.theme.logo }}{% endif %}">
 {% endblock %}
 
 {% block fonts %}
