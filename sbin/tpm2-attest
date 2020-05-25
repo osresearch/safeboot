@@ -73,6 +73,25 @@ tpm2_flush_all()
 	|| die "tpm2_flushcontext: unable to flush sessions"
 }
 
+tpm2_secret_session()
+{
+	SESSION="${1:-$TPM/session.ctx}"
+
+	tpm2_flushcontext --loaded-session
+
+	warn "tpm2: starting secret session $SESSION"
+	tpm2_startauthsession >&2 \
+		--session "$SESSION" \
+		--policy-session  \
+	|| die "tpm2_startauthsession: unable to start authenticated session"
+
+	# context is TPM_RH_ENDORSEMENT because why would you want names?
+	tpm2_policysecret >&2 \
+		--session "$SESSION" \
+		--object-context "0x4000000b" \
+	|| die "tpm2_policysecret: unable to set context TPM_RH_ENDORSEMENT"
+}
+
 unpack-quote()
 {
 	QUOTE_TAR="$1"
@@ -151,17 +170,54 @@ quote()
 		--public "$TMP/ek.pub" \
 	|| die "tpm2_createek: unable to retrieve endorsement key"
 
-	# this public key is generated each time and includes attributes
-	# like "fixedtpm|fixedparent|..."
-	warn "tpm2: creating attestation key"
-	tpm2_createak >&2 \
-		--ek-context "$TMP/ek.ctx" \
-		--ak-context "ak.ctx" \
-		--format tpmt \
-		--public "$TMP/ak.pub" \
-	|| die "tpm2_createak: unable to create an attestation key"
+	# this public key is generated each time and includes the
+	# `stclear` attribute so that it can not be persistent
+	# and it will not be valid after a reboot.
+	#
+	# The much simpler `tpm2_createak` could have been used,
+	# except that it makes persistent attestation keys, which
+	# would allow an attacker to reboot the machine into an
+	# untrusted state and unseal the response from the attestation
+	# server.
+	#
+	# tpm2_createak >&2 \
+	#	--ek-context "$TMP/ek.ctx" \
+	#	--ak-context "ak.ctx" \
+	#	--public "$TMP/ak.pem" \
+	#	--format "pem" \
+	#|| die "tpm2_createak: unable to create attestation key"
+
+	tpm2_secret_session "$TMP/session.ctx"
+
+	warn "tpm2: creating ephemeral attestation key"
+	tpm2_create >&2 \
+		--parent-context "$TMP/ek.ctx" \
+		--parent-auth "session:$TMP/session.ctx" \
+		--key-algorithm "rsa:rsassa:null" \
+		--attributes "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|restricted|sign|stclear" \
+		--public "$TMP/ak-pub.key" \
+		--private "$TMP/ak-priv.key" \
+	|| die "tpm2_create: unable to create an attestation key"
+
+	# have to start a new secret session to load the attestation key
+	tpm2_secret_session "$TMP/session.ctx"
+	tpm2_load >&2 \
+		--parent-context "$TMP/ek.ctx" \
+		--auth "session:$TMP/session.ctx" \
+		--key-context "ak.ctx" \
+		--public "$TMP/ak-pub.key" \
+		--private "$TMP/ak-priv.key" \
+	|| die "tpm2_load: unable to load attestation key"
+
+	# output the stats for the log
+	tpm2_readpublic >&2 \
+		--object-context "ak.ctx" \
+		--output "$TMP/ak.pub" \
+		--format "tpmt" \
+	|| die "tpm2_readpublic: unable to display info"
 
 	# get a quote using this attestation key
+	tpm2_flush_all ""
 	warn "tpm2: generating quote"
 	tpm2_quote >&2 \
 		--key-context "ak.ctx" \
@@ -197,7 +253,8 @@ quote()
 		"ima" \
 	|| die "$TMP/quote.tgz: Unable to create"
 
-	# ensure that this quote validates
+	# ensure that this quote validates locally before
+	# sending it to the attestation server.
 	quote-validate >&2 \
 		"$TMP/quote.tgz" \
 		"$QUOTE_NONCE" \
@@ -372,6 +429,8 @@ tpm2-attest quote-validate quote.tgz [nonce]
 
 This command checks that the quote includes the given nonce and
 was signed by the public attestation key (AK) in the quote file.
+This also check the attributes of the AK to ensure that it has
+the correct bits set (`fixedtpm`, `stclear`, etc).
 NOTE: This does not validate that the AK came from a valid TPM.
 See `tpm2-attest validate` for the full validation.
 
@@ -405,6 +464,21 @@ quote-validate()
 	if [ "$QUOTE_NONCE" = "" ]; then
 		# if no nonce was specified, read it from the tar file
 		QUOTE_NONCE="$(cat "$TMP/nonce")"
+	fi
+
+	# Read the attributes from the ak.pub and ensure that they
+	# match "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|restricted|sign|stclear"
+	# which is the four bytes 0x00050076 at offset 6.
+	# if `stclear` is not set, then an attacker might have
+	# a persistent version of this key and they could reboot into
+	# an untrusted state.
+	#
+	# TODO: replace this with tpm2_print when it is updated to include
+	# a textual dump of the public struct. https://github.com/tpm2-software/tpm2-tools/issues/2057
+	AK_ATTRIBUTES="$(bin2hex "$TMP/ak.pub" | cut -c13-20)"
+	warn "$TMP/ak.pub: attributes $AK_ATTRIBUTES"
+	if [ "$AK_ATTRIBUTES" != "00050076" ]; then
+		die "$TMP/ak.pub: incorrect attributes $AK_ATTRIBUTES"
 	fi
 
 	# convert the TPMT formatted attestation key into a DER public
@@ -518,21 +592,9 @@ unseal()
 
 	AK_CTX="$1"
 
-	tpm2_flush_all ""
-
-	warn "tpm2: starting secret session"
-	tpm2_startauthsession \
-		--session "$TMP/session.ctx" \
-		--policy-session  \
-	|| die "tpm2_startauthsession: unable to start authenticated session"
-
-	# context is TPM_RH_ENDORSEMENT because why would you want names?
-	tpm2_policysecret \
-		--session "$TMP/session.ctx" \
-		--object-context "0x4000000b" \
-	|| die "tpm2_policysecret: unable to set context TPM_RH_ENDORSEMENT"
 
 	# recreate the endorsement key context since it doesn't change per call
+	tpm2_flush_all ""
 	tpm2_createek \
 		--ek-context "$TMP/ek.ctx" \
 		--key-algorithm "rsa" \
@@ -540,6 +602,8 @@ unseal()
 
 	cat > "$TMP/cipher.bin" \
 	|| die "$TMP/cipher.bin: unable to create cipher text"
+
+	tpm2_secret_session "$TMP/session.ctx"
 
 	tpm2_activatecredential \
 		--credentialedkey-context "$AK_CTX" \
