@@ -670,7 +670,7 @@ sign-kernel() {
 
 	if [ $# == 0 ]; then
 		warn "Using /proc/cmdline"
-		cat /proc/cmldine > "$TMP/cmdline.txt"
+		cat /proc/cmdline > "$TMP/cmdline.txt"
 	else
 		echo -n "$@" > "$TMP/cmdline.txt"
 	fi
