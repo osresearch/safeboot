@@ -39,8 +39,9 @@ else
 fi
 
 # Set the default values for the other parameters
-: "${ROOTDEV:=/dev/mapper/vgubuntu-root}"
-: "${HASHDEV:=/dev/mapper/vgubuntu-hashes}"
+# Do not assign ROOTDEV or HASHDEV; they will be detected in rootdev-check
+: "${ROOTDEV:=}"
+: "${HASHDEV:=}"
 : "${LINUX_TARGET:=linux}"
 : "${RECOVERY_TARGET:=recovery}"
 : "${SIP:=0}"
@@ -80,6 +81,58 @@ tpm2_trial_extend() {
 	fi
 		
 	( echo -n "$initial" ; sha256 ) | hex2bin | sha256
+}
+
+#
+# Ensure that there is a valid root device
+#
+rootdev-check()
+{
+	if [ -z "${ROOTDEV}" ]; then
+		ROOTDEV="$(mount | awk '/ on \/ / { print $1 }')"
+		warn "\$ROOTDEV is not set. Guessing $ROOTDEV"
+		TEST_ROOTDEV=1
+	fi
+
+	if [ ! -e "$ROOTDEV" ]; then
+		die "$ROOTDEV: root device does not exist?"
+	fi
+
+	if [ ! -r "$ROOTDEV" ]; then
+		die "$ROOTDEV: root device permission denied"
+	fi
+
+	if [ "$TEST_ROOTDEV" = 1 ]; then
+		warn "$PREFXI$DIR/local.conf: setting \$ROOTDEV=$ROOTDEV"
+		echo "ROOTDEV=\"$ROOTDEV\"" >> $PREFIX$DIR/local.conf \
+		|| die "$PREFIX$DIR/local.conf: Unable to set \$ROOTDEV"
+		TEST_ROOTDEV=0
+	fi
+
+	if [ "$SIP" != 1 ]; then
+		return 0
+	fi
+
+	if [ -z "$HASHDEV" ]; then
+		HASHDEV="${ROOTDEV%-*}-hashes"
+		warn "\$HASHDEV is not set. Guessing $HASHDEV (same volume group as \$ROOTDEV)"
+		TEST_HASHDEV=1
+	fi
+
+	if [ ! -e "$HASHDEV" ]; then
+		die "$HASHDEV: hash device does not exist. Please set in $PREFIX$DIR/local.conf"
+	fi
+
+	if [ ! -r "$HASHDEV" ]; then
+		die "$HASHDEV: hash device permission denied. Please set in $PREFIX$DIR/local.conf"
+	fi
+
+	if [ "$TEST_HASHDEV" = 1 ]; then
+		warn "$PREFXI$DIR/local.conf: setting \$HASHDEV=$HASHDEV"
+		echo "HASHDEV=\"$HASHDEV\"" >> $PREFIX$DIR/local.conf \
+		|| die "$PREFIX$DIR/local.conf: Unable to set \$HASHDEV"
+		TEST_HASHDEV=0
+	fi
 }
 
 
@@ -757,6 +810,7 @@ commands+="|linux-sign"
 linux-sign()
 {
 	show_help "$1" "$linux_sign_usage"
+	rootdev-check -
 
 	# default is linux
 	if [ -n "$1" ]; then
@@ -847,6 +901,7 @@ commands+="|recovery-sign"
 recovery-sign()
 {
 	show_help "$1" "$recovery_sign_usage"
+	rootdev-check -
 
 	if [ "$SIP" == 1 ]; then
 		# ensure that the root file system is really
@@ -919,6 +974,8 @@ recovery-reboot()
 
 remount_ro()
 {
+	rootdev-check -
+
 	DEV="${1:-${ROOTDEV}}"
 
 	if [ "$(blockdev --getro "${DEV}")" == 1 ] ; then
@@ -948,6 +1005,8 @@ remount_ro()
 
 remount_rw()
 {
+	rootdev-check -
+
 	DEV="${1:-${ROOTDEV}}"
 
 	warn "${DEV}: remounting read-write"
@@ -988,6 +1047,7 @@ commands+="|remount"
 remount()
 {
 	show_help "$1" "$remount_usage"
+	rootdev-check -
 
 	if [ "$1" == "ro" ]; then
 		remount_ro "${ROOTDEV}"
@@ -1021,13 +1081,15 @@ commands+="|sip-init"
 sip-init()
 {
 	show_help "$1" "$sip_init_usage"
+	rootdev-check -
+
 	var_size=${1:-16g}
 	home_size=${2:-80g}
 
 	warn "sip-init: Checking configuration before writing..."
 
-	root_size="$(lvdisplay --units b ${ROOTDEV} | awk '/LV Size/{print $3}')"
-	vg="$(lvdisplay ${ROOTDEV} | awk '/VG Name/{print $3}')"
+	root_size="$(lvdisplay --units b "${ROOTDEV}" | awk '/LV Size/{print $3}')"
+	vg="$(lvdisplay "${ROOTDEV}" | awk '/VG Name/{print $3}')"
 
 	if [ -z "$vg" ]; then
 		die "${ROOTDEV}: unknown volume group?"
