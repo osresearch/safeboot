@@ -1154,6 +1154,13 @@ you can unwind the changes that were made.
 	lvcreate --size 1g -n hashes "$vg" \
 	|| die "$vg-hashes: unable to create volume"
 
+	if [ -z "$HASHDEV" ]; then
+		HASHDEV="/dev/mapper/$vg-hashes"
+		warn "$PREFIX$DIR/local.conf: adding HASHDEV=$HASHDEV"
+		echo "HASHDEV=\"$HASHDEV\"" >> "$PREFIX$DIR/local.conf" \
+		|| die "$PREFIX$DIR/local.conf: unable to add HASHDEV"
+	fi
+
 	lvcreate --size "$var_size" -n var "$vg" \
 	|| die "$vg-var: unable to create volume"
 
