@@ -578,7 +578,10 @@ luks-seal() {
 	# make sure the crypttab has the unlock script referenced
 	if ! grep keyscript "$PREFIX/etc/crypttab" > /dev/null ; then
 		warn "adding crypttab unseal script"
-		sed -i.orig 's:,discard$:,discard,keyscript=/usr/sbin/safeboot-tpm-unseal:' $PREFIX/etc/crypttab \
+		sed \
+			-i.orig \
+			's: luks: keyscript=/usr/sbin/safeboot-tpm-unseal,luks:' \
+			$PREFIX/etc/crypttab \
 		|| die "$PREFIX/etc/crypttab: unable to add keyscript"
 
 		warn "***** You should update your ramdisk and resign the kernel:"
