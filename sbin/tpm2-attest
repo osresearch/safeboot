@@ -255,21 +255,21 @@ quote()
 
 	# ensure that this quote validates locally before
 	# sending it to the attestation server.
-	quote-validate >&2 \
+	quote-verify >&2 \
 		"$TMP/quote.tgz" \
 		"$QUOTE_NONCE" \
-	|| die "unable to self-validate quote"
+	|| die "unable to self-verify quote"
 
 	cat "$TMP/quote.tgz" || die "quote.tgz: unable to display"
 }
 
 ########################################
 
-validate_usage='
-## validate
+verify_usage='
+## verify
 Usage:
 ```
-tpm2-attest validate quote.tgz [nonce [ca-path]]
+tpm2-attest verify quote.tgz [nonce [ca-path]]
 ```
 
 This will validate that the quote was signed with the attestation key
@@ -281,16 +281,16 @@ although this opens up the possibility of a replay attack.
 
 If the `ca-path` is not specified, the system one will be used.
 
-* TODO: validate event log
+* TODO: verify event log
 '
-usage+="$validate_usage"
-commands+="|validate"
+usage+="$verify_usage"
+commands+="|verify"
 
-validate()
+verify()
 {
-	show_help "$1" "$validate_usage"
+	show_help "$1" "$verify_usage"
 	if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
-		die "Wrong arguments.$validate_usage"
+		die "Wrong arguments.$verify_usage"
 	fi
 
 	QUOTE_TAR="$1"
@@ -300,40 +300,40 @@ validate()
 	unpack-quote "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: unable to unpack"
 
-	quote-validate "$QUOTE_TAR" "$NONCE" \
-	|| die "$QUOTE_TAR: unable to validate quote"
+	quote-verify "$QUOTE_TAR" "$NONCE" \
+	|| die "$QUOTE_TAR: unable to verify quote"
 
-	ek-validate "$QUOTE_TAR" "$CA_ROOT" \
-	|| die "$QUOTE_TAR: unable to validate EK certificate"
+	ek-verify "$QUOTE_TAR" "$CA_ROOT" \
+	|| die "$QUOTE_TAR: unable to verify EK certificate"
 
-	eventlog-validate "$QUOTE_TAR" \
-	|| die "$QUOTE_TAR: unable to validate TPM event log"
+	eventlog-verify "$QUOTE_TAR" \
+	|| die "$QUOTE_TAR: unable to verify TPM event log"
 
 	warn "$QUOTE_TAR: all tests passed"
 }
 
 ########################################
 
-eventlog_validate_usage='
-## eventlog-validate
+eventlog_verify_usage='
+## eventlog-verify
 Usage:
 ```
-tpm2-attest eventlog-validate quote.tgz
+tpm2-attest eventlog-verify quote.tgz
 ```
 
-This will validate that the PCRs included in the quote match the
+This will verify that the PCRs included in the quote match the
 TPM event log.
 
 * TODO: build tpm2_eventlog so that these events can be parsed.
 '
-usage+="$eventlog_validate_usage"
-commands+="|eventlog-validate"
+usage+="$eventlog_verify_usage"
+commands+="|eventlog-verify"
 
-eventlog-validate()
+eventlog-verify()
 {
-	show_help "$1" "$eventlog_validate_usage"
+	show_help "$1" "$eventlog_verify_usage"
 	if [ "$#" -ne 1 ]; then
-		die "Wrong arguments.$eventlog_validate_usage"
+		die "Wrong arguments.$eventlog_verify_usage"
 	fi
 
 	QUOTE_TAR="$1"
@@ -347,11 +347,11 @@ eventlog-validate()
 
 ########################################
 
-ek_validate_usage='
-## ek-validate
+ek_verify_usage='
+## ek-verify
 Usage:
 ```
-tpm2-attest ek-validate quote.tgz ca-path
+tpm2-attest ek-verify quote.tgz ca-path
 ```
 
 This will validate that the endorsement key came from a valid TPM.
@@ -367,14 +367,14 @@ root keys and have the hash symlinks created by `c_rehash`.
 
 * TODO: check parameters of attestation key.
 '
-usage+="$ek_validate_usage"
-commands+="|ek-validate"
+usage+="$ek_verify_usage"
+commands+="|ek-verify"
 
-ek-validate()
+ek-verify()
 {
-	show_help "$1" "$ek_validate_usage"
+	show_help "$1" "$ek_verify_usage"
 	if [ "$#" -ne 2 ]; then
-		die "Wrong arguments.$ek_validate_usage"
+		die "Wrong arguments.$ek_verify_usage"
 	fi
 
 	QUOTE_TAR="$1"
@@ -420,19 +420,19 @@ ek-validate()
 	warn "ek.pub: matches ek.crt!"
 }
 
-quote_validate_usage='
-## quote-validate
+quote_verify_usage='
+## quote-verify
 Usage:
 ```
-tpm2-attest quote-validate quote.tgz [nonce]
+tpm2-attest quote-verify quote.tgz [nonce]
 ```
 
 This command checks that the quote includes the given nonce and
 was signed by the public attestation key (AK) in the quote file.
 This also check the attributes of the AK to ensure that it has
 the correct bits set (`fixedtpm`, `stclear`, etc).
-NOTE: This does not validate that the AK came from a valid TPM.
-See `tpm2-attest validate` for the full validation.
+NOTE: This does not verify that the AK came from a valid TPM.
+See `tpm2-attest verify` for the full validation.
 
 If the `nonce` is not specified on the command line, the one in the
 quote file will be used.  Note that this is a potential for a replay
@@ -440,14 +440,14 @@ attack -- the remote attestation server should keep track of which
 nonce it used for this quote so that it can verify that the quote
 is actually live.
 '
-usage+="$quote_validate_usage"
-commands+="|quote-validate"
+usage+="$quote_verify_usage"
+commands+="|quote-verify"
 
-quote-validate()
+quote-verify()
 {
-	show_help "$1" "$quote_validate_usage"
+	show_help "$1" "$quote_verify_usage"
 	if [ "$#" -lt 1 ]; then
-		die "Insufficent arguments.$quote_validate_usage"
+		die "Insufficent arguments.$quote_verify_usage"
 	fi
 
 	QUOTE_TAR="$1"
@@ -475,7 +475,7 @@ quote-validate()
 	#
 	# TODO: replace this with tpm2_print when it is updated to include
 	# a textual dump of the public struct. https://github.com/tpm2-software/tpm2-tools/issues/2057
-	AK_ATTRIBUTES="$(bin2hex "$TMP/ak.pub" | cut -c13-20)"
+	AK_ATTRIBUTES="$(bin2hex "$TMP/ak.pub" | cut -c9-16)"
 	warn "$TMP/ak.pub: attributes $AK_ATTRIBUTES"
 	if [ "$AK_ATTRIBUTES" != "00050076" ]; then
 		die "$TMP/ak.pub: incorrect attributes $AK_ATTRIBUTES"
@@ -503,7 +503,7 @@ quote-validate()
 		--signature "$TMP/quote.sig" \
 		--pcr "$TMP/quote.pcr" \
 		--public "$TMP/ak.pem" \
-	|| die "$QUOTE_TAR: unable to validate quote with '$QUOTE_NONCE'"
+	|| die "$QUOTE_TAR: unable to verify quote with '$QUOTE_NONCE'"
 
 	warn "$QUOTE_TAR: quote signature verified"
 }
@@ -633,7 +633,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	commands|quote|validate|seal|unseal|ek-validate|quote-validate|eventlog-validate)
+	commands|quote|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify)
 		$command "$@"
 		;;
 	*)
