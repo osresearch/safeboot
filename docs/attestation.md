@@ -144,13 +144,47 @@ no longer involved.
 
 ## Some notes
 
-* Generating an AK each time is not necessary; one could be pregenerated and persistent in the TPM, although that requires additoinal setup.
-* The AK is not signed by the EK, so the Server has to trust that the EK is stored inside of a real TPM and that
-the real TPM will not decrypt the message unless the AK matches. I think, this part of `tpm2_makecredential` is
-totally undocumented in the man page.
+* All comunication between the Client and the Server can be in the clear.
+There is no sensitive data exchanged and a MITM can only substitute
+a different EK/AK pair; they are not able to masquarade as the TPM of
+the attesting machine since they do not have the EK for that TPM.
+
+* Suprisingly, the Attestation Key is not signed by the Endorsement Key,
+so the Server has to check the EK certificate to ensure that it came from
+a real TPM. Additional, the Server must check the AK attributes to ensure
+that it has `fixedtpm` and `sensitivedataorigin` set, which indicates that
+the AK was generated inside the TPM. Even with these checks, the Server is
+still trusting that the TPM hardware implements `tpm2_activatecredential`
+with all of these checks correctly done, since the sealed data is encrypted
+with the EK, not the AK.  (Like many things with the TPM2, this is a really
+baroque way to organize the keys).
+
+* Generating an AK each time should not be necessary; one could be
+pregenerated and persistent in the TPM, except that opens up a race
+condition between generating a quote and receiving the sealed data.
+The *quote* includes the reboot count, but the *sealed data* does not
+reference it, so the TPM will unseal it if the AK is still valid.
+By creating an ephemeral AK (with the `stclear` bit set in the
+attributes), the TPM will not allow it to be persisted and will refuse
+to load it when the reboot counter increments.
+
 * Not all TPMs store their EK certs in the NVRAM; some of them require a query to the OEM.
-* The Server does not require any TPM interaction at all -- all of its work is done in software.
-* The secret session for unsealing the blob provides protection against a passive adversary snooping on the LPC bus, although an active attacker with hardware on the LPC bus can interfere with the PCR extensions and generate quotes with untrustworthy PCRs.
+
+* The Server does not require any TPM interaction at all -- all of its
+work is done in software and can be run as an ordinary user.
+
+* The Discrete TPM is a hardware weakpoint; a physically proximate adversary
+could remove the TPM from a machine and connect it to an untrusted device and
+then masquarade as the device to which the TPM had been connected.  This would
+also potentially allow them to extract any sealed disk encryption keys,
+[as described on the threat model page](threats.md), and is one of the
+advantages of an fTPM inside the Management Engine.
+
+* A proximate attacker could also interfere with the LPC or i2c bus of a Discrete TPM
+using something like [the TPM Genie](https://www.nccgroup.com/uk/our-research/tpm-genie/),
+which allow them to both modify the hashes sent to the TPM during PCR extension operations,
+and read the unsealed secrets when they are returned if the TPM didn't support
+secret sessions.
 
 ## TPM OEM Certificates
 
