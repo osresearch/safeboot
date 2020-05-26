@@ -4,7 +4,7 @@ BINS += bin/sbsign.safeboot
 BINS += bin/sign-efi-sig-list.safeboot
 BINS += bin/tpm2-totp
 
-all: $(BINS) certs
+all: $(BINS) update-certs
 
 #
 # sbsign needs to be built from a patched version to avoid a
@@ -106,5 +106,11 @@ shellcheck:
 
 # Fetch several of the TPM certs and make them usable
 # by the openssl verify tool.
-certs:
-	./refresh-certs
+# CAB file from Microsoft has all the TPM certs in DER
+# format.  openssl x509 -inform DER -in file.crt -out file.pem
+# https://docs.microsoft.com/en-us/windows-server/security/guarded-fabric-shielded-vm/guarded-fabric-install-trusted-tpm-root-certificates
+# However, the STM certs in the cab are corrupted? so fetch them
+# separately
+update-certs:
+	#./refresh-certs
+	c_rehash certs
