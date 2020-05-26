@@ -16,19 +16,35 @@ More details are in [the threat model page](threats.md).
 
 ## How is this better than normal UEFI Secure Boot?
 
-UEFI Secure Boot is sufficient for Microsoft's needs since they are the only
-signing authority for their runtime, while Linux computer owners frequently
-want to compile their own kernel or runtime.  The compromise solution developed
-by Linux distributions has Microsoft sign a ["shim" bootloader](https://mjg59.dreamwidth.org/19448.html) that has its own key management.
-Since most distributions have their keys enrolled with Microsoft, systems that
-have Secure Boot enabled will boot the distribution's ISOs, which might not
-be desirable since it gives an adversary runtime access to the system.
+`safeboot` is not a replacement for UEFI SecureBoot - the two work together to
+improve the security of the system. SecureBoot ensures that the boot firmware is
+measured into the TPM and validates the signatures on the Linux kernel and initrd,
+and `safeboot` adds additional integrity protections beyond that.
 
-A larger problem is that by default only the Linux kernel is signed, not the
-command line parameters or initrd.  This means that potentially a local attacker can
-launch the kernel with `init=/bin/sh` to drop into a shell, or an attacker with
+The default UEFI Secure Boot configuration is sufficient for
+Microsoft's needs since they are the only signing authority for
+their runtime, while Linux computer owners frequently want to
+compile their own kernel or runtime.  The compromise solution
+developed by Linux distributions has Microsoft sign a
+["shim" bootloader](https://mjg59.dreamwidth.org/19448.html)
+that has its own key management.  Since most distributions have their
+keys enrolled in the shim, systems that have Secure Boot enabled
+will boot the distribution's ISOs, which might not be desirable since
+it potentially gives an adversary runtime access to unencrypted
+parts of the system.
+
+A larger problem is that by default only the Linux kernel is signed,
+not the command line parameters or initrd.  While the `grub` bootloader
+can enable a password to protect against casual changes to the kernel
+parameters, the `grub.cfg` configuration is not signed.   This means
+that potentially a local attacker can modify it on disk to launch the
+kernel with `init=/bin/sh` to drop into a shell, or an attacker with
 root access can add trojan'ed binaries to the initrd to gain persistence.
-By replacing the Platform Key, only images signed by the computer owner will boot.
+By replacing the Platform Key and removing `grub`, only Linux kernel and
+initrd images signed by the computer owner will boot.
+
+Far more details on how `safeboot` extends UEFI SecureBoot are on
+[the threat model page](threats.md).
 
 ## How does `safeboot` compare to coreboot?
 ![Installing coreboot requires so much flashing](images/coreboot.jpg)
