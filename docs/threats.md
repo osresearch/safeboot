@@ -16,6 +16,22 @@ as the user and as root, but does not have access to the signing keys or
 the disk encryption key.  The goal is to prevent the attacker from exfiltrating
 data from the device or making persistent changes to the system configuration.
 
+The [protections offered by UEFI Secure Boot](faq.md#how-is-this-better-than-normal-uefi-secure-boot)
+fall short of these goals in several areas.  The default signing keys in
+Secure Boot are not under control of the computer owner -- the bootloader
+root CA keys are controlled by Microsoft, who signs the keys used to sign
+the shim bootloader, which has the Linux distribution keys built in.
+Owners can enroll their keys to the Machine Owner Key (MOK), but this does
+not replace the distribution keys in the shim.  Even with SecureBoot enabled,
+most distributions still go through grub for a boot menu, which increases
+the attack surface and adds another layer of validation that needs to be done.
+Finally, Canonical signs the kernel and the kernel modules so that they are
+accepted by the shim and grub, but the initrd is unsigned and an attacker can
+replace it without too much difficulty since it is stored in plaintext
+on the disk.  Additionally, none of the Linux distributions support TPM
+protected keys out of the box, which is why it is necessary to install
+a package like `safeboot` to make use of them.
+
 
 ## Protections
 
@@ -25,10 +41,10 @@ setup instructions include:
 ### Firmware
 
 * Enabling UEFI Secure Boot, Supervisor password, Tamper Switches, etc
-* Generating a signing key in a hardware token
-* Installing the signing key as the UEFI Secure Boot Platform Key (`PK`)
+* Generating an owner controlled signing key in a hardware token
+* Installing the owner's signing key as the UEFI Secure Boot Platform Key (`PK`)
 * Removing OEM and Microsoft keys from the UEFI Secure Boot key database ('db')
-* Signing the kernel, initrd and command line with the hardware key
+* Signing the kernel, initrd and command line with the owner's hardware key
 
 ### Booting
 * LUKS block device encryption on `/`, `/home`, `/var` and swap.
@@ -44,6 +60,7 @@ setup instructions include:
 * Mounting `/tmp`, `/home` and `/var` with `nosuid,nodev`
 * Removing Canonical's module signing key
 * Adding `usb-storage` and other external media to the kernel module deny list
+* Proving the firmware and kernel configuration to remote attestation servers with [`tpm2-attest`](attestation.md)
 
 ### Todo
 * TODO: Flush encryption keys during sleep
@@ -61,7 +78,7 @@ are as observed on the Lenovo X1 firmware (and some were fixed after
 reporting vulnerabilities to Lenovo); other devices may vary and have
 less secure behaviour.
 
-## Atacks
+## Attacks
 
 These changes protect against many local physical and software attacks.
 
@@ -117,29 +134,42 @@ and the administrator can verify it against their authenticator app.
 With TPM2, the HMAC is computed in the TPM itself, so the secret is never
 accessible to the operating system.
 
-* TPM tampering on the LPC bus is not necessarily detectable by this system;
+* Discrete TPM tampering on the LPC bus is not necessarily detectable by this system;
 an adversary with unlimited internal physical access can also probe sealed secrets.
 If a TPM PIN is used then the secrets might be brute-forcable, but would require
 much longer internal access.
 
-* fTPM tampering is out of scope since the ME is the root of all trust in the system
-An adversary with code execution on the ME is able to bypass all of the other
-protections.
+* Functional TPM tampering is out of scope since the fTPM is an
+application running inside the Intel Management Engine, not a separate
+device, and the ME is the root of all trust in the system. An adversary
+with code execution on the ME is able to bypass all of the other platform
+protections (with maybe the exception of SGX enclaves, although this is not
+certain).
 
-* ["Coldboot" attacks on the memory](https://en.wikipedia.org/wiki/Cold_boot_attack)
-allow an adversary to cool the DRAM on a running or sleeping system to slow the
-decay of its contents.  In one variant of the attack, they then trigger a reboot and
-boot into their own kernel that dumps the memory to look for secrets; this attack
-is prevented by requiring valid signatures on any kernel.  In another variant,
-the attacker removes the physical DRAM chips and install them into a new system
-that is configured to not clear the memory on power up.  This is is not easily
-doable on the X1 since all of the RAM is soldered onto mainboard, but is possible
-on the T490 since it has some of its memory on a DIMM.
+* In a ["Coldboot" attacks on the memory](https://en.wikipedia.org/wiki/Cold_boot_attack),
+an attack triggers a reboot in order to boot into their own kernel that doesn't
+clear memory. Since most of the old contents are still present, this custom
+kernel can read through memory to look for secrets.
+This attack is prevented by requiring valid owner signatures on any kernel,
+and could be additionally prevented by enabling Intel TXT with an enforced
+DRAM clear, although a physically proximate attacker can turn off those
+protections by modifying the NVRAM variables during the boot process.
+
+* In another variant of the coldboot attack, the attacker freezes the
+RAM chips with cooling spray, removes the physical memory modules and
+install them into a new system that the attacker controls and that is
+configured to not clear the memory on power up.  This attack is not
+easily doable on the X1 since all of the RAM is soldered onto mainboard,
+but is possible against part of the memory on the T490 since it has some
+of its memory soldered and some on a DIMM.
 TODO: Can Linux restrict the keys to the hard soldered chips?
 
 * The encryption keys are stored in RAM even while the system is asleep, which makes
-the potentially available to an attacker with certain resources; it would
+the keys potentially available to an attacker with certain resources; it would
 be worthwhile to consider flushing them prior to entering S3 suspend.
+This would require modifying the init scripts that handle resume to prompt
+for the password; the TPM sealed encryption keys are problematic since the
+TPM state is reloaded during a resume.
 
 ### Physical software attacks
 
@@ -152,8 +182,10 @@ as well as if an attacker escallates to root and remounts `/boot` as read-write.
 
 * The boot order NVRAM variable could be modified by an attacker with access to the
 SPI flash or if they have escallated to root.  However, booting from an
-external device still requires an EFI executable signed by the PK/KEK/db, so
-only approved images can be booted.
+external device still requires an EFI executable signed by the PK/KEK/db,
+and since the default signing keys (typically the OEM and Microsoft) have been
+removed, only images signed the the computer owner's key will be booted
+from the external USB flash drive.
 
 * Adversaries might try to gain persistence or weaken security by gaining
 write access to the unencrypted `/boot` partition and changing the kernel images.
@@ -255,3 +287,5 @@ and `/var` are configured to not allow such executables.
 * TODO: TPM PIN
 
 * TODO: tpm-totp
+
+* TODO: document how [`tpm2-attest` handles access to remote resources](attestation.md)
