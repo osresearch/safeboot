@@ -36,11 +36,10 @@ seal a secret for a specific TPM, and unseal it with that TPM.
 * Client: Get `$nonce` and `$pcrs` from server
 * Client: `tpm2-attest $nonce $pcrs > quote.tgz`
 * Client: Send `quote.tgz` to server
-* Server: `tpm2-attest validate quote.tgz $nonce`
-* Server: `tpm2-attest seal quote.tgz < secret.txt > cipher.bin`
+* Server: `tpm2-attest verify-and-seal quote.tgz $nonce < secret.txt > cipher.bin`
 * Server: Send `cipher.bin` to client
 * Client: `tpm2-attest unseal < cipher.bin > secret.txt`
-* Client: Use `secret.txt` to whatever
+* Client: Use `secret.txt` to decrypt disk, authenticate to network, etc
 
 ## Attestation protocol
 
@@ -84,14 +83,14 @@ The Client then sends this quote file to the Server.
 ### Quote validation
 When the Server receives the quote file from the client, it runs:
 ```
-tpm2-attest validate quote.tgz $nonce
+tpm2-attest verify quote.tgz $nonce
 ```
 
 With this command the server will:
 
 * Validates the SSL certificate chain on the client TPM EK cert to ensure that it came from a real TPM
 * Validates that the quote is signed by the AK with the correct nonce (if the nonce is not checked, then this could be a replay attack by the Client)
-* Server optionally consults its list of approved devices to verify that this EK is in an owner controlled machine
+* Server optionally consults its list of previously enrolled devices to verify that this EK is in an owner controlled machine
 * Server optionally validates that the PCRs match the expected values
 * Server optoinally validates that the TPM event log produces the set of
 PCR values in the quote
@@ -116,6 +115,13 @@ With this command the Server will:
 * Encrypt a secret message (which could be a disk encryption key, a network access token, or whatever) with the TPM's EK, along with the hash of the AK.
 
 The Server then sends this encrypted blob to the Client.
+
+Note that there is a `verify-and-seal` that combines both the quote validation
+and the sealing of the data to the attestation key in one step:
+
+```
+cat secret.txt | tpm2-attest seal quote.tgz $nonce > cipher.bin
+```
 
 ### Secret unsealing
 Once the Client receives the sealed blob from the Server, it attempts

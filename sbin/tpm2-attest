@@ -620,6 +620,46 @@ unseal()
 
 ########################################
 
+verify_and_seal_usage='
+## verify-and-seal
+Usage:
+```
+tpm2-attest verify-and-seal quote.tgz [nonce [pcrs]] < secret.txt > cipher.bin
+```
+
+If the `nonce` is not specified on the command line, the one in the
+quote file will be used.  Note that this is a potential for a replay
+attack -- the remote attestation server should keep track of which
+nonce it used for this quote so that it can verify that the quote
+is actually live.
+'
+usage+="$verify_and_seal_usage"
+commands+="|verify-and-seal"
+
+verify-and-seal()
+{
+	show_help "$1" "$verify_and_seal_usage"
+	if [ "$#" -lt 1 ]; then
+		die "Insufficent arguments.$verify_and_seal_usage"
+	fi
+
+	QUOTE_TAR="$1"
+	QUOTE_NONCE="${2:-}"
+	EXPECTED_PCRS="${3:-}"
+
+	if [ -n "$EXPECTED_PCRS" ]; then
+		die "$QUOTE_TAR: PCR verification isn't implemented yet"
+	fi
+
+	verify "$QUOTE_TAR" "$QUOTE_NONCE" >&2 \
+	|| die "$QUOTE_TAR: verification failed"
+
+	seal "$QUOTE_TAR" \
+	|| die "$QUOTE_TAR: sealing failed"
+}
+
+
+
 if [ $# -lt 1 ]; then
 	die "Usage: $0 [$commands] ...." 
 fi
@@ -633,7 +673,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	commands|quote|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify)
+	commands|quote|verify-and-seal|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify)
 		$command "$@"
 		;;
 	*)
