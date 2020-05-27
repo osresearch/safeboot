@@ -47,5 +47,6 @@ nav:
   - Installation: 'install.md'
   - Threat Model: 'threats.md'
   - Remote Attestation: 'attestation.md'
-  - Subcommands: 'safeboot.md'
-  - FAQ: 'faq.md'
+  - Frequently Asked Questions: 'faq.md'
+  - safeboot subcommands: 'safeboot.md'
+  - tpm2-attest subcommands: 'tpm2-attest.md'
