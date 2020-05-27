@@ -113,10 +113,10 @@ unpack-quote()
 ########################################
 
 quote_usage='
-## tpm-quote
+## quote
 Usage:
 ```
-tpm2-attest quote [nonce [pcrs,...]]
+tpm2-attest quote [nonce [pcrs,...]] > quote.tgz
 scp quote.tgz ...
 ```
 After contacting the remote attestation server to receive the
