@@ -10,6 +10,7 @@ theme:
   name: material
   custom_dir: docs/custom/
   logo: images/logo.png
+  favicon: images/favicon.ico
   font:
     text: IBM Plex Serif
     code: IBM Plex Mono
@@ -41,7 +42,6 @@ markdown_extensions:
 plugins:
   - search # necessary for search to work
   - git-revision-date-localized
-site_favicon: favicon.ico
 nav:
   - Overview: 'index.md'
   - Installation: 'install.md'
