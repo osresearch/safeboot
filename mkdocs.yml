@@ -45,8 +45,9 @@ plugins:
 nav:
   - Overview: 'index.md'
   - Installation: 'install.md'
+  - Frequently Asked Questions: 'faq.md'
   - Threat Model: 'threats.md'
   - Remote Attestation: 'attestation.md'
-  - Frequently Asked Questions: 'faq.md'
+  - Chain of Trust: 'chain-of-trust.md'
   - safeboot subcommands: 'safeboot.md'
   - tpm2-attest subcommands: 'tpm2-attest.md'

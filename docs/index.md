@@ -4,13 +4,14 @@
 
 ## Goals
 
-Safe Boot has four goals to improve the safety of booting Linux
+Safe Boot has five goals to improve the safety of booting Linux
 on normal laptops:
 
 * **Booting only code that is authorized by the system owner** (by installing a hardware protected platform key for the kernel and initrd)
 * **Streamlining the encrypted disk boot process** (by storing keys in the TPM, and only unsealing them if the firmware and configuration is unmodified)
 * **Reducing the attack surface** (by enabling Linux kernel features to enable hardware protection features and to de-privilege the root account)
 * **Protecting the runtime system integrity** (by optionally booting from a read-only root with dmverity and signed root hash)
+* **Proving to remote systems that the local machine is safe** (using a remote attestation protocol built with the TPM2)
 
 The [threat model page](threats.md) has more detail about the firmware, kernel,
 and runtime changes, as well as how they help achieve these goals and the threats
@@ -42,16 +43,19 @@ complexity into the few operations that they need from day to day:
 signing new kernels, decrypting their disks at boot, protecting the
 system from runtime attackers, attesting to the integrity of their
 systems, etc.
+
 `safeboot` and `tpm2-attest` are (early versions of) those tools!
 
 ## Links
 
-* [Installation Instructions](install.md)
-* [Threat Model](threats.md)
-* [Frequently Asked Questions](faq.md)
-* [`safeboot` subcommands](safeboot.md)
-* [TPM2 Remote Attestation](attestation.md) for accessing network resources
+* [Installation Instructions](install.md) for configuring `safeboot`
+* [Threat Model](threats.md) that `safeboot` is trying to protect against
+* [Frequently Asked Questions](faq.md) about `safeboot`
+* [TPM2 Remote Attestation](attestation.md) protocol for accessing network resources
+* [Chain of Trust](chain-of-trust.md) for booting a modern x86 CPU
 * [Source code](https://github.com/osresearch/safeboot)
+* [`safeboot` subcommands](safeboot.md)
+* [`tpm2-attest` subcommands](tpm2-attest.md)
 
 ## Status
 
