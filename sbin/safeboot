@@ -943,27 +943,51 @@ recovery mode.
 usage+=$recovery_reboot_usage
 commands+="|recovery-reboot"
 
+recovery-reboot()
+{
+	show_help "$1" "$recovery_reboot_usage"
+	bootnext "${RECOVERY_TARGET}"
+
+	warn "Initiating reboot!"
+	sleep 2
+	reboot
+}
+
+bootnext_usage='
+## bootnext
+Usage:
+```
+safeboot bootnext Setup
+```
+
+Configure the EFI boot manager `BootNext` variable to select an
+alternate boot menu item.  This command requires root access to
+update the EFI variables.
+'
+
+usage+=$bootnext_usage
+commands+="|bootnext"
+
 efiboot-entry() {
 	TARGET=${1:-recovery}
 	efibootmgr \
 	| perl -ne "/^Boot([0-9A-F]+). ${TARGET}\$/ and print \$1"
 }
 
-recovery-reboot()
+bootnext()
 {
-	show_help "$1" "$recovery_reboot_usage"
+	show_help "$1" "$bootnext_usage"
+	TARGET=${1:-recovery}
+
 	# Find the recovery entry in the efibootmgr
-	entry=$(efiboot-entry ${RECOVERY_TARGET})
+	entry=$(efiboot-entry ${TARGET})
 	if [ -z "$entry" ]; then
-		die "${RECOVERY_TARGET} boot entry not in efibootmgr?"
+		die "${TARGET} boot entry not in efibootmgr?"
 	fi
 
-	warn "${RECOVERY_TARGET}: boot mode $entry"
+	warn "${TARGET}: boot mode $entry"
 	efibootmgr --bootnext "$entry" \
 		|| die "Boot$entry: unable to set bootnext"
-
-	warn "Initiating reboot!"
-	reboot
 }
 
 ########################################
@@ -977,11 +1001,16 @@ remount_ro()
 	rootdev-check -
 
 	DEV="${1:-${ROOTDEV}}"
+	KILLALL="$2"
 
 	if [ "$(blockdev --getro "${DEV}")" == 1 ] ; then
 		warn "${DEV}: already read-only"
 		return 0
 	fi
+
+	# systemd often ends up holding an open file, so tell init
+	# to reload its status
+	telinit u
 
 	warn "${DEV}: remounting read-only"
 	if mount -o ro,noatime,remount "${DEV}" ; then
@@ -999,7 +1028,19 @@ remount_ro()
 
 	warn "${DEV}: something blocked remount. Likely processes:"
 	lsof +f -- "${DEV}" 2>&- \
-		| awk '$4 == "DEL" || $4 ~ /[0-9][uw]$/ { print $2, $1, $3, "("$4")" }'
+		| awk '$4 == "DEL" || $4 ~ /[0-9][uw]$/ { print $2, $1, $3, "("$4")" }' \
+		| tee "$TMP/pid.lst" \
+	|| warn "lsof failed"
+
+
+	if [ "$KILLALL" = "killall" ]; then
+		warn "KILLING ALL PROCESSES in 5 seconds"
+		sleep 5
+		awk '{print $1}' "$TMP/pid.lst" | xargs kill
+	else
+		warn "Re-run 'safeboot remount ro killall' to kill processes"
+	fi
+
 	return 1
 }
 
@@ -1048,13 +1089,15 @@ remount()
 {
 	show_help "$1" "$remount_usage"
 	rootdev-check -
+	RW="$1"
+	shift
 
-	if [ "$1" == "ro" ]; then
-		remount_ro "${ROOTDEV}"
-	elif [ "$1" == "rw" ] || [ "$1" == "" ]; then
+	if [ "$RW" == "ro" ]; then
+		remount_ro "${ROOTDEV}" "$@"
+	elif [ "$RW" == "rw" ] || [ "$RW" == "" ]; then
 		remount_rw "${ROOTDEV}"
 	else
-		die "Unexpected argument.$remount_usage"
+		die "Unknown argument.$remount_usage"
 	fi
 }
 
@@ -1230,7 +1273,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|linux-sign|recovery-sign|recovery-reboot|remount|tpm2_trial_extend|sip-init)
+	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|linux-sign|recovery-sign|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext)
 		$command "$@"
 		;;
 	*)
