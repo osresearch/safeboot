@@ -224,13 +224,6 @@ quote()
 
 	tpm2 flushcontext --transient-object
 
-	# read the PEM component since tpm2_verifyquote uses it
-	tpm2 readpublic >&2 \
-		--object-context "ak.ctx" \
-		--output "$TMP/ak.pem" \
-		--format "pem" \
-	|| die "tpm2_readpublic: unable to display info"
-
 	# get a quote using this attestation key
 	tpm2_flush_all ""
 	warn "tpm2: generating quote"
@@ -258,7 +251,6 @@ quote()
 		-zcf "$TMP/quote.tgz" \
 		-C "$TMP" \
 		"ak.pub" \
-		"ak.pem" \
 		"ek.pub" \
 		"ek.crt" \
 		"nonce" \
