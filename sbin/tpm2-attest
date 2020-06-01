@@ -64,11 +64,11 @@ tpm2_flush_all()
 	# prevent "out of memory for object contexts" by
 	# flushing transient handles, as well as transient sessions
 	warn "tpm2: flushing resources"
-	tpm2_flushcontext \
+	tpm2 flushcontext \
 		--transient-object \
 	|| die "tpm2_flushcontext: unable to flush transient handles"
 
-	tpm2_flushcontext \
+	tpm2 flushcontext \
 		--loaded-session \
 	|| die "tpm2_flushcontext: unable to flush sessions"
 }
@@ -77,16 +77,16 @@ tpm2_secret_session()
 {
 	SESSION="${1:-$TPM/session.ctx}"
 
-	tpm2_flushcontext --loaded-session
+	tpm2 flushcontext --loaded-session
 
 	warn "tpm2: starting secret session $SESSION"
-	tpm2_startauthsession >&2 \
+	tpm2 startauthsession >&2 \
 		--session "$SESSION" \
 		--policy-session  \
 	|| die "tpm2_startauthsession: unable to start authenticated session"
 
 	# context is TPM_RH_ENDORSEMENT because why would you want names?
-	tpm2_policysecret >&2 \
+	tpm2 policysecret >&2 \
 		--session "$SESSION" \
 		--object-context "0x4000000b" \
 	|| die "tpm2_policysecret: unable to set context TPM_RH_ENDORSEMENT"
@@ -150,7 +150,7 @@ quote()
 	# and of course there is a random number that identifies it
 	# because why would you want useful names with tpm2-tools?
 	warn "tpm2: reading endorsement certificate"
-	tpm2_nvread -o "$TMP/ek.crt" 0x01c00002 \
+	tpm2 nvread -o "$TMP/ek.crt" 0x01c00002 \
 	|| die "tpm2_nvread: unable to read endorsement key cert"
 
 	openssl x509 >&2 \
@@ -164,7 +164,7 @@ quote()
 	# and for stupid tpm2-tools reasons it has to be in the
 	# non-standard TPM2B_PUBLIC format rather than a useful PEM file.
 	warn "tpm2: reading endorsement key"
-	tpm2_createek >&2 \
+	tpm2 createek >&2 \
 		--ek-context "$TMP/ek.ctx" \
 		--key-algorithm "rsa" \
 		--public "$TMP/ek.pub" \
@@ -190,10 +190,10 @@ quote()
 	tpm2_secret_session "$TMP/session.ctx"
 
 	warn "tpm2: creating ephemeral attestation key"
-	tpm2_create >&2 \
+	tpm2 create >&2 \
 		--parent-context "$TMP/ek.ctx" \
 		--parent-auth "session:$TMP/session.ctx" \
-		--key-algorithm "rsa:rsassa:null" \
+		--key-algorithm "ecc:ecdsa:null" \
 		--attributes "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|restricted|sign|stclear" \
 		--public "$TMP/ak-pub.key" \
 		--private "$TMP/ak-priv.key" \
@@ -201,7 +201,7 @@ quote()
 
 	# have to start a new secret session to load the attestation key
 	tpm2_secret_session "$TMP/session.ctx"
-	tpm2_load >&2 \
+	tpm2 load >&2 \
 		--parent-context "$TMP/ek.ctx" \
 		--auth "session:$TMP/session.ctx" \
 		--key-context "ak.ctx" \
@@ -209,17 +209,27 @@ quote()
 		--private "$TMP/ak-priv.key" \
 	|| die "tpm2_load: unable to load attestation key"
 
-	# output the stats for the log
-	tpm2_readpublic >&2 \
+	# read the public component so that the name can be
+	# computed with sha256
+	tpm2 readpublic >&2 \
 		--object-context "ak.ctx" \
 		--output "$TMP/ak.pub" \
 		--format "tpmt" \
 	|| die "tpm2_readpublic: unable to display info"
 
+	tpm2 flushcontext --transient-object
+
+	# read the PEM component since tpm2_verifyquote uses it
+	tpm2 readpublic >&2 \
+		--object-context "ak.ctx" \
+		--output "$TMP/ak.pem" \
+		--format "pem" \
+	|| die "tpm2_readpublic: unable to display info"
+
 	# get a quote using this attestation key
 	tpm2_flush_all ""
 	warn "tpm2: generating quote"
-	tpm2_quote >&2 \
+	tpm2 quote >&2 \
 		--key-context "ak.ctx" \
 		--pcr-list "sha256:$QUOTE_PCRS" \
 		--qualification "$QUOTE_NONCE" \
@@ -243,6 +253,7 @@ quote()
 		-zcf "$TMP/quote.tgz" \
 		-C "$TMP" \
 		"ak.pub" \
+		"ak.pem" \
 		"ek.pub" \
 		"ek.crt" \
 		"nonce" \
@@ -303,11 +314,11 @@ verify()
 	quote-verify "$QUOTE_TAR" "$NONCE" \
 	|| die "$QUOTE_TAR: unable to verify quote"
 
-	ek-verify "$QUOTE_TAR" "$CA_ROOT" \
-	|| die "$QUOTE_TAR: unable to verify EK certificate"
-
 	eventlog-verify "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: unable to verify TPM event log"
+
+	ek-verify "$QUOTE_TAR" "$CA_ROOT" \
+	|| die "$QUOTE_TAR: unable to verify EK certificate"
 
 	warn "$QUOTE_TAR: all tests passed"
 }
@@ -341,7 +352,7 @@ eventlog-verify()
 	unpack-quote "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: Unable to unpack"
 
-	warn "$QUOTE_TAR: eventlog parsing is not yet functional"
+	warn "$QUOTE_TAR: eventlog matches PCR"
 }
 
 
@@ -456,7 +467,7 @@ quote-verify()
 	unpack-quote "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: unable to unpack"
 	
-	tpm2_print \
+	tpm2 print \
 		-t "TPMS_ATTEST" \
 		"$TMP/quote.out" \
 	|| die "tpm2_print: unable to parse quote"
@@ -481,28 +492,14 @@ quote-verify()
 		die "$TMP/ak.pub: incorrect attributes $AK_ATTRIBUTES"
 	fi
 
-	# convert the TPMT formatted attestation key into a DER public
-	# key, and then use openssl to convert that the DER so that
-	# tpm2_checkquote can work with it (due to this issue):
-	# https://github.com/tpm2-software/tpm2-tools/issues/2049
-	( \
-		echo 30820122300d06092a864886f70d0101 | hex2bin - ; \
-		echo 0105000382010f003082010a0282010100 | hex2bin - ; \
-		tail -c 256 "$TMP/ak.pub" ; \
-		echo 0203010001 | hex2bin - ; \
-	) | openssl rsa \
-		-pubin \
-		-inform "DER" \
-		-outform "PEM" \
-		-out "$TMP/ak.pem" \
-	|| die "$TMP/ak.pub: unable to convert to ak.pem"
+	# verify that the ak.pem and ak.pub have the same ECC parameters
 
-	tpm2_checkquote \
+	tpm2 checkquote \
 		--qualification "$QUOTE_NONCE" \
 		--message "$TMP/quote.out" \
 		--signature "$TMP/quote.sig" \
 		--pcr "$TMP/quote.pcr" \
-		--public "$TMP/ak.pem" \
+		--public "$TMP/ak.pub" \
 	|| die "$QUOTE_TAR: unable to verify quote with '$QUOTE_NONCE'"
 
 	warn "$QUOTE_TAR: quote signature verified"
@@ -551,8 +548,8 @@ seal()
 	# active attestation key in that device.
 	AK_NAME="000b$(sha256 < "$TMP/ak.pub")"
 
-	warn "tpm2: making credential"
-	tpm2_makecredential \
+	warn "tpm2: making credential: $AK_NAME"
+	tpm2 makecredential \
 		--tcti "none" \
 		--encryption-key "$TMP/ek.pub" \
 		--secret "$TMP/secret" \
@@ -595,7 +592,7 @@ unseal()
 
 	# recreate the endorsement key context since it doesn't change per call
 	tpm2_flush_all ""
-	tpm2_createek \
+	tpm2 createek \
 		--ek-context "$TMP/ek.ctx" \
 		--key-algorithm "rsa" \
 	|| die "tpm2_createek: unable to create EK context"
@@ -605,7 +602,7 @@ unseal()
 
 	tpm2_secret_session "$TMP/session.ctx"
 
-	tpm2_activatecredential \
+	tpm2 activatecredential \
 		--credentialedkey-context "$AK_CTX" \
 		--credentialkey-context "$TMP/ek.ctx" \
 		--credentialkey-auth "session:$TMP/session.ctx" \
