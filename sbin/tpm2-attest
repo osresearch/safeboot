@@ -36,6 +36,11 @@ DIR="/etc/safeboot"
 TMP="$(mktemp -d)"
 trap cleanup EXIT
 
+# Expected values for the EK and AK types to ensure that they
+# are created inside a TPM and have the proper policies associated.
+EK_TYPE='fixedtpm|fixedparent|sensitivedataorigin|adminwithpolicy|restricted|decrypt'
+AK_TYPE='fixedtpm|stclear|fixedparent|sensitivedataorigin|userwithauth|restricted|sign'
+
 usage='
 # tpm2-attest subcommands
 
@@ -413,8 +418,19 @@ ek-verify()
 
 	warn "ek.crt: certificate chain valid!"
 
+	# make sure the EK has the proper key attributes
+	tpm2 print \
+		--type "TPM2B_PUBLIC" \
+		"$TMP/ek.pub" \
+	> "$TMP/ek.pub.txt" \
+	|| die "$TMP/ek.pub: unable to parse file"
+
+	if ! grep -q "value: $EK_TYPE" "$TMP/ek.pub.txt"; then
+		die "$TMP/ek.pub: unexpected EK key parameters"
+	fi
+
 	# make sure that the keys have the same modulus
-	mod1="$(bin2hex "$TMP/ek.pub" | tail -c 512)"
+	mod1="$(awk '/^rsa: / { print $2 }' "$TMP/ek.pub.txt")"
 	mod2="$(openssl x509 \
 		-in "$TMP/ek.pem" \
 		-noout \
@@ -478,21 +494,23 @@ quote-verify()
 	fi
 
 	# Read the attributes from the ak.pub and ensure that they
-	# match "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|restricted|sign|stclear"
-	# which is the four bytes 0x00050076 at offset 6.
 	# if `stclear` is not set, then an attacker might have
 	# a persistent version of this key and they could reboot into
 	# an untrusted state.
-	#
-	# TODO: replace this with tpm2_print when it is updated to include
-	# a textual dump of the public struct. https://github.com/tpm2-software/tpm2-tools/issues/2057
-	AK_ATTRIBUTES="$(bin2hex "$TMP/ak.pub" | cut -c9-16)"
-	warn "$TMP/ak.pub: attributes $AK_ATTRIBUTES"
-	if [ "$AK_ATTRIBUTES" != "00050076" ]; then
-		die "$TMP/ak.pub: incorrect attributes $AK_ATTRIBUTES"
+	tpm2 print \
+		--type "TPMT_PUBLIC" \
+		"$TMP/ak.pub" \
+	> "$TMP/ak.pub.txt" \
+	|| die "$TMP/ak.pub: Unable to parse file"
+
+	if ! grep -q "value: $AK_TYPE" "$TMP/ak.pub.txt"; then
+		cat >&2 "$TMP/ak.pub.txt"
+		die "$TMP/ak.pub: incorrect key attributes"
 	fi
 
-	# verify that the ak.pem and ak.pub have the same ECC parameters
+	# since the ak.pub is now used to verify the quote, it
+	# is no longer necessary to cross check that ak.pem and ak.pub
+	# have the same ECC parameters
 
 	tpm2 checkquote \
 		--qualification "$QUOTE_NONCE" \
