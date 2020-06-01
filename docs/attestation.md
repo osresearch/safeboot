@@ -19,14 +19,14 @@ server that the local computer itself is both authorized and is also
 in a known configuration.
 
 The TPM provides a mechanism to do this sort of remote attestation,
-similar to the way that the disk encryption keys are "sealed" based
+similar to the way that the disk encryption keys are "_sealed_" based
 on the PCRs and only decrypted if the platform configuration matches
 the sealed values.  The `tpm2-tools` package has many of the pieces,
 but it is at too low a level for humans to use.  Other parts of the
 validation exist in the `openssl` package, but again are not easily
 used and require format conversions from the TPM formats.
 
-`tpm2-attest` attempts to wrap all of the various parts of
+[`tpm2-attest`](tpm2-attest.md) attempts to wrap all of the various parts of
 those two packages into a simple script that provides the four
 main attestation functions: sign a quote, validate a signed quote,
 seal a secret for a specific TPM, and unseal it with that TPM.
@@ -41,14 +41,23 @@ seal a secret for a specific TPM, and unseal it with that TPM.
 * Client: `tpm2-attest unseal < cipher.bin > secret.txt`
 * Client: Use `secret.txt` to decrypt disk, authenticate to network, etc
 
+---------------------
+
 ## Attestation protocol
 
-The protocol requires a few round-trips between the local machine (the client)
-and the remote attestation machine (the server), although none of the information
-in the messages is sensitive - the `quote.tgz` file contains only public keys
-and PCR values that should be considered public, and the `cipher.bin` reply
-is encrypted with the TPM's endorsement key, so it should only be unsealable by
-that specific TPM.
+The protocol requires a few round-trips between the local machine
+(the client) and the remote attestation machine (the server), and all
+comunication between the Client and the Server can be in the clear.
+There is no sensitive data exchanged -- the `quote.tgz` file contains
+only public keys and PCR values that are essentially public, and the
+`cipher.bin` reply is encrypted with the TPM's Endorsement Key, so it
+should only be unsealable by that specific TPM.
+
+A MITM could substitute a different EK/AK pair, although this does
+not allow them to masquarade as the TPM of the attesting machine since
+they do not have the EK for that TPM, and the real TPM won't be able
+to decrypt the response from the attestation server since it would be
+encrypted with the wrong EK.
 
 The keys involved are:
 
@@ -99,6 +108,17 @@ If the command fails, then something is likely wrong on the Client side
 and requires remediation.  The Server should not proceed to sealing a
 secret for the Client.
 
+Suprisingly, the Attestation Key is not signed by the Endorsement Key,
+so the Server has to check the EK certificate to ensure that it came from
+a real TPM. Additional, the Server must check the AK attributes to ensure
+that it has `fixedtpm` and `sensitivedataorigin` set, which indicates that
+the AK was generated inside the TPM. Even with these checks, the Server is
+still trusting that the TPM hardware implements `tpm2_activatecredential`
+with all of these checks correctly done, since the sealed data is encrypted
+with the EK, not the AK.  (Like many things with the TPM2, this is a really
+baroque way to organize the keys).
+
+
 ### Secret sealing
 
 Assuming the validation passed, the server can seal secret data such
@@ -142,53 +162,125 @@ At this point the Client can use the shared secret to authenticate to
 the Server, a network, or decrypt it's disk, or whatever.  The TPM is
 no longer involved.
 
-## Some notes
+---------------------
 
-* All comunication between the Client and the Server can be in the clear.
-There is no sensitive data exchanged and a MITM can only substitute
-a different EK/AK pair; they are not able to masquarade as the TPM of
-the attesting machine since they do not have the EK for that TPM.
-
-* Suprisingly, the Attestation Key is not signed by the Endorsement Key,
-so the Server has to check the EK certificate to ensure that it came from
-a real TPM. Additional, the Server must check the AK attributes to ensure
-that it has `fixedtpm` and `sensitivedataorigin` set, which indicates that
-the AK was generated inside the TPM. Even with these checks, the Server is
-still trusting that the TPM hardware implements `tpm2_activatecredential`
-with all of these checks correctly done, since the sealed data is encrypted
-with the EK, not the AK.  (Like many things with the TPM2, this is a really
-baroque way to organize the keys).
-
-* Generating an AK each time should not be necessary; one could be
-pregenerated and persistent in the TPM, except that opens up a race
-condition between generating a quote and receiving the sealed data.
-The *quote* includes the reboot count, but the *sealed data* does not
-reference it, so the TPM will unseal it if the AK is still valid.
-By creating an ephemeral AK (with the `stclear` bit set in the
-attributes), the TPM will not allow it to be persisted and will refuse
-to load it when the reboot counter increments.
-
-* Not all TPMs store their EK certs in the NVRAM; some of them require a query to the OEM.
-
-* The Server does not require any TPM interaction at all -- all of its
-work is done in software and can be run as an ordinary user.
-
-* The Discrete TPM is a hardware weakpoint; a physically proximate adversary
-could remove the TPM from a machine and connect it to an untrusted device and
-then masquarade as the device to which the TPM had been connected.  This would
-also potentially allow them to extract any sealed disk encryption keys,
-[as described on the threat model page](threats.md), and is one of the
-advantages of an fTPM inside the Management Engine.
-
-* A proximate attacker could also interfere with the LPC or i2c bus of a Discrete TPM
-using something like [the TPM Genie](https://www.nccgroup.com/uk/our-research/tpm-genie/),
-which allow them to both modify the hashes sent to the TPM during PCR extension operations,
-and read the unsealed secrets when they are returned if the TPM didn't support
-secret sessions.
 
 ## TPM OEM Certificates
 
-TODO: catalog a list of them and how to maintain the `/path/to/certs`
+A key part of the remote attestion is being able to trust that the TPM hardware
+is produced by a TPM manufacturer.  Much like SSL Certs for websites, the
+TPM's Endorsement Key is signed by the OEM with their Intermediate CA,
+which is signed by a Root CA.  Unlike SSL, the Root CAs are often not in
+the system's `/etc/ssl/certs/` directory, and not easily accessible online.
+Some OEMs publish them in datasheets
+([ST TPM EK certificates](https://www.st.com/content/ccc/resource/technical/digital_certificates/tpm_certificates/group0/1b/0c/f0/6a/76/d4/49/5c/DM00213539/files/en.DM00213539.pdf/jcr:content/translations/en.en.DM00213539.pdf)),
+some have online portals to select per-device intermediate certs
+([Infineon Optiga certificates](https://www.infineon.com/cms/en/product/promopages/optiga_tpm_certificates/)),
+and some just say "_Contact manufacturer for more details_"
+([Atmel/Microchip EK Configuration](http://ww1.microchip.com/downloads/en/DeviceDoc/Atmel-8872-TPM-AT97SC3205-3205T-TSSOP-Addendum.pdf)).
 
-The `/etc/safeboot/refresh-certs` will use its list of OEM certificate URLs
-to rebuild the CA directory in `/etc/safeboot/certs/`.
+Luckily Microsoft has a CAB file with all of their approved TPM OEMs in their
+[guide to setting up shielded VMs](https://docs.microsoft.com/en-us/windows-server/security/guarded-fabric-shielded-vm/guarded-fabric-install-trusted-tpm-root-certificates).
+These x509 certs are in DER format ([and have a few odd ones](https://github.com/MicrosoftDocs/windowsserverdocs/issues/4402)),
+so they have been converted to PEM and bundled into `/etc/safeboot/certs/` for
+validating the TPM attestations.
+
+### Adding new intermediate certificates
+<!--
+```
+find certs -name '*.crt' -exec \
+	openssl x509 -inform DER -outform PER -in '{}' -out '{}'.pem \;
+```
+-->
+
+If you add your own TPM keys to the directory, you will need to re-build the symlinks
+that OpenSSL uses for the `-CApath`:
+```
+c_rehash /etc/safeboot/certs/
+```
+
+### TPMs without EK certificates
+
+Unfortunately not all TPMs store their EK certs in the NVRAM;
+some of them require an online query to the OEM to generate the certificate.
+There is the `tpm2_getmanufec` program that is supposed to help with this
+process, although it hasn't been integrated into this tool yet.
+
+---------------------
+
+## FAQ
+
+### Why is this a shell script?
+
+It is often desirable to perform a remote attestion inside of an `initrd`,
+where there aren't fancy runtimes for Python or more advanced languages.
+So the quote generation needs to be written assuming very limited resources,
+as does the response unsealing.
+
+The remote attestation server side could be implemented entirely in a
+more civilized language, especially since the Server does not require
+any TPM interaction at all -- all of its work is done in software and
+can be run as an ordinary user.
+
+As an example of moving some functionality into better languages, the
+`tpm2-eventlog-validate` tool that parses the TPM2 event log and generates
+expected PCR values is written in Python.
+
+
+### I thought remote attestation and TPMs were only for DRM?
+
+One of the big fears in the free software community was that TPM's
+would be used to lockdown the devices and implement DRM.
+That hasn't developed in general purpose computers and
+[mjg59's TPM guide concludes with](https://mjg59.dreamwidth.org/24818.html?thread=928242)
+"_the current state of technology doesn't make them useful for practical limitations of end-user freedom_".
+There's a far bigger threat to user freedom in the locked-down world
+of mobile devices; currently most x86 machines allow rekeying with user
+keys, so the software (but not the firmware) is still under owner control.
+
+Remote Attestation can be used bidirectionally as well - it allows the
+server to attest to the client that the machine is in a trustworthy state.
+This is perhaps an even more valuable use case: you might have fairly tight
+physical control of your personal machine, but a bare metal server in a data
+center is potentially open to attacks by the cloud operator as well as the
+previous tenants.  Having attestations as to the firmware and the OS configuration
+can make it more trustable.
+
+
+### Why is generating a quote so slow?
+
+Generating the Attestaion Key to sign the quote takes several seconds,
+unfortunately.  Creating a new one each time should not be necessary;
+one AK could be pregenerated and persistent in the TPM, except that opens up
+a race condition between generating a quote and receiving the sealed
+data.  The *quote* includes the reboot count, but the *sealed data*
+does not reference it, so the TPM will unseal it if the AK is still
+valid, even if an attacker has rebooted into an untrustworthy state
+inbetween generating the quote and receiving the sealed response.
+By creating an ephemeral AK (with the `stclear` bit set in the
+attributes), the TPM will not allow it to be persisted and will refuse
+to reload it when the reboot counter increments.
+
+
+### Discrete TPM vs fTPM?
+
+The Discrete TPM is potentially a hardware weakpoint; a physically
+proximate adversary could remove the TPM from a machine and connect
+it to an untrusted device and then masquarade as the device to which
+the TPM had been connected.  This would also potentially allow them to
+extract any sealed disk encryption keys, [as described on the threat
+model page](threats.md), and is one of the advantages of an fTPM inside
+the Management Engine.
+
+A proximate attacker could also interfere with the LPC
+or i2c bus of a Discrete TPM using something like
+[the TPM Genie](https://www.nccgroup.com/uk/our-research/tpm-genie/),
+which allow them to both modify the hashes sent to the TPM during PCR
+extension operations, and read the unsealed secrets when they are returned
+if the TPM didn't support secret sessions.
+
+However, the fTPM is a pure-software application inside the ME and
+potentially allows an attacker with code execution on the ME to find
+the sealing secrets that are used to protect the TPM keys in the ME
+NVRAM, which would allow attacks against the quoting and attestation
+process.

@@ -1,0 +1,127 @@
+
+# tpm2-attest subcommands
+
+Usage: `tpm2-attest subcommand [options...]`
+
+For more information see: <https://safeboot.dev/attestation/>
+
+
+## quote
+Usage:
+```
+tpm2-attest quote [nonce [pcrs,...]] > quote.tgz
+scp quote.tgz ...
+```
+After contacting the remote attestation server to receive the
+nonce, the machine will generate the endorsement key,
+endorsement cert, a one-time attestation key, and a signed quote
+for the PCRs using that nonce.
+
+This will result in two output files, `quote.tgz` to be sent to
+the remote side, and `ak.ctx` that is to remain on this machine
+for decrypting the return result from the remote attestation server.
+
+## verify
+Usage:
+```
+tpm2-attest verify quote.tgz [nonce [ca-path]]
+```
+
+This will validate that the quote was signed with the attestation key
+with the provided nonce, and verify that the endorsement key from a valid
+TPM.
+
+If the `nonce` is not specified, the one in the quote file will be used,
+although this opens up the possibility of a replay attack.
+
+If the `ca-path` is not specified, the system one will be used.
+
+* TODO: verify event log
+
+## eventlog-verify
+Usage:
+```
+tpm2-attest eventlog-verify quote.tgz
+```
+
+This will verify that the PCRs included in the quote match the
+TPM event log.
+
+* TODO: build tpm2_eventlog so that these events can be parsed.
+
+## ek-verify
+Usage:
+```
+tpm2-attest ek-verify quote.tgz ca-path
+```
+
+This will validate that the endorsement key came from a valid TPM.
+
+The TPM endorsement key is signed by the manufacturer OEM key, which is
+in turn signed by a trusted root CA.  Before trusting an attestation it is
+necessary to validate this chain of signatures to ensure that it came
+from a legitimate TPM, otherwise an attacker could send a quote that
+has a fake key and decrypt the message in software.
+
+The `ca-path` should contain a file named `roots.pem` with the trusted
+root keys and have the hash symlinks created by `c_rehash`.
+
+* TODO: check parameters of attestation key.
+
+## quote-verify
+Usage:
+```
+tpm2-attest quote-verify quote.tgz [nonce]
+```
+
+This command checks that the quote includes the given nonce and
+was signed by the public attestation key (AK) in the quote file.
+This also check the attributes of the AK to ensure that it has
+the correct bits set (`fixedtpm`, `stclear`, etc).
+NOTE: This does not verify that the AK came from a valid TPM.
+See `tpm2-attest verify` for the full validation.
+
+If the `nonce` is not specified on the command line, the one in the
+quote file will be used.  Note that this is a potential for a replay
+attack -- the remote attestation server should keep track of which
+nonce it used for this quote so that it can verify that the quote
+is actually live.
+
+## seal
+Usage:
+```
+echo secret | tpm2-attest seal quote.tgz [nonce] > cipher.bin
+```
+
+After a attested quote has been validated, an encrypted reply is sent to
+the machine with a sealed secret, encrypted with that machines
+endorsment key (`ek.crt`), with the name of the attestation key
+used to sign the quote.  The TPM will not decrypt the sealed
+message unless the attestation key was one that it generated.
+
+The `cipher.bin` file should be sent back to the device being attested;
+it can then run `tpm2-attest unseal ak.ctx < cipher.bin > secret.txt`
+to extract the sealed secret.
+
+## unseal
+Usage:
+```
+cat cipher.bin | tpm2-attest unseal ak.ctx  > secret.txt
+```
+
+When the remote attestation has been successful, the remote machine will
+reply with an encrypted blob that is only unsealable by this TPM
+if and only if the EK matches and the AK is one that it generated.
+
+## verify-and-seal
+Usage:
+```
+tpm2-attest verify-and-seal quote.tgz [nonce [pcrs]] < secret.txt > cipher.bin
+```
+
+If the `nonce` is not specified on the command line, the one in the
+quote file will be used.  Note that this is a potential for a replay
+attack -- the remote attestation server should keep track of which
+nonce it used for this quote so that it can verify that the quote
+is actually live.
+

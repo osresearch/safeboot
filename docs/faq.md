@@ -80,7 +80,45 @@ is the most detailed look so far.
 It's super fragile right now.  Need to reconsider which PCRs are included
 and what they mean.  Suggestions welcome!
 
+## How is safeboot's SIP related to macOS SIP?
+![`dmverity` merkle tree diagram](images/dmverity.png)
+
+`safeboot`'s System Integrity Protection (SIP) is inspired by the
+[read-only filesystems of macOS SIP](https://support.apple.com/en-us/HT204899).
+Like macOS, writing to the protected filesystems requires rebooting
+with a special kernel command line parameter (in this case `tpm.mode=recovery`)
+to enable write access.
+Unlike macOS, safeboot SIP can not unseal the disk encryption keys
+automatically from the TPM since the boot mode is part of the PCR
+measurements, so knowledge of the disk recovery password is required.
+This prevents a local adversary who escalates to `root` from being able
+to disable SIP and reboot into a writable filesystem to try to gain
+persistence.
+
+safeboot's SIP is also inspired by the [Android Verified Boot](https://source.android.com/security/verifiedboot/dm-verity)
+that protects Android's `/system` partition.  Like Android, `safeboot` SIP
+provides cryptographic protection against an adversary who gains
+write access to the filesystem since entire filesystem is protected
+by the `dmverity` merkle tree of hashes.  The root hash is signed by
+the system owner as part of exiting recovery mode, and this root
+hash is passed into the kernel on the command line.
+The kernel command line is part of the cryptographic chain of trust
+from the CPU boostrap through the Bootguard ACM, into the UEFI firmware,
+and all the way to the Linux kernel and initrd.
+
+This is potentially even stronger protection than macOS SIP since it
+provides protection even against an adversary with physical access,
+the root password and the disk recovery key.  They can't sign the root
+hash without the hardware token, and if they change the signing keys in
+the firmare, then the TPM will no longer unseal the disk encryption key.
+They could re-seal the key with the new PCRs from their fake platform
+key, but the system would then fail both the TPM TOTP local attestation
+as well as the [remote attestation](attestation.md) when it tried to
+prove to an external system that it was in a trusted state.
+
+
 ## How do I write to the root filesystem?
+
 With SIP enabled it is not possible to modify the root filesystem.
 You must reboot into recovery mode with `safeboot recovery-reboot`
 and decrypt the disk with the recovery password.  Once decrypted,
