@@ -10,6 +10,11 @@
 # compare pcr results to output of
 #
 #  tpm2_pcrread sha256
+#
+# or the output from tpm quote
+#
+#  tpm2_checkquote ...
+#
 import sys
 from binascii import unhexlify, hexlify
 import hashlib
@@ -96,9 +101,9 @@ for entry in data:
 	except:
 		print(entry)
 		raise
+print("pcrs:\n  %s:" % (alg), file=sys.stderr)
 
-print("%s:" % (alg), file=sys.stderr)
 for pcr in range(0,len(pcrs)):
 	if pcrs[pcr] is None:
 		continue
-	print(" %-2d: 0x%s" % (pcr, hexlify(pcrs[pcr]).decode()), file=sys.stderr)
+	print("    %d : 0x%s" % (pcr, hexlify(pcrs[pcr]).decode().upper()), file=sys.stderr)

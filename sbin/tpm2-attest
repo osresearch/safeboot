@@ -332,7 +332,6 @@ tpm2-attest eventlog-verify quote.tgz
 This will verify that the PCRs included in the quote match the
 TPM event log.
 
-* TODO: build tpm2_eventlog so that these events can be parsed.
 '
 usage+="$eventlog_verify_usage"
 commands+="|eventlog-verify"
@@ -346,10 +345,16 @@ eventlog-verify()
 
 	QUOTE_TAR="$1"
 
-	unpack-quote "$QUOTE_TAR" \
-	|| die "$QUOTE_TAR: Unable to unpack"
+	if [ ! -r "$TMP/quote.txt" ]; then
+		# make sure that the quote has been validated
+		quote-verify "$QUOTE_TAR"
+	fi
 
-	warn "$QUOTE_TAR: eventlog matches PCR"
+	tpm2 eventlog "$TMP/eventlog" \
+	| tpm2-eventlog-csv \
+	>> "$TMP/eventlog.txt" \
+	2> "$TMP/eventlog.pcr" \
+	|| die "$TMP/eventlog: Unable to parse"
 }
 
 
@@ -510,6 +515,7 @@ quote-verify()
 		--signature "$TMP/quote.sig" \
 		--pcr "$TMP/quote.pcr" \
 		--public "$TMP/ak.pub" \
+	| tee "$TMP/quote.txt" \
 	|| die "$QUOTE_TAR: unable to verify quote with '$QUOTE_NONCE'"
 
 	warn "$QUOTE_TAR: quote signature verified"

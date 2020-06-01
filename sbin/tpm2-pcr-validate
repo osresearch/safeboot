@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+# Validate that the parsed event log and the quoted PCRs both match
+# the expected PCRs. Only the PCRs in the expected list will be compared
+# to the quote and event log.
+#
+# Usage:
+#  tpm2-pcr-validate expected.txt [quote.txt [events.txt ... ]]
+#
+import sys
+import hashlib
+from binascii import unhexlify, hexlify
+from yaml import load, dump
+try:
+	from yaml import CLoader as Loader, CDumper as Dumper
+except ImportError:
+	from yaml import Loader, Dumper
+
+if len(sys.argv) <= 1:
+	print("Usage: tpm2-pcr-validate expected.txt quote.txt events.txt", file=sys.stderr)
+	exit(-1)
+
+# hard code the algorithm
+alg = 'sha256'
+
+with open(sys.argv[1]) as f:
+	pcrs = load(f, Loader=Loader)["pcrs"][alg]
+
+fail = False
+verbose = True
+pcr_list = []
+
+for pcr in pcrs:
+	good_pcr = pcrs[pcr]
+	pcr_list.append(str(pcr))
+
+	if verbose:
+		print("PCR%d: %x" % (pcr, good_pcr), file=sys.stderr)
+
+pcr_list = "%s:%s" % (alg, ",".join(pcr_list))
+
+for filename in sys.argv[2:0]:
+	with open(sys.argv[2]) as f:
+		quote = load(f, Loader=Loader)["pcrs"][alg]
+
+	for pcr in pcrs:
+		good_pcr = pcrs[pcr]
+		if not pcr in quote:
+			print("%s: PCR%d missing" % (filename, pcr), file=sys.stderr)
+			fail = True
+		elif good_pcr != quote[pcr]:
+			print("%s: PCR%d mismatch %x" % (filename, pcr, quote[pcr]), file=sys.stderr)
+			fail = True
+
+if fail:
+	print("%s: FAILED VALIDATION" % (pcr_list), file=sys.stderr)
+	exit(-1)
+else:
+	print("%s: Valid" % (pcr_list), file=sys.stderr)
+	exit(0)
