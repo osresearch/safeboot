@@ -2,7 +2,7 @@ Source: safeboot
 Section: admin
 Priority: optional
 Maintainer: Trammell Hudson <hudson@trmm.net>
-Build-Depends: debhelper-compat (= 12), tpm2-tools (>= 4.1.1), efitools, gnu-efi, opensc, yubico-piv-tool, libengine-pkcs11-openssl, build-essential, binutils-dev, git, automake, help2man, libssl-dev, uuid-dev, libqrencode-dev, libtss2-dev, curl
+Build-Depends: debhelper-compat (= 12), efitools, gnu-efi, opensc, yubico-piv-tool, libengine-pkcs11-openssl, build-essential, binutils-dev, git, automake, help2man, libssl-dev, uuid-dev, libqrencode-dev, curl
 Standards-Version: 4.4.1
 Homepage: https://github.com/osresearch/safeboot/
 #Vcs-Browser: https://salsa.debian.org/debian/safeboot
@@ -10,7 +10,7 @@ Homepage: https://github.com/osresearch/safeboot/
 
 Package: safeboot
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, tpm2-tools (>= 4.1.1), efitools, opensc, yubico-piv-tool, libengine-pkcs11-openssl, uuid, binutils, libqrencode-dev
+Depends: ${shlibs:Depends}, ${misc:Depends}, efitools, opensc, yubico-piv-tool, libengine-pkcs11-openssl, uuid, binutils, libqrencode-dev
 Description: Boot Linux more safely
  Makes the Linux boot process slightly safer by enabling UEFI Secure Boot,
  signing kernel and initrd with Yubikey hardware tokens, storing disk

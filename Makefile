@@ -33,6 +33,40 @@ efitools/Makefile:
 	git submodule update --init efitools
 
 #
+# tpm2-tss is the library used by tpm2-tools
+#
+SUBMODULES += tpm2-tss
+
+libtss2-esys = tpm2-tss/src/tss2-esys/.libs/libtss2-esys.a
+$(libtss2-esys): tpm2-tss/Makefile
+	$(MAKE) -C $(dir $<)
+	mkdir -p $(dir $@)
+tpm2-tss/Makefile:
+	git submodule update --init $(dir $@)
+	cd $(dir $@) ; ./bootstrap && ./configure
+
+#
+# tpm2-tools is the branch with bundling and ecc support built in
+#
+SUBMODULES += tpm2-tools
+
+tpm2-tools/bundle/tpm2: tpm2-tools/Makefile 
+	$(MAKE) -C $(dir $<)
+	cd $(dir $@) ; bash -x ./bundle
+
+bin/tpm2: tpm2-tools/bundle/tpm2
+	cp $< $@
+
+tpm2-tools/Makefile: $(libtss2-esys)
+	git submodule update --init $(dir $@)
+	cd $(dir $@) ; ./bootstrap
+	cd $(dir $@) ; ./configure \
+		TSS2_ESYS_3_0_CFLAGS=-I../tpm2-tss/include \
+		TSS2_ESYS_3_0_LIBS="../$(libtss2-esys) -ldl" \
+
+
+
+#
 # tpm2-totp is build from a branch with hostname support
 #
 SUBMODULES += tpm2-totp
@@ -53,9 +87,7 @@ requirements:
 	apt install -y \
 		devscripts \
 		debhelper \
-		tpm2-tools \
 		libqrencode-dev \
-		libtss2-dev \
 		efitools \
 		gnu-efi \
 		opensc \

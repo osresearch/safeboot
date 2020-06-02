@@ -8,3 +8,10 @@
 	path = tpm2-totp
 	url = https://github.com/osresearch/tpm2-totp
 	branch = static-link
+[submodule "tpm2-tools"]
+	path = tpm2-tools
+	url = https://github.com/osresearch/tpm2-tools
+	branch = bundle-ecc
+[submodule "tpm2-tss"]
+	path = tpm2-tss
+	url = https://github.com/tpm2-software/tpm2-tss
