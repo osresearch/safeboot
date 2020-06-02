@@ -3,6 +3,7 @@ VERSION ?= 0.6
 BINS += bin/sbsign.safeboot
 BINS += bin/sign-efi-sig-list.safeboot
 BINS += bin/tpm2-totp
+BINS += bin/tpm2
 
 all: $(BINS) update-certs
 
