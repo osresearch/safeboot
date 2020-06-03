@@ -48,42 +48,45 @@ done
 
 log "TPM mode=$MODE pcrs=$PCRS $BOOTMODE_PCR"
 
-/usr/bin/tpm2_pcrread >&2 \
+/usr/sbin/tpm2 pcrread >&2 \
 	'sha256:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16'
 
 #
 # Extend PCR14 with the boot mode so that recovery
 # boots aren't able to access the sealed disk key.
 #
-/usr/bin/tpm2_pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 "$MODE")"
+/usr/sbin/tpm2 pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 "$MODE")"
 
 
 #
 # Attempt to unseal, outputing the binary key to stdout
 #
-if [ -n "$PCRS" ] && /usr/bin/tpm2_unseal \
+if [ -n "$PCRS" ] && /usr/sbin/tpm2 unseal \
 	--object-context "$HANDLE" \
 	--auth pcr:"sha256:$PCRS,$BOOTMODE_PCR" \
 ; then
 	# ensure that a local attacker can't re-read the key from the TPM
 	# by extending pcr 14 with "postboot"
 	log "TPM disk key unsealed"
-	/usr/bin/tpm2_pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 postboot)"
+	/usr/sbin/tpm2 pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 postboot)"
 	exit 0
 else
 	# the key was not unsealed or no PCRs specified;
 	# log the failure and ask the user for the recovery key
 	log "Falling back to user pass phrase"
-	/usr/bin/tpm2_pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 bootfail)"
+	/usr/sbin/tpm2 pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 bootfail)"
 
 	# retrieve a tpmtotp attestation so that the user knows
 	# that the firmware is unmodified and that it is safe to
 	# enter their credentials.
-	# TODO: should a PCR be extended so that this will only work
-	# during boot?
-	totp="$(usr/bin/tpm2-totp --time calculate || echo TPM TOTP FAILED)"
+	totp="$(/usr/sbin/tpm2-totp --time calculate || echo TPM TOTP FAILED)"
 	msg="$totp $MODE
+
 Enter recovery key for $CRYPTTAB_SOURCE ($CRYPTTAB_NAME): "
 
 	/lib/cryptsetup/askpass "$msg"
+
+	# TODO: should a PCR be extended so that this will only work
+	# during boot?  Which PCR to use?  when should it be done?
+	#/usr/sbin/tpm2 pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 totp-done)"
 fi

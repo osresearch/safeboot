@@ -15,8 +15,9 @@ certs/*				etc/safeboot/certs/
 # to add support for the pkcs11 engine and small qrcodes
 bin/sbsign.safeboot		usr/sbin/
 bin/sign-efi-sig-list.safeboot	usr/sbin/
-bin/tpm2-totp			usr/bin/
-bin/tpm2			usr/bin/
+bin/tpm2-totp			usr/sbin/
+bin/tpm2-eventlog-csv		usr/sbin/
+bin/tpm2			usr/sbin/
 
 # scripts to interface with secure boot in the initramfs
 initramfs/hooks/dmverity-root	etc/initramfs-tools/hooks/
