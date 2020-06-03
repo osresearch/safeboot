@@ -524,9 +524,18 @@ luks-seal() {
 	fi
 
 	# if the TPM2 resource manager is running, talk to it.
-	# otherwise use a direct connection to the TPM.
+	# otherwise use a direct connection to the TPM and flush
+	# any current operations
 	if ! pidof tpm2-abrmd > /dev/null ; then
 		export TPM2TSSENGINE_TCTI="device:/dev/tpmrm0"
+
+		tpm2 flushcontext \
+			--transient-object \
+		|| die "tpm2_flushcontext: unable to flush transient handles"
+
+		tpm2 flushcontext \
+			--loaded-session \
+		|| die "tpm2_flushcontext: unable to flush sessions"
 	fi
 
 	# Use a tmpfs mount instead of just a temp directory so that
@@ -545,7 +554,8 @@ luks-seal() {
 	|| die "Unable to generate random key"
 
 	# If pre-computed PCRs are known, they can be used here instead
-	tpm2_pcrread -o "$TMP/pcrs.bin" "sha256:$PCRS" \
+	# TODO: allow PCRs to be passed in
+	tpm2 pcrread -o "$TMP/pcrs.bin" "sha256:$PCRS" \
 		>> /tmp/tpm.log \
 	|| die "Unable to read TPM PCRs"
 
@@ -559,7 +569,7 @@ luks-seal() {
 		>> "$TMP/pcrs.bin"
 	xxd -g1 "$TMP/pcrs.bin"
 
-	tpm2_createpolicy \
+	tpm2 createpolicy \
 		--policy-pcr \
 		--pcr-list "sha256:$PCRS,$BOOTMODE_PCR" \
 		--pcr "$TMP/pcrs.bin" \
@@ -567,7 +577,7 @@ luks-seal() {
 		>> /tmp/tpm.log \
 	|| die "Unable to create TPM policy"
 
-	tpm2_createprimary \
+	tpm2 createprimary \
 		--key-context "$TMP/primary.context" \
 		>> /tmp/tpm.log \
 	|| die "Unable to create TPM primary object"
@@ -585,7 +595,7 @@ luks-seal() {
 	#	--key-auth $HANDLE \
 
 	warn "Sealing secret with TPM"
-	tpm2_create \
+	tpm2 create \
 		--parent-context "$TMP/primary.context" \
 		--policy "$TMP/policy.digest" \
 		--sealing-input "$TMP/key.bin" \
@@ -594,7 +604,7 @@ luks-seal() {
 		>> /tmp/tpm.log \
 	|| die "Unable to create TPM key context"
 
-	tpm2_load \
+	tpm2 load \
 		--parent-context "$TMP/primary.context" \
 		--public "$TMP/public.bin" \
 		--private "$TMP/private.bin" \
@@ -603,12 +613,12 @@ luks-seal() {
 	|| die "Unable to load TPM with key"
 		
 	warn "Installing sealed secret into TPM"
-	tpm2_evictcontrol \
+	tpm2 evictcontrol \
 		--object-context "$HANDLE" \
 		>> /tmp/tpm.log \
 	|| warn "Unable to remove old TPM key context $HANDLE"
 
-	tpm2_evictcontrol \
+	tpm2 evictcontrol \
 		--object-context "$TMP/key.context" \
 		>> /tmp/tpm.log \
 	|| die "Unable to load TPM key context into TPM"
