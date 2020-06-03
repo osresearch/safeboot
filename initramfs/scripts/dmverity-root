@@ -20,7 +20,7 @@ esac
 HASH=""
 #SALT=""
 HASHDEV=""
-ROOTDEV=""
+DATADEV=""
 
 if [ -z "${rootmnt}" ] ; then
 	rootmnt=/root
@@ -37,7 +37,7 @@ do
 #            SALT=${arg#verity.salt=}
 #            ;;
 	verity.rootdev=*)
-            ROOTDEV=${arg#verity.rootdev=}
+            DATADEV=${arg#verity.rootdev=}
             ;;
 	verity.hashdev=*)
             HASHDEV=${arg#verity.hashdev=}
@@ -47,13 +47,13 @@ do
     esac
 done
 
-if [ "$HASH" = "" ] || [ "$ROOTDEV" = "" ] || [ "$HASHDEV" = "" ]
+if [ "$HASH" = "" ] || [ "$DATADEV" = "" ] || [ "$HASHDEV" = "" ]
 then
     log_warning_msg "$PREFIX: verity command line parameters not found; not enabling"
     exit 0
 fi
 
-log_begin_msg "$PREFIX: verity.hash=$HASH verity.rootdev=$ROOTDEV verity.hashdev=$HASHDEV"
+log_begin_msg "$PREFIX: verity.hash=$HASH verity.rootdev=$DATADEV verity.hashdev=$HASHDEV"
 
 if ! modprobe -qb dm_verity
 then
@@ -75,22 +75,22 @@ fi
 
 #umount ${rootmnt}
 
-if ! veritysetup open "${ROOTDEV}" vroot "${HASHDEV}" "${HASH}"
+if ! veritysetup open "${DATADEV}" vroot "${HASHDEV}" "${HASH}"
 then
-	log_failure_msg "$PREFIX: ${ROOTDEV} unable to setup verity, remounting ${rootmnt}"
-	panic "$PREFIX: failed"
+	log_failure_msg "$PREFIX: ${DATADEV} unable to setup verity, remounting ${rootmnt}"
+	panic "$PREFIX: failed veritysetup"
 	#umount /hashes
 	#mount -o ro ${ROOT} ${rootmnt}
 	exit 0
 fi
 
 # Verity protected volume group is setup - mount it as root
-if ! mount -o ro,noatime "${ROOTDEV}" "${rootmnt}"
+if ! mount -o ro,noatime "/dev/mapper/vroot" "${rootmnt}"
 then
 	log_failure_msg "$PREFIX: ${ROOT} unable to mount verity dm, remounting"
 	veritysetup close vroot
 	#mount -o ro,noload ${ROOT} ${rootmnt}
-	panic "$PREFIX: failed"
+	panic "$PREFIX: failed test mount"
 	exit 0
 fi
 
