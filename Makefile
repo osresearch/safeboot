@@ -109,6 +109,7 @@ requirements:
 		shellcheck \
 		curl \
 		libjson-c-dev \
+		libcurl-dev \
 
 
 # Remove the temporary files
