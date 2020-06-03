@@ -108,6 +108,7 @@ requirements:
 		uuid-dev \
 		shellcheck \
 		curl \
+		libjson-c-dev \
 
 
 # Remove the temporary files
