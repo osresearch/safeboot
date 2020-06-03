@@ -2,6 +2,8 @@
 sbin/safeboot			usr/sbin/
 sbin/safeboot-tpm-unseal	usr/sbin/
 sbin/tpm2-attest		usr/sbin/
+sbin/tpm2-eventlog-csv		usr/sbin/
+sbin/tpm2-pcr-validate		usr/sbin/
 
 # configuration files
 safeboot.conf			etc/safeboot/
@@ -12,12 +14,12 @@ refresh-certs			etc/safeboot/
 certs/*				etc/safeboot/certs/
 
 # Compiled with modifications from source
-# to add support for the pkcs11 engine and small qrcodes
+# to add support for the pkcs11 engine (sbsign),
+# hostnames and small qrcodes (tpm2-totp), 
+# and bundle all tpm2 applications in a single script (tpm2)
 bin/sbsign.safeboot		usr/sbin/
 bin/sign-efi-sig-list.safeboot	usr/sbin/
 bin/tpm2-totp			usr/sbin/
-bin/tpm2-eventlog-csv		usr/sbin/
-bin/tpm2-pcr-validate		usr/sbin/
 bin/tpm2			usr/sbin/
 
 # scripts to interface with secure boot in the initramfs
