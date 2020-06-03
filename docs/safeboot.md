@@ -43,6 +43,16 @@ The subject must be written as a "distinguished name":
        /CN=host.example.com/OU=test/O=example.com/
 ```
 
+## yubikey-pubkey
+Usage:
+```
+safeboot yubikey-pubkey cert.pem [cert.crt]
+```
+
+Extract the public key certificate in either PEM or DER format.
+The `sbsign` tool wants PEM, the `kmodsign` tool wants DER.
+The best part about standards...
+
 ## uefi-sign-keys
 Usage:
 ```
@@ -155,6 +165,16 @@ recovery key since the TPM will not unseal the disk automatically for
 recovery mode.
 
 **NOTE!** This will reboot the machine!
+
+## bootnext
+Usage:
+```
+safeboot bootnext Setup
+```
+
+Configure the EFI boot manager `BootNext` variable to select an
+alternate boot menu item.  This command requires root access to
+update the EFI variables.
 
 ## remount
 Usage:
