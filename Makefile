@@ -44,7 +44,8 @@ $(libtss2-esys): tpm2-tss/Makefile
 	mkdir -p $(dir $@)
 tpm2-tss/Makefile:
 	git submodule update --init $(dir $@)
-	cd $(dir $@) ; ./bootstrap && ./configure
+	cd $(dir $@) ; ./bootstrap && ./configure \
+		--disable-doxygen-doc \
 
 #
 # tpm2-tools is the branch with bundling and ecc support built in
