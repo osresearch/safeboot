@@ -277,7 +277,7 @@ verify_usage='
 ## verify
 Usage:
 ```
-tpm2-attest verify quote.tgz [nonce [ca-path]]
+tpm2-attest verify quote.tgz [good-pcrs.txt [nonce [ca-path]]]
 ```
 
 This will validate that the quote was signed with the attestation key
@@ -297,13 +297,14 @@ commands+="|verify"
 verify()
 {
 	show_help "$1" "$verify_usage"
-	if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
+	if [ "$#" -lt 1 ] || [ "$#" -gt 4 ]; then
 		die "Wrong arguments.$verify_usage"
 	fi
 
 	QUOTE_TAR="$1"
-	NONCE="${2:-}"
-	CA_ROOT="${3:-$PREFIX$DIR/certs}"
+	GOOD_PCRS="$2"
+	NONCE="$3"
+	CA_ROOT="${4:-$PREFIX$DIR/certs}"
 
 	unpack-quote "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: unable to unpack"
@@ -311,7 +312,7 @@ verify()
 	quote-verify "$QUOTE_TAR" "$NONCE" \
 	|| die "$QUOTE_TAR: unable to verify quote"
 
-	eventlog-verify "$QUOTE_TAR" \
+	eventlog-verify "$QUOTE_TAR" "$GOOD_PCRS" \
 	|| die "$QUOTE_TAR: unable to verify TPM event log"
 
 	ek-verify "$QUOTE_TAR" "$CA_ROOT" \
@@ -326,11 +327,12 @@ eventlog_verify_usage='
 ## eventlog-verify
 Usage:
 ```
-tpm2-attest eventlog-verify quote.tgz
+tpm2-attest eventlog-verify quote.tgz [good-pcrs.txt]
 ```
 
 This will verify that the PCRs included in the quote match the
-TPM event log.
+TPM event log, and if `good-prcs.txt` are passed in that they
+match those as well.
 
 '
 usage+="$eventlog_verify_usage"
@@ -339,11 +341,12 @@ commands+="|eventlog-verify"
 eventlog-verify()
 {
 	show_help "$1" "$eventlog_verify_usage"
-	if [ "$#" -ne 1 ]; then
+	if [ "$#" -lt 1 ]; then
 		die "Wrong arguments.$eventlog_verify_usage"
 	fi
 
 	QUOTE_TAR="$1"
+	GOOD_PCRS="$2"
 
 	if [ ! -r "$TMP/quote.txt" ]; then
 		# make sure that the quote has been validated
@@ -355,6 +358,16 @@ eventlog-verify()
 	>> "$TMP/eventlog.txt" \
 	2> "$TMP/eventlog.pcr" \
 	|| die "$TMP/eventlog: Unable to parse"
+
+	if [ -n "$GOOD_PCRS" ]; then
+		tpm2-pcr-validate "$GOOD_PCRS" "$TMP/quote.txt" "$TMP/eventlog.pcr" \
+		|| die "$QUOTE_TAR: golden PCR mismatch"
+		warn "$QUOTE_TAR: eventlog PCRs match golden values"
+	else
+		tpm2-pcr-validate "$TMP/quote.txt" "$TMP/eventlog.pcr" \
+		|| die "$QUOTE_TAR: eventlog PCR mismatch"
+		warn "$QUOTE_TAR: eventlog PCRs match quote"
+	fi
 }
 
 
@@ -413,7 +426,7 @@ ek-verify()
 		"$TMP/ek.pem" \
 	|| die "$TMP/ek.pem: SSL verification failure"
 
-	warn "ek.crt: certificate chain valid!"
+	warn "$QUOTE_TAR: ek.crt certificate chain valid"
 
 	# make sure the EK has the proper key attributes
 	tpm2 print \
@@ -441,7 +454,7 @@ ek-verify()
 		die "ek.crt and ek.pub have different moduli"
 	fi
 
-	warn "ek.pub: matches ek.crt!"
+	warn "$QUOTE_TAR: ek.pub matches ek.crt"
 }
 
 quote_verify_usage='

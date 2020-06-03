@@ -17,6 +17,7 @@ bin/sbsign.safeboot		usr/sbin/
 bin/sign-efi-sig-list.safeboot	usr/sbin/
 bin/tpm2-totp			usr/sbin/
 bin/tpm2-eventlog-csv		usr/sbin/
+bin/tpm2-pcr-validate		usr/sbin/
 bin/tpm2			usr/sbin/
 
 # scripts to interface with secure boot in the initramfs

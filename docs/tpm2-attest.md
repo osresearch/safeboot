@@ -24,7 +24,7 @@ for decrypting the return result from the remote attestation server.
 ## verify
 Usage:
 ```
-tpm2-attest verify quote.tgz [nonce [ca-path]]
+tpm2-attest verify quote.tgz [good-pcrs.txt [nonce [ca-path]]]
 ```
 
 This will validate that the quote was signed with the attestation key
@@ -41,13 +41,13 @@ If the `ca-path` is not specified, the system one will be used.
 ## eventlog-verify
 Usage:
 ```
-tpm2-attest eventlog-verify quote.tgz
+tpm2-attest eventlog-verify quote.tgz [good-pcrs.txt]
 ```
 
 This will verify that the PCRs included in the quote match the
-TPM event log.
+TPM event log, and if `good-prcs.txt` are passed in that they
+match those as well.
 
-* TODO: build tpm2_eventlog so that these events can be parsed.
 
 ## ek-verify
 Usage:
