@@ -109,7 +109,7 @@ requirements:
 		shellcheck \
 		curl \
 		libjson-c-dev \
-		libcurl-dev \
+		libcurl4-openssl-dev \
 
 
 # Remove the temporary files
