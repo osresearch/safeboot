@@ -89,6 +89,7 @@ requirements:
 		devscripts \
 		debhelper \
 		libqrencode-dev \
+		libtss2-dev \
 		efitools \
 		gnu-efi \
 		opensc \
