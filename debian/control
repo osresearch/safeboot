@@ -10,7 +10,7 @@ Homepage: https://github.com/osresearch/safeboot/
 
 Package: safeboot
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, libtss2-dev, efitools, opensc, yubico-piv-tool, libengine-pkcs11-openssl, uuid, binutils, libqrencode-dev, libjson-c4, libcurl
+Depends: ${shlibs:Depends}, ${misc:Depends}, libtss2-dev, efitools, opensc, yubico-piv-tool, libengine-pkcs11-openssl, uuid, binutils, libqrencode-dev, libjson-c4, libcurl4
 Description: Boot Linux more safely
  Makes the Linux boot process slightly safer by enabling UEFI Secure Boot,
  signing kernel and initrd with Yubikey hardware tokens, storing disk
