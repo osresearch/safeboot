@@ -249,9 +249,17 @@ can make it more trustable.
 
 ### Why is generating a quote so slow?
 
-Generating the Attestaion Key to sign the quote takes several seconds,
-unfortunately.  Creating a new one each time should not be necessary;
-one AK could be pregenerated and persistent in the TPM, except that opens up
+There is lots of traffic between the `tpm2-attest` program and the TPM
+during the attestation process, and the TPM is not a fast device.
+Read the Endorsement Key (EK) and EK Certificate take a few hundred
+miliseconds, signing the quote takes another few hundred, etc.
+The process used to take around 20 seconds, since the TPM had to generate
+a new RSA Attestation Key (AK) to sign the PCR quote, and generating an RSA
+key requires finding large primes with certain values.  The AK was replaced
+with ECC, which is much faster to generate.
+
+Creating a new one each time should not be necessary; several attestation protocols
+use a pregenerated AK that is persistent in the TPM, except that opens up
 a race condition between generating a quote and receiving the sealed
 data.  The *quote* includes the reboot count, but the *sealed data*
 does not reference it, so the TPM will unseal it if the AK is still
