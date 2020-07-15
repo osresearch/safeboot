@@ -52,7 +52,7 @@ tpm2-tss/Makefile:
 #
 SUBMODULES += tpm2-tools
 
-tpm2-tools/bundle/tpm2: tpm2-tools/Makefile 
+tpm2-tools/tools/tpm2: tpm2-tools/Makefile
 	$(MAKE) -C $(dir $<)
 
 bin/tpm2: tpm2-tools/tools/tpm2
