@@ -10,8 +10,7 @@
 	branch = static-link
 [submodule "tpm2-tools"]
 	path = tpm2-tools
-	url = https://github.com/osresearch/tpm2-tools
-	branch = bundle-ecc
+	url = https://github.com/tpm2-software/tpm2-tools
 [submodule "tpm2-tss"]
 	path = tpm2-tss
 	url = https://github.com/tpm2-software/tpm2-tss
