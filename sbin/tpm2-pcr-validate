@@ -26,7 +26,7 @@ with open(sys.argv[1]) as f:
 	pcrs = load(f, Loader=Loader)["pcrs"][alg]
 
 fail = False
-verbose = True
+verbose = False
 pcr_list = []
 
 for pcr in pcrs:
@@ -38,8 +38,10 @@ for pcr in pcrs:
 
 pcr_list = "%s:%s" % (alg, ",".join(pcr_list))
 
-for filename in sys.argv[2:0]:
-	with open(sys.argv[2]) as f:
+for filename in sys.argv[2:]:
+	with open(filename) as f:
+		if verbose:
+			print("%s: Reading PCRs" % (filename))
 		quote = load(f, Loader=Loader)["pcrs"][alg]
 
 	for pcr in pcrs:
@@ -50,6 +52,8 @@ for filename in sys.argv[2:0]:
 		elif good_pcr != quote[pcr]:
 			print("%s: PCR%d mismatch %x" % (filename, pcr, quote[pcr]), file=sys.stderr)
 			fail = True
+		elif verbose:
+			print("%s: PCR%d: %s matches %s" % (filename, pcr, quote[pcr], good_pcr))
 
 if fail:
 	print("%s: FAILED VALIDATION" % (pcr_list), file=sys.stderr)
