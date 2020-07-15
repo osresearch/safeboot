@@ -2,7 +2,6 @@
 sbin/safeboot			usr/sbin/
 sbin/safeboot-tpm-unseal	usr/sbin/
 sbin/tpm2-attest		usr/sbin/
-sbin/tpm2-eventlog-csv		usr/sbin/
 sbin/tpm2-pcr-validate		usr/sbin/
 
 # configuration files
