@@ -64,9 +64,13 @@ During the `safeboot` installation process, the system owner
 which prevents the Microsoft signed shim used by grub from being loaded, and
 they then create [`efibootmgr` entries for `linux` and `recovery`](install.md#signed-linux-recovery-kernel)
 that are signed with their (hardware protected) key.
-Assuming there are not vulnerabilities in the system's UEFI firmware, which is not
-a good assumption, no other kernel, initrd, or command line will be booted by the system,
-so attacks on `grub` like BootHole should be unable to gain persistence or code execution.
+
+Assuming there are not vulnerabilities in the system's UEFI firmware or CPU vendor's BootGuard
+(which may not be the best assumption...), the `safeboot` configuration should ensure
+that only signed kernel, initrd, and command lines will be booted by the system.
+This [static chain of trust](chain-of-trust.md)
+helps prevent attacks on `grub` like BootHole, or other ones that modify on-disk
+data, from being able to gain persistence or code execution.
 
 One caveat to the protection provided by the UEFI Secure Boot Platform Keys is that
 the UEFI NVRAM configuration data is stored in the SPI flash and is also subject to
@@ -75,7 +79,8 @@ However, if the attacker uses a flash programmer to change the Platform Keys in 
 the TPM measurements of the `Setup` variable will be different and the TPM should refuse
 to unseal the disk encryption key since the PCR values will not match the sealed ones.
 Additionally the system should fail [remote attestation](attestation.md) if it attempts
-to connect to a server that validates the TPM quote.
+to connect to a server that validates the TPM quote, improving platform resiliency even
+when attackers do gain persistence.
 
 
 ## How does `safeboot` compare to coreboot?
