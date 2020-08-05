@@ -110,6 +110,20 @@ For an indepth analysis of the AMD Platform Support Processor (PSP)
 and SEV, [Buhren, Eichner and Werling's 35c3 presentation](https://media.ccc.de/v/36c3-10942-uncover_understand_own_-_regaining_control_over_your_amd_cpu)
 is the most detailed look so far.
 
+## Does safeboot work with Qubes or Xen?
+![Xen booting in qemu with secure boot enabled](images/xen.png)
+
+Qubes, a reasonably secure OS, uses the Xen hypervisor to separate device drivers
+and applications into separate virtual machines so that an exploit against an individual
+component doesn't necessarily compromise the entire machine.  Unfortunately Xen's EFI support
+is not commonly used, and as a result running Qubes typically requires Legacy BIOS and
+turning off Secure Boot.
+
+Adding Secure Boot support to Xen is possible with some patches
+([safeboot-issue #21](https://github.com/osresearch/safeboot/issues/21)),
+although it is a work in progress.
+There are other factors involved in configuring Qubes to use dm-verity and TPM sealed
+secrets that have not been addressed yet, as well as an [open qubes-issue on distribution signing keys](https://github.com/QubesOS/qubes-issues/issues/4371#issuecomment-668639572).
 
 ## Why does the TPM unsealing fail often?
 ![TPM with wires soldered to the pins](images/tpm.jpg)
