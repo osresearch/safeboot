@@ -50,13 +50,11 @@ log "TPM mode=$MODE pcrs=$PCRS $BOOTMODE_PCR"
 # Extend PCR14 with the boot mode so that recovery
 # boots aren't able to access the sealed disk key.
 #
-if /usr/sbin/tpm2 pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 "$MODE")" ; then
-	log_success_msg "$PREFIX: boot mode '$MODE'"
-else
+if ! /usr/sbin/tpm2 pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 "$MODE")" ; then
 	log_failure_msg "$PREFIX: unable to extend boot mode PCR $BOOTMODE_PCR"
 fi
 
-if [ "$BOOTMODE" = "recovery" ]; then
+if [ "$MODE" = "recovery" ]; then
 	cat >&2 <<EOF
                                            _                 _   
  _ __ ___  ___ _____   _____ _ __ _   _   | |__   ___   ___ | |_ 
