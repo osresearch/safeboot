@@ -36,7 +36,7 @@ parts of the system.
 A larger problem is that by default only the Linux kernel is signed,
 not the command line parameters or initrd.  While the `grub` bootloader
 can enable a password to protect against casual changes to the kernel
-parameters, the `grub.cfg` configuration is not signed.   This means
+parameters, the `grub.cfg` configuration is not typically signed.   This means
 that potentially a local attacker can modify it on disk to launch the
 kernel with `init=/bin/sh` to drop into a shell, or an attacker with
 root access can add trojan'ed binaries to the initrd to gain persistence.
@@ -45,6 +45,43 @@ initrd images signed by the computer owner will boot.
 
 Far more details on how `safeboot` extends UEFI SecureBoot are on
 [the threat model page](threats.md).
+
+## Does `safeboot` have a BootHole?
+
+BootHole ([CVE-2020-10713](https://cve.mitre.org/cgi-bin/cvename.cgi?name=2020-10713)),
+is a vulnerability found and [described by Eclypsium](https://eclypsium.com/2020/07/29/theres-a-hole-in-the-boot/))
+in `grub`'s configuration file parsing which allows arbitrary code execution in `grub` even when Secure Boot is enabled.
+Kelly Shortridge has a [good writeup by at capsule8](https://capsule8.com/blog/grubbing-secure-boot-the-wrong-way-cve-2020-10713/)
+that explains how this threat could be leveraged by an attacker and the difficulties in doing so in
+a general case, although an attacker with physical access is able to write to the internal
+disk and could launch this attack. Since these sorts of physical attacks are included
+in the [`safeboot` threat model](threats.md), it is worth considering.
+
+However, a system using `safeboot` is **not vulnerable to CVE-2020-10713** since
+*`grub` is not used at all* and will not be run even if it is present on the disk.
+During the `safeboot` installation process, the system owner
+[replaces the UEFI Platform Key with their own](install.md#uefi-secure-boot-signing-keys),
+which prevents the Microsoft signed shim used by grub from being loaded, and
+they then create [`efibootmgr` entries for `linux` and `recovery`](install.md#signed-linux-recovery-kernel)
+that are signed with their (hardware protected) key.
+
+Assuming there are not vulnerabilities in the system's UEFI firmware or CPU vendor's BootGuard
+(which may not be the best assumption...), the `safeboot` configuration should ensure
+that only signed kernel, initrd, and command lines will be booted by the system.
+This [static chain of trust](chain-of-trust.md)
+helps prevent attacks on `grub` like BootHole, or other ones that modify on-disk
+data, from being able to gain persistence or code execution.
+
+One caveat to the protection provided by the UEFI Secure Boot Platform Keys is that
+the UEFI NVRAM configuration data is stored in the SPI flash and is also subject to
+modifications by a physically proximate attacker with internal access to the hardware.
+However, if the attacker uses a flash programmer to change the Platform Keys in the flash,
+the TPM measurements of the `Setup` variable will be different and the TPM should refuse
+to unseal the disk encryption key since the PCR values will not match the sealed ones.
+Additionally the system should fail [remote attestation](attestation.md) if it attempts
+to connect to a server that validates the TPM quote, improving platform resiliency even
+when attackers do gain persistence.
+
 
 ## How does `safeboot` compare to coreboot?
 ![Installing coreboot requires so much flashing](images/coreboot.jpg)
@@ -73,6 +110,20 @@ For an indepth analysis of the AMD Platform Support Processor (PSP)
 and SEV, [Buhren, Eichner and Werling's 35c3 presentation](https://media.ccc.de/v/36c3-10942-uncover_understand_own_-_regaining_control_over_your_amd_cpu)
 is the most detailed look so far.
 
+## Does safeboot work with Qubes or Xen?
+![Xen booting in qemu with secure boot enabled](images/xen.png)
+
+Qubes, a reasonably secure OS, uses the Xen hypervisor to separate device drivers
+and applications into separate virtual machines so that an exploit against an individual
+component doesn't necessarily compromise the entire machine.  Unfortunately Xen's EFI support
+is not commonly used, and as a result running Qubes typically requires Legacy BIOS and
+turning off Secure Boot.
+
+Adding Secure Boot support to Xen is possible with some patches
+([safeboot-issue #21](https://github.com/osresearch/safeboot/issues/21)),
+although it is a work in progress.
+There are other factors involved in configuring Qubes to use dm-verity and TPM sealed
+secrets that have not been addressed yet, as well as an [open qubes-issue on distribution signing keys](https://github.com/QubesOS/qubes-issues/issues/4371#issuecomment-668639572).
 
 ## Why does the TPM unsealing fail often?
 ![TPM with wires soldered to the pins](images/tpm.jpg)

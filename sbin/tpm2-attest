@@ -354,9 +354,7 @@ eventlog-verify()
 	fi
 
 	tpm2 eventlog "$TMP/eventlog" \
-	| tpm2-eventlog-csv \
-	>> "$TMP/eventlog.txt" \
-	2> "$TMP/eventlog.pcr" \
+	> "$TMP/eventlog.pcr" \
 	|| die "$TMP/eventlog: Unable to parse"
 
 	if [ -n "$GOOD_PCRS" ]; then

@@ -48,21 +48,20 @@ tpm2-tss/Makefile:
 		--disable-doxygen-doc \
 
 #
-# tpm2-tools is the branch with bundling and ecc support built in
+# tpm2-tools is the head after bundling and ecc support built in
 #
 SUBMODULES += tpm2-tools
 
-tpm2-tools/bundle/tpm2: tpm2-tools/Makefile 
+tpm2-tools/tools/tpm2: tpm2-tools/Makefile
 	$(MAKE) -C $(dir $<)
-	cd $(dir $@) ; bash -x ./bundle
 
-bin/tpm2: tpm2-tools/bundle/tpm2
+bin/tpm2: tpm2-tools/tools/tpm2
 	cp $< $@
 
 tpm2-tools/Makefile: $(libtss2-esys)
 	git submodule update --init $(dir $@)
-	cd $(dir $@) ; ./bootstrap
-	cd $(dir $@) ; ./configure \
+	cd $(dir $@) ; ./bootstrap \
+	&& ./configure \
 		TSS2_ESYS_3_0_CFLAGS=-I../tpm2-tss/include \
 		TSS2_ESYS_3_0_LIBS="../$(libtss2-esys) -ldl" \
 
