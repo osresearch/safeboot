@@ -19,8 +19,9 @@ BOOTMODE_PCR=14
 MODE=unknown
 HANDLE=0x81000000
 
-# Direct access
-export TPM2TSSENGINE_TCTI="device:/dev/tpmrm0"
+# Direct access to the kernel resource manager
+# since there is no standalone TPM resource manager in the initrd
+export TPM2TOOLS_TCTI="device:/dev/tpmrm0"
 
 sha256() { echo -n "$@" | sha256sum | cut -d' ' -f1 ; }
 log() { echo >&2 "$@" ; }

@@ -527,7 +527,7 @@ luks-seal() {
 	# otherwise use a direct connection to the TPM and flush
 	# any current operations
 	if ! pidof tpm2-abrmd > /dev/null ; then
-		export TPM2TSSENGINE_TCTI="device:/dev/tpmrm0"
+		export TPM2TOOLS_TCTI="device:/dev/tpmrm0"
 
 		tpm2 flushcontext \
 			--transient-object \
