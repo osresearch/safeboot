@@ -66,4 +66,6 @@ if [ "$BOOTMODE" = "recovery" ]; then
 ==================================|___/==========================
 
 EOF
+
+	panic "Recovery shell"
 fi

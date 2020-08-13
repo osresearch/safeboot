@@ -929,7 +929,6 @@ recovery-sign()
 		"$RECOVERY_COMMANDLINE" \
 		"root=${ROOTDEV}" \
 		"$ROOT_ARGS" \
-		"break=premount" \
 		"safeboot.pcrs=$PCRS" \
 		"safeboot.mode=$RECOVERY_TARGET" \
 		"safeboot.mode-pcr=$BOOTMODE_PCR" \
