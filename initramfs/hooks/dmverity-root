@@ -23,3 +23,7 @@ esac
 manual_add_modules dm_verity
 copy_exec /usr/sbin/veritysetup
 copy_exec /usr/sbin/blockdev
+
+# add some filesystem maintenance tools
+copy_exec /usr/sbin/lvm
+copy_exec /usr/sbin/resize2fs
