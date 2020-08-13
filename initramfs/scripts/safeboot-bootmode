@@ -3,7 +3,7 @@
 # This is run in the initramfs context, not in the normal user space.
 #
 # turn off "echo flags are undefined"
-# shellcheck disable=SC2039
+# shellcheck disable=SC2016 disable=SC1091 disable=SC2039
 
 PREFIX="safeboot-bootmode"
 
@@ -59,7 +59,7 @@ if [ "$MODE" != "recovery" ]; then
 	exit 0
 fi
 
-cat >&2 <<EOF
+cat >&2 <<'EOF'
 
     ____          __      _                 _        _             ____
    / / /__  __ _ / _| ___| |__   ___   ___ | |_   __| | _____   __/ / /
