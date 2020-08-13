@@ -9,6 +9,7 @@ PREFIX="safeboot-bootmode"
 
 case $1 in
     prereqs)
+        echo "console_setup"
         exit 0
         ;;
 esac
