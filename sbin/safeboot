@@ -874,8 +874,9 @@ linux-sign()
 	sign-kernel "$TARGET" \
 		"$LINUX_COMMANDLINE" \
 		"$ROOT_ARGS" \
-		"tpm.pcrs=$PCRS" \
-		"tpm.mode=$TARGET" \
+		"safeboot.pcrs=$PCRS" \
+		"safeboot.mode=$TARGET" \
+		"safeboot.mode-pcr=$BOOTMODE_PCR" \
 		"$@" \
 	|| die "Kernel signing failed!"
 }
@@ -927,7 +928,10 @@ recovery-sign()
 		"$RECOVERY_COMMANDLINE" \
 		"root=${ROOTDEV}" \
 		"$ROOT_ARGS" \
-		"tpm.mode=${RECOVERY_TARGET}" \
+		"break=premount" \
+		"safeboot.pcrs=$PCRS" \
+		"safeboot.mode=$RECOVERY_TARGET" \
+		"safeboot.mode-pcr=$BOOTMODE_PCR" \
 		"$@" \
 	|| die "Kernel signing failed!"
 }

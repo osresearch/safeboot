@@ -1,5 +1,7 @@
 #!/bin/sh
 # This is run in the initramfs context, not in the normal user space.
+# The boot mode should have been extended in the start of the initramfs.
+#
 # It attempts to unseal the key from the TPM based on the PCRS passed
 # on the command line using direct access since there is no resource
 # manager. 
@@ -30,17 +32,17 @@ log() { echo >&2 "$@" ; }
 for arg in $(cat /proc/cmdline)
 do
     case "$arg" in
-        tpm.mode=*)
-            MODE=${arg#tpm.mode=}
+        safeboot.mode=*)
+            MODE=${arg#safeboot.mode=}
             ;;
-        tpm.pcrs=*)
-            PCRS=${arg#tpm.pcrs=}
+        safeboot.pcrs=*)
+            PCRS=${arg#safeboot.pcrs=}
             ;;
-        tpm.mode-pcr=*)
-            BOOTMODE_PCR=${arg#tpm.mode-pcr=}
+        safeboot.mode-pcr=*)
+            BOOTMODE_PCR=${arg#safeboot.mode-pcr=}
             ;;
-        tpm.handle=*)
-            HANDLE=${arg#tpm.handle=}
+        safeboot.handle=*)
+            HANDLE=${arg#safeboot.handle=}
             ;;
         *)
             ;;
@@ -51,13 +53,6 @@ log "TPM mode=$MODE pcrs=$PCRS $BOOTMODE_PCR"
 
 /usr/sbin/tpm2 pcrread >&2 \
 	'sha256:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16'
-
-#
-# Extend PCR14 with the boot mode so that recovery
-# boots aren't able to access the sealed disk key.
-#
-/usr/sbin/tpm2 pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 "$MODE")"
-
 
 #
 # Attempt to unseal, outputing the binary key to stdout
