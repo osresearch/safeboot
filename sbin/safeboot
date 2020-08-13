@@ -741,6 +741,8 @@ sign-kernel() {
 		echo -n "$@" > "$TMP/cmdline.txt"
 	fi
 
+	echo "Kernel commandline: '$(cat "$TMP/cmdline.txt")'"
+
 	warn "$TMP/linux.efi: Creating merged Linux/initrd image"
 	objcopy \
 		--add-section .osrel="$PREFIX/etc/os-release" \
@@ -782,7 +784,6 @@ sign-kernel() {
 	mv "$OUTDIR/linux.efi.new" "$OUTDIR/linux.efi" \
 	|| die "$OUTDIR/linux.efi: unable to install new image"
 
-	echo "Kernel commandline: '$(cat "$TMP/cmdline.txt")'"
 	sha256sum "$OUTDIR/linux.efi"
 
 	if [ -r "$TMP/verity.log" ]; then
