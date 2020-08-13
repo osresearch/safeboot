@@ -994,7 +994,7 @@ bootnext()
 	TARGET=${1:-recovery}
 
 	# Find the recovery entry in the efibootmgr
-	entry=$(efiboot-entry ${TARGET})
+	entry=$(efiboot-entry "${TARGET}")
 	if [ -z "$entry" ]; then
 		die "${TARGET} boot entry not in efibootmgr?"
 	fi

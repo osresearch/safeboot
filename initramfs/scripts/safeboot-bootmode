@@ -17,7 +17,6 @@ esac
 
 BOOTMODE_PCR=14
 MODE=unknown
-HANDLE=0x81000000
 
 # Direct access to the kernel resource manager
 # since there is no standalone TPM resource manager in the initrd
