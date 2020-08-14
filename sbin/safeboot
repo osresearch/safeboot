@@ -545,14 +545,17 @@ luks-seal() {
 
 	# Check to see if the PCR4 matches the expected value
 	# for the Linux kernel
-	linux_hash="$(sbsign.safeboot --hash-only "$(EFIDIR)/linux/linux.efi")"
+	linux="$EFIDIR/linux/linux.efi"
+	linux_hash="$(sbsign.safeboot --hash-only "$linux")"
 	ev_sep="$(printf "\x00\x00\x00\x00" | tpm2_trial_extend 0)"
 	pcr4_computed="$(echo -n "$ev_sep$linux_hash" | hex2bin | sha256)"
 
 	pcr4_read="$(tpm2 pcrread sha256:4 | tail -1 | cut -c9- | tr '[:upper:]' '[:lower:]')"
 
-	if [ "$pcr4_computed" != "$pcr4_read" ]; then
-		warn "PCR4 $pcr4_read != computed $pcr4_computed"
+	if [ "$pcr4_computed" == "$pcr4_read" ]; then
+		warn "$linux: PCR4 $pcr_read"
+	else
+		warn "$linux: PCR4 $pcr4_read != computed $pcr4_computed"
 	fi
 
 	# Use a tmpfs mount instead of just a temp directory so that
