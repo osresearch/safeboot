@@ -25,6 +25,7 @@ export TPM2TOOLS_TCTI="device:/dev/tpmrm0"
 
 sha256() { echo -n "$@" | sha256sum | cut -d' ' -f1 ; }
 log() { echo >&2 "$@" ; }
+die() { echo >&2 "$@" ; exit 1 ; }
 
 # shellcheck disable=SC2013
 for arg in $(cat /proc/cmdline)
@@ -74,17 +75,33 @@ cat >&2 <<'EOF'
 
 Hints:
 
-# Mount encrypted disk
-cryptsetup luksOpen /dev/sda3 sda3_crypt
-
-# Detect physical volumes, volume groups, logical volumes
-lvm pvscan
-lvm vgscan
-lvm lvscan
+# Decrypt disks and scan LVM groups
+crypt_unlock
 
 # Read TPM PCRs
 tpm2 pcrread
 
 EOF
 
-panic "Recovery shell: hit Control-D to resume boot"
+. /lib/cryptsetup/functions
+export TABFILE=/cryptroot/crypttab
+
+# This should be handled by cryptroot-mount, but it fails to work without
+# some amount of systemd cruft and askpass terminal stuff
+unlock_entry() {
+	cryptsetup luksOpen \
+		"$(resolve_device_spec "$CRYPTTAB_SOURCE")" \
+		"$CRYPTTAB_NAME" \
+	|| die "$CRYPTTAB_NAME: unable to unlock"
+}
+
+crypt_unlock() {
+	crypttab_foreach_entry unlock_entry
+	lvm pvscan
+	lvm vgscan
+	lvm lvscan
+}
+
+
+export PS1="RECOVERY# "
+panic "Recovery shell: exit or Control-D to resume boot"
