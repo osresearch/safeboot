@@ -83,25 +83,23 @@ tpm2 pcrread
 
 EOF
 
+cat > /sbin/crypt_unlock <<'EOF'
+#!/bin/sh
 . /lib/cryptsetup/functions
 export TABFILE=/cryptroot/crypttab
 
-# This should be handled by cryptroot-mount, but it fails to work without
-# some amount of systemd cruft and askpass terminal stuff
 unlock_entry() {
 	cryptsetup luksOpen \
 		"$(resolve_device_spec "$CRYPTTAB_SOURCE")" \
-		"$CRYPTTAB_NAME" \
-	|| die "$CRYPTTAB_NAME: unable to unlock"
+		"$CRYPTTAB_NAME"
 }
 
-crypt_unlock() {
-	crypttab_foreach_entry unlock_entry
-	lvm pvscan
-	lvm vgscan
-	lvm lvscan
-}
+crypttab_foreach_entry unlock_entry
 
+lvm pvscan
+lvm vgscan
+lvm lvscan
+EOF
+chmod +x /sbin/crypt_unlock
 
-export PS1="RECOVERY# "
 panic "Recovery shell: exit or Control-D to resume boot"
