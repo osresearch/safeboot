@@ -73,6 +73,11 @@ PCR_DEFAULT=0000000000000000000000000000000000000000000000000000000000000000
 
 #
 # Compute the extended value of a PCR register
+# Expects an ASCII hex digest for the initial value,
+# and a binary data on stdin to be hashed.
+#
+# Can be chained:
+# tpm2_trial_extend $(tpm2_trial_extend 0 < measure1) < measure2
 #
 tpm2_trial_extend() {
 	initial="$1"
@@ -536,6 +541,18 @@ luks-seal() {
 		tpm2 flushcontext \
 			--loaded-session \
 		|| die "tpm2_flushcontext: unable to flush sessions"
+	fi
+
+	# Check to see if the PCR4 matches the expected value
+	# for the Linux kernel
+	linux_hash="$(sbsign.safeboot --hash-only "$(EFIDIR)/linux/linux.efi")"
+	ev_sep="$(printf "\x00\x00\x00\x00" | tpm2_trial_extend 0)"
+	pcr4_computed="$(echo -n "$ev_sep$linux_hash" | hex2bin | sha256)"
+
+	pcr4_read="$(tpm2 pcrread sha256:4 | tail -1 | cut -c9- | tr '[:upper:]' '[:lower:]')"
+
+	if [ "$pcr4_computed" != "$pcr4_read" ]; then
+		warn "PCR4 $pcr4_read != computed $pcr4_computed"
 	fi
 
 	# Use a tmpfs mount instead of just a temp directory so that
@@ -1185,7 +1202,20 @@ sip-init()
 
 	##### And now it gets really dangerous #####
 
-	read -r -p "WARNING: This will make irrevocable changes to the disk. Are you really really sure?" really_do_it
+	cat >&2 <<'EOF'
+     _                             _
+  __| | __ _ _ __   __ _  ___ _ __| |
+ / _` |/ _` | '_ \ / _` |/ _ \ '__| |
+| (_| | (_| | | | | (_| |  __/ |  |_|
+ \__,_|\__,_|_| |_|\__, |\___|_|  (_)
+===================|___/=============
+
+This will make irrevocable changes to the disk!
+You must have the security key or password for
+the UEFI Platform Key to procede.
+
+EOF
+	read -r -p "Are you really really sure? " really_do_it
 	if [ "$really_do_it" != "y" ]; then
 		die "Not configuring SIP!"
 	fi
