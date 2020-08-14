@@ -544,18 +544,23 @@ luks-seal() {
 	fi
 
 	# Check to see if the PCR4 matches the expected value
-	# for the Linux kernel
-	linux="$EFIDIR/linux/linux.efi"
+	# for the Linux kernel (which will be loaded as the boot application).
+	# This works on the Thinkpad X1, which extends PCR4
+	# with EFI_EV_SEPARATOR and then the PE hash of the EFI_BOOT_APPLICATION
+	linux="$EFIDIR/$LINUX_TARGET/linux.efi"
 	linux_hash="$(sbsign.safeboot --hash-only "$linux")"
 	ev_sep="$(printf "\x00\x00\x00\x00" | tpm2_trial_extend 0)"
-	pcr4_computed="$(echo -n "$ev_sep$linux_hash" | hex2bin | sha256)"
+	pcr4_computed="$(echo -n "$ev_sep" "$linux_hash" | hex2bin | sha256)"
 
 	pcr4_read="$(tpm2 pcrread sha256:4 | tail -1 | cut -c9- | tr '[:upper:]' '[:lower:]')"
 
 	if [ "$pcr4_computed" == "$pcr4_read" ]; then
-		warn "$linux: PCR4 $pcr_read"
+		warn "$linux: PCR4 matched $pcr4_read"
 	else
-		warn "$linux: PCR4 $pcr4_read != computed $pcr4_computed"
+		warn "$linux: PCR4 mistmatch"
+		warn "TPM PCR4 $pcr4_read"
+		warn "Computed $pcr4_computed"
+		warn '^^^^^^ You probably need to safeboot linux-sign and reboot'
 	fi
 
 	# Use a tmpfs mount instead of just a temp directory so that
@@ -575,6 +580,7 @@ luks-seal() {
 
 	# If pre-computed PCRs are known, they can be used here instead
 	# TODO: allow PCRs to be passed in
+	# TODO: use the computed PCR4 for the linux kernel
 	tpm2 pcrread -o "$TMP/pcrs.bin" "sha256:$PCRS" \
 		>> /tmp/tpm.log \
 	|| die "Unable to read TPM PCRs"
