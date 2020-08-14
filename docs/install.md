@@ -34,8 +34,9 @@ Releases for the the safeboot Debian package are in [safeboot/releases](https://
 ```
 wget https://github.com/osresearch/safeboot/releases/download/release-0.6/safeboot_0.6_amd64.deb
 sudo apt install safeboot_0.6_amd64.deb
+sudo update-initramfs -u
 sudo safeboot yubikey-init /CN=foo/ # or safeboot key-init if you don't have a token
-sudo safeboot uefi-key-sign
+sudo safeboot uefi-sign-keys
 sudo safeboot recovery-sign
 sudo safeboot recovery-reboot
 
