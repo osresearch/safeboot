@@ -550,7 +550,7 @@ luks-seal() {
 	linux="$EFIDIR/$LINUX_TARGET/linux.efi"
 	linux_hash="$(sbsign.safeboot --hash-only "$linux")"
 	ev_sep="$(printf "\x00\x00\x00\x00" | tpm2_trial_extend 0)"
-	pcr4_computed="$(echo -n "$ev_sep" "$linux_hash" | hex2bin | sha256)"
+	pcr4_computed="$(echo -n "${ev_sep}${linux_hash}" | hex2bin | sha256)"
 
 	pcr4_read="$(tpm2 pcrread sha256:4 | tail -1 | cut -c9- | tr '[:upper:]' '[:lower:]')"
 
