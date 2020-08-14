@@ -272,33 +272,42 @@ its data.
 
 ![Resizing `/dev/mapper/vgubuntu-root`](images/lvresize-root.jpg)
 
-There is some manual work in a live CD that needs to be done to prepare
-the system for SIP mode (since `/` can't be mounted while it is worked on);
-it is easiest to do this **before** setting
-the SecureBoot config so that you can still boot a stock Live CD.
-Ubuntu installer used to allow you to configure the partitions at
-install time, but for some reason it no longer does so.
+Resizing the root filesystem is necessary so that it can be made read-only,
+as well as to make space for `/home` and `/var` as separate writable mounts,
+and also so that dmverity hash computation doesn't take forever.
 
-The root filesystem needs to be resized so that hash computation doesn't
-take forever, `/home` and `/var` need to be split into a separate mounts,
-`/tmp` needs to be a symlink to `/var/tmp`, etc.  So boot into a live CD,
-open a terminal and run these commands (change `/dev/sda3` to the physical
-disk that you've installed on):
+The partition resize to prepare the system for SIP mode must be done from the
+recovery shell, since the root file system can't be mounted while it is
+being modified.
+
+!!! warning
+    There is a high risk of data loss if these commands are mistyped or if
+    the `resize2fs` fails.  Either run this on a machine that doesn't have
+    important data, or be certain that you have a good backup.
+
+In the recovery shell, run these commands to decrypt the root disk, make sure
+it is clena, resize the filesystem, and then resize the logical volume.
+No need for `sudo`, since the recovery shell is always root.
 
 ```
-sudo cryptsetup luksOpen /dev/sda3 sda3_crypt
-sudo vgscan
-sudo fsck -f /dev/vgubuntu/root
-sudo resize2fs /dev/vgubuntu/root 8G  # This will take a while
-sudo lvresize --size 8G /dev/vgubuntu/root
+crypt_unlock
+fsck -f /dev/vgubuntu/root
+resize2fs /dev/vgubuntu/root 12G
+lvresize --size 12G /dev/vgubuntu/root
 ```
 
-Once that is done you can reboot into the system and configure SIP
-(which will setup the `/var` and `/home` filesystems, add them to
-`/etc/fstab`, relocate `/tmp`, build the initial dmverity hashes,
-and add the signed `linux` to the efi boot menu):
+Once that is done you can continue the boot into the system in recovery mode
+and configure SIP.  The `sip-init` command will setup the `/var` and `/home`
+filesystems, add them to `/etc/fstab`, relocate `/tmp`, build the initial
+dmverity hashes, and add the signed `linux` to the efi boot menu:
+
+!!! warning
+    There is a high risk of data loss if the `sip-init` command is unable to
+    complete. Either run this on a machine that doesn't have
+    important data, or be certain that you have a good backup.
+
 ```
-safeboot sip-init
+sudo safeboot sip-init
 ```
 
 
