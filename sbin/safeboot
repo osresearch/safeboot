@@ -560,15 +560,16 @@ luks-seal() {
 
 	pcr4_read="$(tpm2 pcrread sha256:4 | tail -1 | cut -c9- | tr '[:upper:]' '[:lower:]')"
 
+	warn "$linux: PE hash $linux_hash"
+
 	if [ "$pcr4_computed" == "$pcr4_read" ]; then
-		warn "$linux: PCR4 matched for PE $linux_hash"
+		warn "PCR4 unchanged"
 	else
-		warn "$linux: PCR4 mistmatch for PE $linux_hash"
-		warn "Using $pcr4_computed"
+		warn "PCR4 $pcr4_computed"
 
 		# HACK: replace the PCR with the computed one
 		echo -n "$pcr4_computed" | hex2bin \
-			| dd of="$TMP/pcrs.bin" conv=notrunc seek=64
+			| dd of="$TMP/pcrs.bin" conv=notrunc seek=2 bs=32
 	fi
 
 	# Use a tmpfs mount instead of just a temp directory so that
