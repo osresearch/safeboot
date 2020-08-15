@@ -543,6 +543,14 @@ luks-seal() {
 		|| die "tpm2_flushcontext: unable to flush sessions"
 	fi
 
+	# Use a tmpfs mount instead of just a temp directory so that
+	# the disk encryption key doesn't touch a persistent disk.
+	mount -t tmpfs none "$TMP" \
+	|| die "Unable to mount temp directory"
+
+	chmod 700 "$TMP"
+	TMP_MOUNT=y
+
 	# If pre-computed PCRs are known, they can be used here instead
 	# TODO: allow PCRs to be passed in
 	# TODO: use the computed PCR4 for the linux kernel
@@ -569,23 +577,16 @@ luks-seal() {
 
 		# HACK: replace the PCR with the computed one
 		echo -n "$pcr4_computed" | hex2bin \
-			| dd of="$TMP/pcrs.bin" conv=notrunc seek=2 bs=32
+		| dd \
+			of="$TMP/pcrs.bin" \
+			conv=notrunc \
+			seek=2 \
+			bs=32 \
+			iflag=fullblock \
+			status=none \
+			2>/dev/null \
+		|| die "$TPM/pcrs.bin: unable to update PCR4"
 	fi
-
-	# Use a tmpfs mount instead of just a temp directory so that
-	# the disk encryption key doesn't touch a persistent disk.
-	mount -t tmpfs none "$TMP" \
-	|| die "Unable to mount temp directory"
-
-	chmod 700 "$TMP"
-	TMP_MOUNT=y
-
-	dd \
-		if=/dev/urandom \
-		of="$TMP/key.bin" \
-		bs=32 \
-		count=1 \
-	|| die "Unable to generate random key"
 
 	# Add a "normal" entry for PCR 14, which ensures that the TPM
 	# will only unseal during a normal boot, not a recovery boot.
@@ -620,6 +621,16 @@ luks-seal() {
 	#|| die "Unable to set secret policy"
 	#	--parent-auth "$TMP/session.context" \
 	#	--key-auth $HANDLE \
+
+	dd \
+		if=/dev/urandom \
+		of="$TMP/key.bin" \
+		bs=32 \
+		count=1 \
+		iflag=fullblock \
+		status=none \
+		2>/dev/null \
+	|| die "Unable to generate random key"
 
 	warn "Sealing secret with TPM"
 	tpm2 create \
