@@ -543,6 +543,12 @@ luks-seal() {
 		|| die "tpm2_flushcontext: unable to flush sessions"
 	fi
 
+	# If pre-computed PCRs are known, they can be used here instead
+	# TODO: allow PCRs to be passed in
+	# TODO: use the computed PCR4 for the linux kernel
+	tpm2 pcrread -o "$TMP/pcrs.bin" "sha256:$PCRS" \
+	|| die "Unable to read TPM PCRs"
+
 	# Check to see if the PCR4 matches the expected value
 	# for the Linux kernel (which will be loaded as the boot application).
 	# This works on the Thinkpad X1, which extends PCR4
@@ -555,12 +561,14 @@ luks-seal() {
 	pcr4_read="$(tpm2 pcrread sha256:4 | tail -1 | cut -c9- | tr '[:upper:]' '[:lower:]')"
 
 	if [ "$pcr4_computed" == "$pcr4_read" ]; then
-		warn "$linux: PCR4 matched $pcr4_read"
+		warn "$linux: PCR4 matched for PE $linux_hash"
 	else
-		warn "$linux: PCR4 mistmatch"
-		warn "TPM PCR4 $pcr4_read"
-		warn "Computed $pcr4_computed"
-		warn '^^^^^^ You probably need to safeboot linux-sign and reboot'
+		warn "$linux: PCR4 mistmatch for PE $linux_hash"
+		warn "Using $pcr4_computed"
+
+		# HACK: replace the PCR with the computed one
+		echo -n "$pcr4_computed" | hex2bin \
+			| dd of="$TMP/pcrs.bin" conv=notrunc seek=64
 	fi
 
 	# Use a tmpfs mount instead of just a temp directory so that
@@ -578,13 +586,6 @@ luks-seal() {
 		count=1 \
 	|| die "Unable to generate random key"
 
-	# If pre-computed PCRs are known, they can be used here instead
-	# TODO: allow PCRs to be passed in
-	# TODO: use the computed PCR4 for the linux kernel
-	tpm2 pcrread -o "$TMP/pcrs.bin" "sha256:$PCRS" \
-		>> /tmp/tpm.log \
-	|| die "Unable to read TPM PCRs"
-
 	# Add a "normal" entry for PCR 14, which ensures that the TPM
 	# will only unseal during a normal boot, not a recovery boot.
 	# the unseal script will also extend PCR14 after unsealing
@@ -593,7 +594,6 @@ luks-seal() {
 	warn "mode=${LINUX_TARGET} PCR$BOOTMODE_PCR=$pcr14"
 	echo -n "$pcr14" | hex2bin \
 		>> "$TMP/pcrs.bin"
-	xxd -g1 "$TMP/pcrs.bin"
 
 	tpm2 createpolicy \
 		--policy-pcr \
