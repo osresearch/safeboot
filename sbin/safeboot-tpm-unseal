@@ -52,8 +52,10 @@ log "TPM mode=$MODE pcrs=$PCRS $BOOTMODE_PCR"
 /usr/sbin/tpm2 pcrread >&2 \
 	'sha256:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16'
 
-if [ "$MODE" = "recovery" ] || [ -r "/tmp/unseal-failed" ] || [ ! -r "/etc/safeboot/sealed.public" ]
-then
+if [ "$MODE" = "recovery" ] \
+|| [ -r "/tmp/unseal-failed" ] \
+|| [ ! -r "/etc/safeboot/sealed.public" ] \
+; then
 	log "Falling back to user pass phrase"
 
 	# retrieve a tpmtotp attestation so that the user knows
@@ -75,6 +77,7 @@ fi
 tpm2 flushcontext --transient-object
 tpm2 flushcontext --loaded-session
 
+log "TPM: Loading sealed secret"
 tpm2 createprimary \
 	--key-context "/tmp/primary.ctx" \
 	>> /tmp/tpm.log \
@@ -89,6 +92,7 @@ tpm2 load \
 	>> /tmp/tpm.log \
 || die "Unable to load sealed secret into TPM"
 
+log "TPM: Starting auth session"
 tpm2 startauthsession \
 	--policy-session \
 	--session "/tmp/session.ctx" \
@@ -110,6 +114,7 @@ tpm2 policypcr \
 	>> /tmp/tpm.log \
 || die "Unable to create PCR policy"
 
+log "TPM: Loading RSA public key"
 tpm2 loadexternal \
 	--key-algorithm rsa \
 	--hierarchy o \
@@ -119,10 +124,12 @@ tpm2 loadexternal \
 	>> /tmp/tpm.log \
 || die "Unable to load platform key"
 
-# Extract the signature from the UEFI variable
+# Extract the signature from the UEFI variable, skipping
+# the four-byte UEFI variable header.
+cat "/sys/firmware/efi/efivars/$PCR_SIGNATURE" > /tmp/efivar.bin
 tail \
-	-c +4 \
-	"/sys/firmware/efi/efivars/$PCR_SIGNATURE" \
+	-c +5 \
+	< "/tmp/efivar.bin" \
 	> "/tmp/pcr.policy.sig" \
 || die "Unable to read PCR signature from $PCR_SIGNATURE"
 
