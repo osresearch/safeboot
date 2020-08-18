@@ -32,7 +32,7 @@ copy_exec /lib/x86_64-linux-gnu/libtss2-tcti-device.so.0
 
 # Move the configuration and keys into the initrd as well
 copy_file safeboot "$DIR/safeboot.conf"
-copy_file safeboot-keys "$(basename "$CERT" .pem).pub" "$DIR/cert.pub"
+copy_file safeboot-keys "$(dirname "$CERT")/$(basename "$CERT" .pem).pub" "$DIR/cert.pub"
 
 if [ -r "$DIR/local.conf" ]; then
 	copy_file safeboot-local "$DIR/local.conf"
