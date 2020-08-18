@@ -535,7 +535,7 @@ tpm2_create_policy()
 	tpm2 policypcr \
 		--session "$TMP/session.ctx" \
 		--pcr-list "sha256:$PCRS,$BOOTMODE_PCR" \
-+		${1:+ --pcr "$1" } \
+		${1:+ --pcr "$1" } \
 		--policy "$TMP/pcr.policy" \
 		>> /tmp/tpm.log \
 	|| die "Unable to create PCR policy"
