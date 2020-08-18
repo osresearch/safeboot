@@ -126,7 +126,14 @@ tpm2 loadexternal \
 
 # Extract the signature from the UEFI variable, skipping
 # the four-byte UEFI variable header.
-cat "/sys/firmware/efi/efivars/$PCR_SIGNATURE" > /tmp/efivar.bin
+if ! mount | grep -q /sys/firmware/efi/efivars ; then
+	mount -t efivarfs efivarfs /sys/firmware/efi/efivars \
+	|| die "Unable to mount EFI var filesystem"
+fi
+
+cat "/sys/firmware/efi/efivars/$PCR_SIGNATURE" > /tmp/efivar.bin \
+|| die "Unable to read PCR signature from $PCR_SIGNATURE"
+
 tail \
 	-c +5 \
 	< "/tmp/efivar.bin" \
