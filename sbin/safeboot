@@ -108,6 +108,17 @@ tpm2_flushall() {
 	|| die "tpm2_flushcontext: unable to flush sessions"
 }
 
+efivar() {
+	var="/sys/firmware/efi/efivars/$1"
+	chattr -i "$var"
+
+	printf "\x07\x00\x00\x00" > "$TMP/efivar.bin"
+	cat - >> "$TMP/efivar.bin"
+	xxd -g1 "$TMP/efivar.bin"
+
+	cat "$TMP/efivar.bin" > "$var"
+}
+
 #
 # Ensure that there is a valid root device
 #
@@ -518,13 +529,13 @@ tpm2_create_policy()
 		tpm2 policyauthvalue \
 			--session "$TMP/session.ctx" \
 			>> /tmp/tpm.log \
-		| die "Unable to create auth value policy"
+		|| die "Unable to create auth value policy"
 	fi
 
 	tpm2 policypcr \
 		--session "$TMP/session.ctx" \
 		--pcr-list "sha256:$PCRS,$BOOTMODE_PCR" \
-		${1:+ --pcrs "$1" } \
++		${1:+ --pcr "$1" } \
 		--policy "$TMP/pcr.policy" \
 		>> /tmp/tpm.log \
 	|| die "Unable to create PCR policy"
@@ -616,16 +627,13 @@ sign-pcrs() {
 		-sign "$KEY" \
 		${KEY_ENGINE:+ \
 			-keyform engine \
-			$KEY_ENGINE \
+			-engine pkcs11 \
 		} \
 		-out "$TMP/pcr.policy.sig" \
 		"$TMP/pcr.policy" \
 	|| die "Unable to sign PCR policy"
 
-	( \
-		printf "\x07\x00\x00\x00" ; \
-		cat "$TMP/pcr.policy.sig" \
-	) > "/sys/firmware/efi/efivars/$PCR_SIGNATURE" \
+	efivar "$PCR_SIGNATURE" < "$TMP/pcr.policy.sig" \
 	|| die "$PCR_SIGNATURE: Unable to write to EFI variable"
 }
 
@@ -733,9 +741,6 @@ luks-seal() {
 	|| die "Unable to generate random key"
 
 	warn "Sealing secret with TPM, storing sealed secret in $PREFIX$DIR"
-
-	cp "$TMP/signed.policy" "$PREFIX$DIR/sealed.policy" \
-	|| die "Unable to store sealed policy"
 
 	tpm2 createprimary \
 		--key-context "$TMP/primary.ctx" \
