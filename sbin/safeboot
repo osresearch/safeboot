@@ -49,6 +49,7 @@ fi
 : "${BOOTMODE_PCR:=14}"
 : "${LINUX_COMMANDLINE:=}"
 : "${RECOVERY_COMMANDLINE:=${LINUX_COMMANDLINE}}"
+: "${SEAL_PIN:=1}"
 
 die_msg=""
 die() { echo "$die_msg""$*" >&2 ; exit 1 ; }
@@ -84,8 +85,27 @@ tpm2_trial_extend() {
 	if [ "0" == "$initial" ]; then
 		initial="$PCR_DEFAULT"
 	fi
-		
+
 	( echo -n "$initial" ; sha256 ) | hex2bin | sha256
+}
+
+tpm2_flushall() {
+	# if the TPM2 resource manager is running, talk to it.
+	# otherwise use a direct connection to the TPM and flush
+	# any current operations
+	if pidof tpm2-abrmd > /dev/null ; then
+		return 0
+	fi
+
+	export TPM2TOOLS_TCTI="device:/dev/tpmrm0"
+
+	tpm2 flushcontext \
+		--transient-object \
+	|| die "tpm2_flushcontext: unable to flush transient handles"
+
+	tpm2 flushcontext \
+		--loaded-session \
+	|| die "tpm2_flushcontext: unable to flush sessions"
 }
 
 #
@@ -223,32 +243,43 @@ key-init() {
 		|| die "$CERT: unable to backup"
 	fi
 
-	openssl \
-		req \
+	openssl req \
 		-new \
 		-x509 \
-		-newkey rsa:2048 \
+		-newkey "rsa:2048" \
 		-subj "$subject" \
 		-keyout "$KEY" \
-		-outform PEM \
+		-outform "PEM" \
 		-out "$CERT" \
-		-days 3650 \
+		-days "3650" \
 		-sha256 \
 	|| die "$KEY: unable to create"
 
-	pem2der "$CERT" "${CERT/.pem/.crt}"
+	# Create a certificate and public key file from the PEM
+	pem2der "$CERT"
 }
 
 ########################################
 
 pem2der()
 {
-	warn "$2: Creating from $1"
+	crt_file="${1/.pem/.crt}"
+	pub_file="${1/.pem/.pub}"
+
+	warn "$crt_file: Creating from $1"
 	openssl x509 \
 		-outform der \
 		-in "$1" \
-		-out "$2" \
-	|| die "$2: Unable to create DER file from $1"
+		-out "$crt_file" \
+	|| die "$crt_file: Unable to create DER file from $1"
+
+	warn "$pub_file: Creating from $1"
+	openssl x509 \
+		-in "$1" \
+		-noout \
+		-pubkey \
+		-out "$pub_file" \
+	|| die "$pub_file: Unable to create PUB file from $1"
 }
 
 yubikey_init_usage='
@@ -329,7 +360,7 @@ yubikey-init() {
 		-i "$CERT" \
 	|| die "Unable to import certificate into key"
 
-	pem2der "$CERT" "${CERT/.pem/.crt}"
+	pem2der "$CERT"
 
 	yubico-piv-tool \
 		-a status \
@@ -341,11 +372,12 @@ yubikey_pubkey_usage='
 ## yubikey-pubkey
 Usage:
 ```
-safeboot yubikey-pubkey cert.pem [cert.crt]
+safeboot yubikey-pubkey cert.pem
 ```
 
-Extract the public key certificate in either PEM or DER format.
-The `sbsign` tool wants PEM, the `kmodsign` tool wants DER.
+Extract the public key certificate in PEM, DER and PUB format.
+The `sbsign` tool wants PEM, the `kmodsign` tool wants DER,
+the `tpm2-tools` wants a raw public key.
 The best part about standards...
 '
 usage+="$yubikey_pubkey_usage"
@@ -355,7 +387,6 @@ yubikey-pubkey()
 {
 	show_help "$1" "$yubikey_pubkey_usage"
 	pem="$1"
-	crt="$2"
 
 	if [ -z "$pem" ]; then
 		die "$yubikey_pubkey_usage"
@@ -368,12 +399,9 @@ yubikey-pubkey()
 		-o "$pem" \
 	|| die "$pem: unable to read from yubikey"
 
-	if [ -n "$crt" ]; then
-		pem2der "$pem" "$crt"
-	fi
+	pem2der "$pem"
 }
 
-	
 
 ########################################
 
@@ -462,94 +490,79 @@ uefi-set-keys()
 	done
 }
 
+
 ########################################
 
-luks_seal_usage='
-## luks-seal
+# Create the TPM policy for sealing/unsealing the disk encryption key
+# If an optional argument is provided, use that for the PCR data
+tpm2_create_policy()
+{
+	tpm2_flushall
+
+	tpm2 loadexternal \
+		--key-algorithm rsa \
+		--hierarchy o \
+		--public "${CERT/.pem/.pub}" \
+		--key-context "$TMP/key.ctx" \
+		--name "$TMP/key.name" \
+		>> /tmp/tpm.log \
+	|| die "Unable to load platform public key into TPM"
+
+	tpm2 startauthsession \
+		--session "$TMP/session.ctx" \
+		>> /tmp/tpm.log \
+	|| die "Unable to start TPM auth session"
+
+	if [ "$SEAL_PIN" = "1" ]; then
+		# Add an Auth Value policy, which will require the PIN for unsealing
+		tpm2 policyauthvalue \
+			--session "$TMP/session.ctx" \
+			>> /tmp/tpm.log \
+		| die "Unable to create auth value policy"
+	fi
+
+	tpm2 policypcr \
+		--session "$TMP/session.ctx" \
+		--pcr-list "sha256:$PCRS,$BOOTMODE_PCR" \
+		${1:+ --pcrs "$1" } \
+		--policy "$TMP/pcr.policy" \
+		>> /tmp/tpm.log \
+	|| die "Unable to create PCR policy"
+
+	tpm2 policyauthorize \
+		--session "$TMP/session.ctx" \
+		--name "$TMP/key.name" \
+		--input "$TMP/pcr.policy" \
+		--policy "$TMP/signed.policy" \
+		>> /tmp/tpm.log \
+	|| die "Unable to create authorized policy"
+}
+
+
+########################################
+
+sign_pcrs_usage='
+## sign-pcrs
 Usage:
-```
-safeboot luks-seal [0,2,5,7... [14]]
-```
+safeboot sign-pcrs [path-to-unified-kernel]
 
-Generate a new LUKS encryption key for the block devices in `/etc/crypttab`,
-sealed with the optional comma separated list of TPM PCRs. During the boot,
-PCR 14 will be first extended with the `tpm.mode` kernel command line parameter
-(typically `linux` or `recovery`) and then the secret unsealed.  After
-an unsealing attempt, the PCR14 will be extended again with `postboot` status
-to prevent the key from being unsealed after the initramfs has run.
+Generate a signature for the PCRs that can be used to unseal the LUKS key
+according to the policy created by `safeboot luks-seal`.  The PCRs used
+are specified in the `/etc/safeboot/safeboot.conf` or `local.conf` files, and
+must match the values that were configured during `luks-seal`.
 
-If this is the first time the disk has been sealed, `/etc/crypttab`
-will be updated to include a call to the unsealing script to retrieve
-the keys from the TPM.  You will have to run `sudo update-initramfs -u`
-to rebuild the initrd.
-
-Right now only a single crypt disk is supported.
+The signature is persisted in a UEFI NVRAM variable, defined in `safeboot.conf`.
 '
+commands+="|sign-pcrs"
 
-usage+=$luks_seal_usage
-commands+="|luks-seal"
-
-luks-seal() {
-	show_help "$1" "$luks_seal_usage"
-
+sign-pcrs() {
+	show_help "$1" "$sign_pcrs_usage"
 	if [ -n "$1" ]; then
-		PCRS=$1
+		linux="$1"
 		shift
+	else
+		linux="$EFIDIR/$LINUX_TARGET/linux.efi"
 	fi
-	if [ -n "$1" ]; then
-		BOOTMODE_PCR=$1
-		shift
-	fi
-	
-	KEYSLOT=1
-	HANDLE=0x81000000
-
-	# check to see if the initramfs hook is installed
-	if [ ! -x "$PREFIX/etc/initramfs-tools/hooks/tpm-unseal" ]; then
-		warn "!!! $PREFIX/etc/initramfs-tools/hooks/tpm-unseal is not installed; this will probably not work"
-	fi
-
-	# and make sure that the unlock script is installed as expected
-	if [ ! -x "$PREFIX/usr/sbin/safeboot" ]; then
-		warn "!!! $PREFIX/usr/sbin/safeboot is not installed; this will probably not work"
-	fi
-
-	if [ "$(wc -l < "$PREFIX/etc/crypttab")" -ne 1 ]; then
-		die "!!! $PREFIX/etc/crypttab must have only one entry"
-	fi
-
-	# Determine which device is the cryptdisk
-	uuid=$(perl -ne '/UUID=(.*?) / && print "$1"' $PREFIX/etc/crypttab)
-	if [ -z "$uuid" ]; then
-		die "Unable to find UUID in crypttab"
-	fi
-	dev=$(blkid -U "$uuid")
-	if [ -z "$dev" ]; then
-		die "Unable to find device for uuid $uuid"
-	fi
-
-	# if the TPM2 resource manager is running, talk to it.
-	# otherwise use a direct connection to the TPM and flush
-	# any current operations
-	if ! pidof tpm2-abrmd > /dev/null ; then
-		export TPM2TOOLS_TCTI="device:/dev/tpmrm0"
-
-		tpm2 flushcontext \
-			--transient-object \
-		|| die "tpm2_flushcontext: unable to flush transient handles"
-
-		tpm2 flushcontext \
-			--loaded-session \
-		|| die "tpm2_flushcontext: unable to flush sessions"
-	fi
-
-	# Use a tmpfs mount instead of just a temp directory so that
-	# the disk encryption key doesn't touch a persistent disk.
-	mount -t tmpfs none "$TMP" \
-	|| die "Unable to mount temp directory"
-
-	chmod 700 "$TMP"
-	TMP_MOUNT=y
 
 	# If pre-computed PCRs are known, they can be used here instead
 	# TODO: allow PCRs to be passed in
@@ -561,7 +574,6 @@ luks-seal() {
 	# for the Linux kernel (which will be loaded as the boot application).
 	# This works on the Thinkpad X1, which extends PCR4
 	# with EFI_EV_SEPARATOR and then the PE hash of the EFI_BOOT_APPLICATION
-	linux="$EFIDIR/$LINUX_TARGET/linux.efi"
 	linux_hash="$(sbsign.safeboot --hash-only "$linux")"
 	ev_sep="$(printf "\x00\x00\x00\x00" | tpm2_trial_extend 0)"
 	pcr4_computed="$(echo -n "${ev_sep}${linux_hash}" | hex2bin | sha256)"
@@ -597,30 +609,118 @@ luks-seal() {
 	echo -n "$pcr14" | hex2bin \
 		>> "$TMP/pcrs.bin"
 
-	tpm2 createpolicy \
-		--policy-pcr \
-		--pcr-list "sha256:$PCRS,$BOOTMODE_PCR" \
-		--pcr "$TMP/pcrs.bin" \
-		--policy "$TMP/policy.digest" \
-		>> /tmp/tpm.log \
-	|| die "Unable to create TPM policy"
+	tpm2_create_policy "$TMP/pcrs.bin"
 
-	tpm2 createprimary \
-		--key-context "$TMP/primary.context" \
-		>> /tmp/tpm.log \
-	|| die "Unable to create TPM primary object"
+	openssl dgst \
+		-sha256 \
+		-sign "$KEY" \
+		${KEY_ENGINE:+ \
+			-keyform engine \
+			$KEY_ENGINE \
+		} \
+		-out "$TMP/pcr.policy.sig" \
+		"$TMP/pcr.policy" \
+	|| die "Unable to sign PCR policy"
 
-	# Start a secret session with the TPM
-	#tpm2_startauthsession \
-	#	--session "$TMP/session.context" \
-	#|| die "Unable to start TPM session"
-	#
-	#tpm2_policysecret \
-	#	--session "$TMP/session.context" \
-	#	--object-context "$TMP/primary.context" \
-	#|| die "Unable to set secret policy"
-	#	--parent-auth "$TMP/session.context" \
-	#	--key-auth $HANDLE \
+	( \
+		printf "\x07\x00\x00\x00" ; \
+		cat "$TMP/pcr.policy.sig" \
+	) > "/sys/firmware/efi/efivars/$PCR_SIGNATURE" \
+	|| die "$PCR_SIGNATURE: Unable to write to EFI variable"
+}
+
+
+luks_seal_usage='
+## luks-seal
+Usage:
+```
+safeboot luks-seal
+```
+
+This will generate a new LUKS encryption key for the block device in
+`/etc/crypttab` and requires an existing recovery key to install the
+new key slot.  You will also be prompted for an unlock PIN, which will
+be required on the next normal boot in place of the recovery code.
+
+If this is the first time the disk has been sealed, `/etc/crypttab`
+will be updated to include a call to the unsealing script to retrieve
+the keys from the TPM.  You will have to run `sudo update-initramfs -u`
+to rebuild the initrd, and then re-run `sudo sign-linux`
+
+Right now only a single crypt disk is supported.
+
+'
+
+usage+=$luks_seal_usage
+commands+="|luks-seal"
+
+luks-seal() {
+	show_help "$1" "$luks_seal_usage"
+
+	if [ -n "$1" ]; then
+		PCRS="$1"
+		shift
+	fi
+	if [ -n "$1" ]; then
+		BOOTMODE_PCR="$1"
+		shift
+	fi
+
+	KEYSLOT=1
+
+	# check to see if the initramfs hook is installed
+	if [ ! -x "$PREFIX/etc/initramfs-tools/hooks/tpm-unseal" ]; then
+		warn "!!! $PREFIX/etc/initramfs-tools/hooks/tpm-unseal is not installed; this will probably not work"
+	fi
+
+	# and make sure that the unlock script is installed as expected
+	if [ ! -x "$PREFIX/usr/sbin/safeboot" ]; then
+		warn "!!! $PREFIX/usr/sbin/safeboot is not installed; this will probably not work"
+	fi
+
+	if [ "$(wc -l < "$PREFIX/etc/crypttab")" -ne 1 ]; then
+		die "!!! $PREFIX/etc/crypttab must have only one entry"
+	fi
+
+	# Determine which device is the cryptdisk
+	uuid=$(perl -ne '/UUID=(.*?) / && print "$1"' $PREFIX/etc/crypttab)
+	if [ -z "$uuid" ]; then
+		die "Unable to find UUID in crypttab"
+	fi
+	dev=$(blkid -U "$uuid")
+	if [ -z "$dev" ]; then
+		die "Unable to find device for uuid $uuid"
+	fi
+
+	# Use a tmpfs mount instead of just a temp directory so that
+	# the disk encryption key doesn't touch a persistent disk.
+	mount -t tmpfs none "$TMP" \
+	|| die "Unable to mount temp directory"
+
+	chmod 700 "$TMP"
+	TMP_MOUNT=y
+
+	# The PCR contents are not important here, only the list of them.
+	# The signed PCR values created by sign-pcrs will be used for unsealing
+	# the contents, not these values
+	# Ask for a PIN that will be used to decrypt, if configured
+	if [ "$SEAL_PIN" = "1" ]; then
+		while true; do
+			read -r -s -p "Unsealing PIN: " SEAL_PIN1
+			echo
+			read -r -s -p "PIN again: " SEAL_PIN2
+			echo
+			if [ "$SEAL_PIN1" = "" ]; then
+				echo >&2 'PIN must not be empty, unset $SEAL_PIN in /etc/safeboot/local.conf instead'
+				continue
+			fi
+			if [ "$SEAL_PIN1" = "$SEAL_PIN2" ]; then
+				break
+			fi
+		done
+	fi
+
+	tpm2_create_policy
 
 	dd \
 		if=/dev/urandom \
@@ -632,49 +732,25 @@ luks-seal() {
 		2>/dev/null \
 	|| die "Unable to generate random key"
 
-	warn "Sealing secret with TPM"
+	warn "Sealing secret with TPM, storing sealed secret in $PREFIX$DIR"
+
+	cp "$TMP/signed.policy" "$PREFIX$DIR/sealed.policy" \
+	|| die "Unable to store sealed policy"
+
+	tpm2 createprimary \
+		--key-context "$TMP/primary.ctx" \
+		>> /tmp/tpm.log \
+	|| die "Unable to create TPM primary object"
+
 	tpm2 create \
-		--parent-context "$TMP/primary.context" \
-		--policy "$TMP/policy.digest" \
+		--parent-context "$TMP/primary.ctx" \
+		--policy "$TMP/signed.policy" \
 		--sealing-input "$TMP/key.bin" \
-		--public "$TMP/public.bin" \
-		--private "$TMP/private.bin" \
+		${SEAL_PIN1:+ --key-auth "$SEAL_PIN1" } \
+		--public "$PREFIX$DIR/sealed.public" \
+		--private "$PREFIX$DIR/sealed.secret" \
 		>> /tmp/tpm.log \
 	|| die "Unable to create TPM key context"
-
-	tpm2 load \
-		--parent-context "$TMP/primary.context" \
-		--public "$TMP/public.bin" \
-		--private "$TMP/private.bin" \
-		--key-context "$TMP/key.context" \
-		>> /tmp/tpm.log \
-	|| die "Unable to load TPM with key"
-		
-	warn "Installing sealed secret into TPM"
-	tpm2 evictcontrol \
-		--object-context "$HANDLE" \
-		>> /tmp/tpm.log \
-	|| warn "Unable to remove old TPM key context $HANDLE"
-
-	tpm2 evictcontrol \
-		--object-context "$TMP/key.context" \
-		>> /tmp/tpm.log \
-	|| die "Unable to load TPM key context into TPM"
-
-	# Verify that the key actually works -- this might break
-	# if there are different PCRs
-#	warn "Verifying sealed secret"
-#	if tpm2_unseal \
-#		--object-context $HANDLE \
-#		--auth pcr:"$PCRS,$BOOTMODE_PCR" \
-#		--output "$TMP/key2.bin" \
-#		>> /tmp/tpm.log \
-#	; then
-#		cmp "$TMP/key.bin" "$TMP/key2.bin" \
-#		|| die "Keys do not match; something failed"
-#	else
-#		warn "Unable to unseal (probably due to PCR$BOOTMODE_PCR); ignored"
-#	fi
 
 	# make sure the crypttab has the unlock script referenced
 	if ! grep keyscript "$PREFIX/etc/crypttab" > /dev/null ; then
@@ -684,11 +760,7 @@ luks-seal() {
 			's: luks: keyscript=/usr/sbin/safeboot-tpm-unseal,luks:' \
 			$PREFIX/etc/crypttab \
 		|| die "$PREFIX/etc/crypttab: unable to add keyscript"
-
-		warn "***** You should update your ramdisk and resign the kernel:"
-		warn "   sudo update-initramfs -u"
 	fi
-
 
 	# ask for the disk encryption key
 	for tries in 1 2 3 fail; do
@@ -716,7 +788,12 @@ luks-seal() {
 		fi
 	done
 
+	rm -f "$TMP/key.bin"
+
 	warn "$dev: sealed with PCR $PCRS,$BOOTMODE_PCR"
+
+	update-initramfs -u \
+	|| die "Unable to update initramfs"
 }
 
 ########################################
@@ -776,7 +853,7 @@ sign-kernel() {
 		warn "Using /proc/cmdline"
 		cat /proc/cmdline > "$TMP/cmdline.txt"
 	else
-		echo -n "$@" > "$TMP/cmdline.txt"
+		echo -n $@ > "$TMP/cmdline.txt"
 	fi
 
 	echo "Kernel commandline: '$(cat "$TMP/cmdline.txt")'"
@@ -913,9 +990,7 @@ linux-sign()
 	sign-kernel "$TARGET" \
 		"$LINUX_COMMANDLINE" \
 		"$ROOT_ARGS" \
-		"safeboot.pcrs=$PCRS" \
 		"safeboot.mode=$TARGET" \
-		"safeboot.mode-pcr=$BOOTMODE_PCR" \
 		"$@" \
 	|| die "Kernel signing failed!"
 }
@@ -962,14 +1037,12 @@ recovery-sign()
 		# /var is probably not separated and services won't start
 		ROOT_ARGS=""
 	fi
-			
+
 	sign-kernel "${RECOVERY_TARGET}" \
 		"$RECOVERY_COMMANDLINE" \
 		"root=${ROOTDEV}" \
 		"$ROOT_ARGS" \
-		"safeboot.pcrs=$PCRS" \
 		"safeboot.mode=$RECOVERY_TARGET" \
-		"safeboot.mode-pcr=$BOOTMODE_PCR" \
 		"$@" \
 	|| die "Kernel signing failed!"
 }
@@ -1326,7 +1399,7 @@ you can unwind the changes that were made.
 ########################################
 
 if [ $# -lt 1 ]; then
-	die "Usage: $0 [$commands] ...." 
+	die "Usage: $0 [$commands] ...."
 fi
 
 command=$1 ; shift
@@ -1338,7 +1411,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-kernel|linux-sign|recovery-sign|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext)
+	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-pcrs|sign-kernel|linux-sign|recovery-sign|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext)
 		$command "$@"
 		;;
 	*)

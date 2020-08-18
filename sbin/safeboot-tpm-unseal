@@ -4,7 +4,7 @@
 #
 # It attempts to unseal the key from the TPM based on the PCRS passed
 # on the command line using direct access since there is no resource
-# manager. 
+# manager.
 #
 # If successful, PCR14 will be extended to prevent later stages from
 # retrieving the decryption key.  The key is stored in a kernel key
@@ -12,14 +12,15 @@
 #
 # If the unsealing fails, fall back to asking for the user's recovery key.
 #
-# turn off "echo flags are undefined"
-# shellcheck disable=SC2039
+# turn off "echo flags are undefined" and external shell scripts
+# shellcheck disable=SC2039 disable=SC1091
 
-# Default is no PCRs, which means do not unseal anything
-PCRS=
+PCRS=0
 BOOTMODE_PCR=14
 MODE=unknown
-HANDLE=0x81000000
+
+[ -r "/etc/safeboot/safeboot.conf" ] && . "/etc/safeboot/safeboot.conf"
+[ -r "/etc/safeboot/local.conf" ] && . "/etc/safeboot/local.conf"
 
 # Direct access to the kernel resource manager
 # since there is no standalone TPM resource manager in the initrd
@@ -27,6 +28,12 @@ export TPM2TOOLS_TCTI="device:/dev/tpmrm0"
 
 sha256() { echo -n "$@" | sha256sum | cut -d' ' -f1 ; }
 log() { echo >&2 "$@" ; }
+die() {
+	echo >&2 "$@"
+	/usr/sbin/tpm2 pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 bootfail)"
+	touch "/tmp/unseal-failed"
+	exit 1
+}
 
 # shellcheck disable=SC2013
 for arg in $(cat /proc/cmdline)
@@ -34,15 +41,6 @@ do
     case "$arg" in
         safeboot.mode=*)
             MODE=${arg#safeboot.mode=}
-            ;;
-        safeboot.pcrs=*)
-            PCRS=${arg#safeboot.pcrs=}
-            ;;
-        safeboot.mode-pcr=*)
-            BOOTMODE_PCR=${arg#safeboot.mode-pcr=}
-            ;;
-        safeboot.handle=*)
-            HANDLE=${arg#safeboot.handle=}
             ;;
         *)
             ;;
@@ -54,23 +52,9 @@ log "TPM mode=$MODE pcrs=$PCRS $BOOTMODE_PCR"
 /usr/sbin/tpm2 pcrread >&2 \
 	'sha256:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16'
 
-#
-# Attempt to unseal, outputing the binary key to stdout
-#
-if [ -n "$PCRS" ] && /usr/sbin/tpm2 unseal \
-	--object-context "$HANDLE" \
-	--auth pcr:"sha256:$PCRS,$BOOTMODE_PCR" \
-; then
-	# ensure that a local attacker can't re-read the key from the TPM
-	# by extending pcr 14 with "postboot"
-	log "TPM disk key unsealed"
-	/usr/sbin/tpm2 pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 postboot)"
-	exit 0
-else
-	# the key was not unsealed or no PCRs specified;
-	# log the failure and ask the user for the recovery key
+if [ "$MODE" = "recovery" ] || [ -r "/tmp/unseal-failed" ] || [ ! -r "/etc/safeboot/sealed.public" ]
+then
 	log "Falling back to user pass phrase"
-	/usr/sbin/tpm2 pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 bootfail)"
 
 	# retrieve a tpmtotp attestation so that the user knows
 	# that the firmware is unmodified and that it is safe to
@@ -81,8 +65,124 @@ else
 Enter recovery key for $CRYPTTAB_SOURCE ($CRYPTTAB_NAME): "
 
 	/lib/cryptsetup/askpass "$msg"
-
-	# TODO: should a PCR be extended so that this will only work
-	# during boot?  Which PCR to use?  when should it be done?
-	#/usr/sbin/tpm2 pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 totp-done)"
+	exit $?
 fi
+
+#
+# This is not a recovery boot, try to unseal the secret using the TPM
+# and optional user PIN.
+#
+tpm2 flushcontext --transient-object
+tpm2 flushcontext --loaded-session
+
+tpm2 createprimary \
+	--key-context "/tmp/primary.ctx" \
+	>> /tmp/tpm.log \
+|| die "Unable to create primary context for sealed secret"
+
+tpm2 load \
+	--parent-context "/tmp/primary.ctx" \
+	--public "/etc/safeboot/sealed.public" \
+	--private "/etc/safeboot/sealed.secret" \
+	--name "/tmp/sealed.name" \
+	--key-context "/tmp/sealed.ctx" \
+	>> /tmp/tpm.log \
+|| die "Unable to load sealed secret into TPM"
+
+tpm2 startauthsession \
+	--policy-session \
+	--session "/tmp/session.ctx" \
+	>> /tmp/tpm.log \
+|| die "Unable to start policy session"
+
+if [ "$SEAL_PIN" = "1" ]; then
+	# Add an auth value, which will require the PIN for unsealing
+	tpm2 policyauthvalue \
+		--session "/tmp/session.ctx" \
+		>> /tmp/tpm.log \
+	|| die "Unable to create auth value policy"
+fi
+
+tpm2 policypcr \
+	--session "/tmp/session.ctx" \
+	--pcr-list "sha256:$PCRS,$BOOTMODE_PCR" \
+	--policy "/tmp/pcr.policy" \
+	>> /tmp/tpm.log \
+|| die "Unable to create PCR policy"
+
+tpm2 loadexternal \
+	--key-algorithm rsa \
+	--hierarchy o \
+	--public "/etc/safeboot/cert.pub" \
+	--key-context "/tmp/key.ctx" \
+	--name "/tmp/key.name" \
+	>> /tmp/tpm.log \
+|| die "Unable to load platform key"
+
+# Extract the signature from the UEFI variable
+tail \
+	-c +4 \
+	"/sys/firmware/efi/efivars/$PCR_SIGNATURE" \
+	> "/tmp/pcr.policy.sig" \
+|| die "Unable to read PCR signature from $PCR_SIGNATURE"
+
+tpm2 verifysignature \
+	--hash-algorithm sha256 \
+	--scheme rsassa \
+	--key-context "/tmp/key.ctx" \
+	--message "/tmp/pcr.policy" \
+	--signature "/tmp/pcr.policy.sig" \
+	--ticket "/tmp/pcr.policy.tkt" \
+	>> /tmp/tpm.log \
+|| die "Unable to verify PCR signature"
+
+tpm2 policyauthorize \
+	--session "/tmp/session.ctx" \
+	--name "/tmp/key.name" \
+	--input "/tmp/pcr.policy" \
+	--ticket "/tmp/pcr.policy.tkt" \
+	>> /tmp/tpm.log \
+|| die "Unable to authorize ticket"
+
+tpm2 flushcontext --transient-object
+
+
+tpm2_unseal()
+{
+	PIN="$1"
+	tpm2 unseal \
+		--auth "session:/tmp/session.ctx$PIN" \
+		--object-context "/tmp/sealed.ctx" \
+		> /tmp/secret.bin \
+	|| return $?
+
+	# Successfully unsealed, extend the bootmode PCR
+	log "TPM disk key unsealed"
+	/usr/sbin/tpm2 pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 postboot)"
+	cat /tmp/secret.bin
+	rm /tmp/secret.bin
+	exit 0
+}
+
+if [ "$SEAL_PIN" != "1" ]; then
+	tpm2_unseal ""
+else
+	for tries in 1 2 3; do
+		# Use the askpass program to try to get a pin
+		# retrieve a tpmtotp attestation so that the user knows
+		# that the firmware is unmodified and that it is safe to
+		# enter their credentials.
+		totp="$(/usr/sbin/tpm2-totp --time calculate || echo TPM TOTP FAILED)"
+		msg="$totp $MODE (Try $tries)
+
+Enter unseal PIN for $CRYPTTAB_SOURCE ($CRYPTTAB_NAME): "
+
+		PIN="$(/lib/cryptsetup/askpass "$msg")"
+
+		tpm2_unseal "+$PIN"
+	done
+fi
+
+# if we ended up here, things are bad.
+# The system will re-run the script to try to use the recovery key
+die "UNSEALING FAILED"
