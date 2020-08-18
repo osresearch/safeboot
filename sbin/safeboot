@@ -391,7 +391,7 @@ The `sbsign` tool wants PEM, the `kmodsign` tool wants DER,
 the `tpm2-tools` wants a raw public key.
 The best part about standards...
 '
-usage+="$yubikey_pubkey_usage"
+usage+=$yubikey_pubkey_usage
 commands+="|yubikey-pubkey"
 
 yubikey-pubkey()
@@ -552,10 +552,10 @@ tpm2_create_policy()
 
 ########################################
 
-sign_pcrs_usage='
-## sign-pcrs
+pcrs_sign_usage='
+## pcrs-sign
 Usage:
-safeboot sign-pcrs [path-to-unified-kernel]
+safeboot pcrs-sign [path-to-unified-kernel]
 
 Generate a signature for the PCRs that can be used to unseal the LUKS key
 according to the policy created by `safeboot luks-seal`.  The PCRs used
@@ -564,10 +564,11 @@ must match the values that were configured during `luks-seal`.
 
 The signature is persisted in a UEFI NVRAM variable, defined in `safeboot.conf`.
 '
-commands+="|sign-pcrs"
+usage+="$pcrs_sign_usage"
+commands+="|pcrs-sign"
 
-sign-pcrs() {
-	show_help "$1" "$sign_pcrs_usage"
+pcrs-sign() {
+	show_help "$1" "$pcrs_sign_usage"
 	if [ -n "$1" ]; then
 		linux="$1"
 		shift
@@ -709,7 +710,7 @@ luks-seal() {
 	TMP_MOUNT=y
 
 	# The PCR contents are not important here, only the list of them.
-	# The signed PCR values created by sign-pcrs will be used for unsealing
+	# The signed PCR values created by pcrs_sign will be used for unsealing
 	# the contents, not these values
 	# Ask for a PIN that will be used to decrypt, if configured
 	if [ "$SEAL_PIN" = "1" ]; then
@@ -858,7 +859,7 @@ sign-kernel() {
 		warn "Using /proc/cmdline"
 		cat /proc/cmdline > "$TMP/cmdline.txt"
 	else
-		echo -n $@ > "$TMP/cmdline.txt"
+		echo -n "$@" > "$TMP/cmdline.txt"
 	fi
 
 	echo "Kernel commandline: '$(cat "$TMP/cmdline.txt")'"
@@ -1416,7 +1417,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|sign-pcrs|sign-kernel|linux-sign|recovery-sign|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext)
+	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign-kernel|linux-sign|recovery-sign|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext)
 		$command "$@"
 		;;
 	*)
