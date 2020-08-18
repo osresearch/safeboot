@@ -219,21 +219,29 @@ to the `/` file system and corrupt the hashes.
 
 ![Output of `luks-seal` subcommand](images/luks-seal.png)
 
-The command to seal the LUKS disk encryption key into the TPM is:
+The commands to seal the LUKS disk encryption key into the TPM,
+rebuild the initrd, sign the kernel/initrd, and update the expected
+PCR values are:
 
 ```
 sudo safeboot luks-seal
-sudo update-initramfs -u
+sudo safeboot linux-sign
+sudo safeboot pcrs-sign
 ```
 
-The very first time this is run you will need to also rebuild the initrd
-with the new crypttab and hooks in place.
+You only need to run `safeboot luks-seal` the very first time; the sealed
+secret is included in the initrd image (stored in `/etc/safeboot/sealed.secret`).
+When a new kernel or initrd is built, the platform key is used to sign both the
+kernel+initrd unified image, as well as the PCRs that go with it.
+
 The `luks-seal` subcommand will:
 
+* Prompt for a decryption PIN, unless `SEAL_PIN=0` in `/etc/safeboot/local.conf`
 * Create a new disk encryption key with random data
-* Read the current PCRs, seal new key into the TPM with these PCRs
 * Add new key slot to disk with new key (will require the recovery password)
-* Add initramfs building hooks
+* Create a TPM policy that requires the PCRs defined in `$PCRS` to match a signed block
+* Seal the disk encryption key with that policy and store it in `/etc/safeboot/sealed.secret`
+* Add initramfs building hooks to unseal the secret
 * Modify `/etc/crypttab` entry to call unlock script if necessary
 
 The Trusted Platform Module serves two purposes in securing the process:
@@ -249,7 +257,18 @@ own keys to the UEFI key database.  (Subject to various CVE's and TOCTOUs, etc)
     the EFI executables that have been run along the boot path, etc.
     For example, entering the UEFI `Setup` menu will cause different
     measurements, so the TPM will not automatically unseal on the same
-    boot that the user has entered the setup application.
+    boot that the user has entered the setup application.  For normal
+    operation only a direct boot into the unified kernel+initrd will automatically
+    decrypt.
+
+When a new kernel is installed or the initrd needs to be updated, it is only necessary
+to sign the kernel and PCRs.  The sealed LUKS key is no longer changed and the recovery
+password is not required.
+
+```
+sudo safeboot linux-sign
+sudo safeboot pcrs-sign
+```
 
 -----
 
@@ -362,6 +381,7 @@ sudo safeboot recovery-reboot
 sudo safeboot remount
 # do stuff to / like apt-get ...
 sudo safeboot linux-sign
+sudo safeboot pcrs-sign
 reboot
 ```
 
@@ -382,8 +402,16 @@ the `linux-sign` subcommand will:
 * Use the Yubikey or OpenSSL key to sign the merkle-tree root hash
 * Reboot to the new read-only runtime
 
+The `pcrs-sign` subcommand will:
+
+* Compute the expected PCR4 value for the new Linux kernel + initrd
+* Sign it along with the other PCR values
+* Store the signature on the PCR in a UEFI NVRAM variable
+
 If you are maintaining a fleet of machines, these could be done offline
-and the block image pushed to the system for installation.
+and the block image pushed to the system for installation.  Note that
+while the PCR4 value can be predicted, the other PCRs might be machine
+specific.  More research is necessary for proper fleet management.
 
 ### Kernel and initramfs update
 * Re-generate `/boot/initrd` and `/boot/vmlinuz`
@@ -394,7 +422,7 @@ and the block image pushed to the system for installation.
 
 ### UEFI firmware update
 If there are any updates to the UEFI firmware, such as changing the
-`Setup` variable, then the TPM sealed keys will no longer be accessible
-and the recovery key will be necessary to re-seal the drive.  This
-requires access to the recovery key since a new random key is generated
-and needs to be stored into a keyslot on the drive.
+`Setup` variable, then the TPM sealed keys will no longer be accessible.
+From the recovery mode should be possible to sign the new PCRs (currently
+it requires more facilities than are available in the recovery initrd), or
+the recovery key can be used to mount the disk and re-seal the drive.

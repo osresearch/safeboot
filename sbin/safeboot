@@ -653,8 +653,8 @@ be required on the next normal boot in place of the recovery code.
 
 If this is the first time the disk has been sealed, `/etc/crypttab`
 will be updated to include a call to the unsealing script to retrieve
-the keys from the TPM.  You will have to run `sudo update-initramfs -u`
-to rebuild the initrd, and then re-run `sudo sign-linux`
+the keys from the TPM.  After running this it is necessary to
+to rebuild the initrd, and then re-run `sudo linux-sign && sudo pcrs-sign`
 
 Right now only a single crypt disk is supported.
 

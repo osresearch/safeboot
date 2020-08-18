@@ -46,11 +46,12 @@ The subject must be written as a "distinguished name":
 ## yubikey-pubkey
 Usage:
 ```
-safeboot yubikey-pubkey cert.pem [cert.crt]
+safeboot yubikey-pubkey cert.pem
 ```
 
-Extract the public key certificate in either PEM or DER format.
-The `sbsign` tool wants PEM, the `kmodsign` tool wants DER.
+Extract the public key certificate in PEM, DER and PUB format.
+The `sbsign` tool wants PEM, the `kmodsign` tool wants DER,
+the `tpm2-tools` wants a raw public key.
 The best part about standards...
 
 ## uefi-sign-keys
@@ -79,25 +80,35 @@ variables.  This must be done once during system setup or if a new
 key is generated.  The `uefi-sign-key` subcommand attempts to do
 this automatically.
 
+## pcrs-sign
+Usage:
+safeboot pcrs-sign [path-to-unified-kernel]
+
+Generate a signature for the PCRs that can be used to unseal the LUKS key
+according to the policy created by `safeboot luks-seal`.  The PCRs used
+are specified in the `/etc/safeboot/safeboot.conf` or `local.conf` files, and
+must match the values that were configured during `luks-seal`.
+
+The signature is persisted in a UEFI NVRAM variable, defined in `safeboot.conf`.
+
 ## luks-seal
 Usage:
 ```
-safeboot luks-seal [0,2,5,7... [14]]
+safeboot luks-seal
 ```
 
-Generate a new LUKS encryption key for the block devices in `/etc/crypttab`,
-sealed with the optional comma separated list of TPM PCRs. During the boot,
-PCR 14 will be first extended with the `tpm.mode` kernel command line parameter
-(typically `linux` or `recovery`) and then the secret unsealed.  After
-an unsealing attempt, the PCR14 will be extended again with `postboot` status
-to prevent the key from being unsealed after the initramfs has run.
+This will generate a new LUKS encryption key for the block device in
+`/etc/crypttab` and requires an existing recovery key to install the
+new key slot.  You will also be prompted for an unlock PIN, which will
+be required on the next normal boot in place of the recovery code.
 
 If this is the first time the disk has been sealed, `/etc/crypttab`
 will be updated to include a call to the unsealing script to retrieve
-the keys from the TPM.  You will have to run `sudo update-initramfs -u`
-to rebuild the initrd.
+the keys from the TPM.  After running this it is necessary to
+to rebuild the initrd, and then re-run `sudo linux-sign && sudo pcrs-sign`
 
 Right now only a single crypt disk is supported.
+
 
 ## sign-kernel
 Usage:
