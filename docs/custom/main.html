@@ -6,13 +6,13 @@
  or values in the yaml metadata for the specific page (summary and image).
 -->
 <meta property="og:title"
-      content="{% if page.meta.title|length > 1 %}{{ page.meta.title }}{% else %}{{ page.title }}{% endif %}">
+      content="{% if page.meta and page.meta.title|length > 1 %}{{ page.meta.title }}{% else %}{{ page.title }}{% endif %}">
 <meta property="og:site_name" content="{{ config.site_name }}">
 <meta property="og:url" content="{{ page.canonical_url|url }}">
 <meta property="og:description"
-	content="{% if page.meta.summary %}{{ page.meta.summary }}{% else %}{{ config.site_description }}{% endif %}">
+	content="{% if page.meta and page.meta.summary %}{{ page.meta.summary }}{% else %}{{ config.site_description }}{% endif %}">
 <meta property="og:image"
-      content="{% if page.meta.image|length > 1 %}{{ config.site_url|url }}{{ page.meta.image }}{% else %}{{ config.site_url|url }}{{ config.theme.logo }}{% endif %}">
+      content="{% if page.meta and page.meta.image|length > 1 %}{{ config.site_url|url }}{{ page.meta.image }}{% else %}{{ config.site_url|url }}{{ config.theme.logo }}{% endif %}">
 {% endblock %}
 
 {% block fonts %}
