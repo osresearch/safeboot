@@ -109,13 +109,17 @@ tpm2_flushall() {
 }
 
 efivar() {
+	if [ -z "$1" ]; then
+		die "efivar: variable name required"
+	fi
 	var="/sys/firmware/efi/efivars/$1"
 	chattr -i "$var"
 
 	printf "\x07\x00\x00\x00" > "$TMP/efivar.bin"
 	cat - >> "$TMP/efivar.bin"
-	xxd -g1 "$TMP/efivar.bin"
+	#xxd -g1 "$TMP/efivar.bin"
 
+	warn "$var: writing new value"
 	cat "$TMP/efivar.bin" > "$var"
 }
 
@@ -510,7 +514,7 @@ uefi-set-keys()
 tpm2_create_policy()
 {
 	PCR_FILE="$1"
-	VERSION="$2-0123456789abcdef"
+	VERSION="${2-0123456789abcdef}"
 
 	tpm2_flushall
 
@@ -528,22 +532,6 @@ tpm2_create_policy()
 		>> /tmp/tpm.log \
 	|| die "Unable to start TPM auth session"
 
-	if [ "$SEAL_PIN" = "1" ]; then
-		# Add an Auth Value policy, which will require the PIN for unsealing
-		tpm2 policyauthvalue \
-			--session "$TMP/session.ctx" \
-			>> /tmp/tpm.log \
-		|| die "Unable to create auth value policy"
-	fi
-
-	echo -n "$VERSION" | hex2bin | \
-	tpm2 policynv \
-		--session "$TMP/session.ctx" \
-		"$TPM_NV_VERSION" eq \
-		--input "-" \
-		>> /tmp/tpm.log \
-	|| die "Unable to create version policy"
-
 	tpm2 policypcr \
 		--session "$TMP/session.ctx" \
 		--pcr-list "sha256:$PCRS,$BOOTMODE_PCR" \
@@ -551,6 +539,25 @@ tpm2_create_policy()
 		--policy "$TMP/pcr.policy" \
 		>> /tmp/tpm.log \
 	|| die "Unable to create PCR policy"
+
+	if [ "$SEAL_PIN" = "1" ]; then
+		# Add an Auth Value policy, which will require the PIN for unsealing
+		tpm2 policyauthvalue \
+			--session "$TMP/session.ctx" \
+			--policy "$TMP/pcr.policy" \
+			>> /tmp/tpm.log \
+		|| die "Unable to create auth value policy"
+	fi
+
+	warn "Using TPM counter $VERSION"
+	echo -n "$VERSION" | hex2bin \
+	tpm2 policynv \
+		--session "$TMP/session.ctx" \
+		"$TPM_NV_VERSION" eq \
+		--input "-" \
+		--policy "$TMP/pcr.policy" \
+		>> /tmp/tpm.log \
+	|| die "Unable to create version policy"
 
 	tpm2 policyauthorize \
 		--session "$TMP/session.ctx" \
@@ -615,6 +622,9 @@ pcrs-sign() {
 	# This works on the Thinkpad X1, which extends PCR4
 	# with EFI_EV_SEPARATOR and then the PE hash of the EFI_BOOT_APPLICATION
 	linux_hash="$(sbsign.safeboot --hash-only "$linux")"
+	if [ "$?" != "0" ]; then
+		die "$linux: PE hash failed"
+	fi
 	ev_sep="$(printf "\x00\x00\x00\x00" | tpm2_trial_extend 0)"
 	pcr4_computed="$(echo -n "${ev_sep}${linux_hash}" | hex2bin | sha256)"
 
@@ -763,7 +773,7 @@ luks-seal() {
 	fi
 
 	# Ensure that there is a TPM counter at the desired address
-	tpm2 nvundef \
+	tpm2 nvundefine \
 		"$TPM_NV_VERSION" \
 		>> /tmp/tpm.log \
 	|| warn "Unable to remove old TPM counter $TPM_NV_VERSION"
@@ -806,7 +816,7 @@ luks-seal() {
 		--policy "$TMP/signed.policy" \
 		--sealing-input "$TMP/key.bin" \
 		${SEAL_PIN1:+ --key-auth "$SEAL_PIN1" } \
-		--public "$TMP/sealed.public" \
+		--public "$TMP/sealed.pub" \
 		--private "$TMP/sealed.priv" \
 		>> /tmp/tpm.log \
 	|| die "Unable to create TPM key context"
@@ -876,7 +886,7 @@ luks-seal() {
 	linux-sign "$LINUX_TARGET" \
 	|| die "Unable to sign kernel"
 
-	pcrs-sign "$LINUX_TARGET" "0123456789abcdef" \
+	pcrs-sign "allow-rollback" "$LINUX_TARGET" \
 	|| die "Unable to sign PCRs"
 }
 
