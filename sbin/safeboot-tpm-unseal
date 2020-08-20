@@ -77,21 +77,6 @@ fi
 tpm2 flushcontext --transient-object
 tpm2 flushcontext --loaded-session
 
-log "TPM: Loading sealed secret"
-tpm2 createprimary \
-	--key-context "/tmp/primary.ctx" \
-	>> /tmp/tpm.log \
-|| die "Unable to create primary context for sealed secret"
-
-tpm2 load \
-	--parent-context "/tmp/primary.ctx" \
-	--public "/etc/safeboot/sealed.public" \
-	--private "/etc/safeboot/sealed.secret" \
-	--name "/tmp/sealed.name" \
-	--key-context "/tmp/sealed.ctx" \
-	>> /tmp/tpm.log \
-|| die "Unable to load sealed secret into TPM"
-
 log "TPM: Starting auth session"
 tpm2 startauthsession \
 	--policy-session \
@@ -107,6 +92,14 @@ if [ "$SEAL_PIN" = "1" ]; then
 	|| die "Unable to create auth value policy"
 fi
 
+tpm2 nvread "$TPM_NV_VERSION" \
+| tpm2 policynv \
+	--session "/tmp/session.ctx" \
+	"$TPM_NV_VERSION" eq \
+	--input "-" \
+	>> /tmp/tpm.log \
+|| die "Unable to load TPM version counter"
+
 tpm2 policypcr \
 	--session "/tmp/session.ctx" \
 	--pcr-list "sha256:$PCRS,$BOOTMODE_PCR" \
@@ -117,7 +110,7 @@ tpm2 policypcr \
 log "TPM: Loading RSA public key"
 tpm2 loadexternal \
 	--key-algorithm rsa \
-	--hierarchy o \
+	--hierarchy owner \
 	--public "/etc/safeboot/cert.pub" \
 	--key-context "/tmp/key.ctx" \
 	--name "/tmp/key.name" \
@@ -166,7 +159,7 @@ tpm2_unseal()
 	PIN="$1"
 	tpm2 unseal \
 		--auth "session:/tmp/session.ctx$PIN" \
-		--object-context "/tmp/sealed.ctx" \
+		--object-context "$TPM_SEALED_HANDLE" \
 		> /tmp/secret.bin \
 	|| return $?
 

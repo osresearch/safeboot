@@ -506,8 +506,12 @@ uefi-set-keys()
 
 # Create the TPM policy for sealing/unsealing the disk encryption key
 # If an optional argument is provided, use that for the PCR data
+# If an second optional argument is provided, use that for the version counter file
 tpm2_create_policy()
 {
+	PCR_FILE="$1"
+	VERSION="$2-0123456789abcdef"
+
 	tpm2_flushall
 
 	tpm2 loadexternal \
@@ -532,10 +536,18 @@ tpm2_create_policy()
 		|| die "Unable to create auth value policy"
 	fi
 
+	echo -n "$VERSION" | hex2bin | \
+	tpm2 policynv \
+		--session "$TMP/session.ctx" \
+		"$TPM_NV_VERSION" eq \
+		--input "-" \
+		>> /tmp/tpm.log \
+	|| die "Unable to create version policy"
+
 	tpm2 policypcr \
 		--session "$TMP/session.ctx" \
 		--pcr-list "sha256:$PCRS,$BOOTMODE_PCR" \
-		${1:+ --pcr "$1" } \
+		${PCR_FILE:+ --pcr "$PCR_FILE" } \
 		--policy "$TMP/pcr.policy" \
 		>> /tmp/tpm.log \
 	|| die "Unable to create PCR policy"
@@ -555,12 +567,16 @@ tpm2_create_policy()
 pcrs_sign_usage='
 ## pcrs-sign
 Usage:
-safeboot pcrs-sign [path-to-unified-kernel]
+safeboot pcrs-sign [prevent-rollback] [path-to-unified-kernel]
 
 Generate a signature for the PCRs that can be used to unseal the LUKS key
 according to the policy created by `safeboot luks-seal`.  The PCRs used
 are specified in the `/etc/safeboot/safeboot.conf` or `local.conf` files, and
 must match the values that were configured during `luks-seal`.
+
+If the prevent-rollback argument is `prevent-rollback`, the TPM version counter
+will be incremented, which will invalidate all previous PCR signatures and prevent
+the older unified kernel images from being able to unseal the PCR data.
 
 The signature is persisted in a UEFI NVRAM variable, defined in `safeboot.conf`.
 '
@@ -569,16 +585,28 @@ commands+="|pcrs-sign"
 
 pcrs-sign() {
 	show_help "$1" "$pcrs_sign_usage"
-	if [ -n "$1" ]; then
-		linux="$1"
-		shift
-	else
-		linux="$EFIDIR/$LINUX_TARGET/linux.efi"
+
+	prevent_rollback="${1}"
+	target="${2-linux}"
+	linux="$EFIDIR/$target/linux.efi"
+
+	if [ "$prevent_rollback" = "prevent-rollback" ]; then
+		warn "$linux: Incrementing TPM version to prevent rollback"
+		tpm2 nvincrement \
+			"$TPM_NV_VERSION" \
+			>> /tmp/tpm.log \
+		|| die "Unable to increment TPM version $TPM_NV_VERSION"
 	fi
+
+	tpm2 nvread \
+		"$TPM_NV_VERSION" \
+		> "$TMP/nv_version.bin" \
+	|| die "Unable to read TPM version $TPM_NV_VERSION"
+	VERSION="$(xxd -g8 "$TMP/nv_version.bin" | awk '{print $2}')"
+	warn "$linux: TPM version $VERSION"
 
 	# If pre-computed PCRs are known, they can be used here instead
 	# TODO: allow PCRs to be passed in
-	# TODO: use the computed PCR4 for the linux kernel
 	tpm2 pcrread -o "$TMP/pcrs.bin" "sha256:$PCRS" \
 	|| die "Unable to read TPM PCRs"
 
@@ -616,12 +644,14 @@ pcrs-sign() {
 	# will only unseal during a normal boot, not a recovery boot.
 	# the unseal script will also extend PCR14 after unsealing
 	# to prevent the TPM from unsealing the secret a second time
+	#
+	# TODO: Fix the ordering if the boot mode PCR is not the last on the list
 	pcr14=$(echo -n "${LINUX_TARGET}" | tpm2_trial_extend $PCR_DEFAULT)
 	warn "mode=${LINUX_TARGET} PCR$BOOTMODE_PCR=$pcr14"
 	echo -n "$pcr14" | hex2bin \
 		>> "$TMP/pcrs.bin"
 
-	tpm2_create_policy "$TMP/pcrs.bin"
+	tpm2_create_policy "$TMP/pcrs.bin" "$VERSION"
 
 	openssl dgst \
 		-sha256 \
@@ -653,8 +683,11 @@ be required on the next normal boot in place of the recovery code.
 
 If this is the first time the disk has been sealed, `/etc/crypttab`
 will be updated to include a call to the unsealing script to retrieve
-the keys from the TPM.  After running this it is necessary to
-to rebuild the initrd, and then re-run `sudo linux-sign && sudo pcrs-sign`
+the keys from the TPM, and a counter will be created to prevent rollbacks.
+
+After sealing the secret, the initrd will be rebuild, the kernel signed,
+and the new predicted PCRs signed.  Any previous sealed data will be
+invalidated since the version counter will be incremented.
 
 Right now only a single crypt disk is supported.
 
@@ -729,6 +762,24 @@ luks-seal() {
 		done
 	fi
 
+	# Ensure that there is a TPM counter at the desired address
+	tpm2 nvundef \
+		"$TPM_NV_VERSION" \
+		>> /tmp/tpm.log \
+	|| warn "Unable to remove old TPM counter $TPM_NV_VERSION"
+
+	tpm2 nvdefine \
+		"$TPM_NV_VERSION" \
+		--attributes 'authread|authwrite|nt=counter' \
+		--size 8 \
+		>> /tmp/tpm.log \
+	|| die "Unable to create TPM counter $TPM_NV_VERSION"
+
+	tpm2 nvincrement \
+		"$TPM_NV_VERSION" \
+		>> /tmp/tpm.log \
+	|| die "Unable to initialize TPM counter $TPM_NV_VERSION"
+
 	tpm2_create_policy
 
 	dd \
@@ -741,7 +792,9 @@ luks-seal() {
 		2>/dev/null \
 	|| die "Unable to generate random key"
 
-	warn "Sealing secret with TPM, storing sealed secret in $PREFIX$DIR"
+	warn "Sealing secret with TPM, storing sealed secret in $TPM_NV_VERSION"
+
+	tpm2_flushall
 
 	tpm2 createprimary \
 		--key-context "$TMP/primary.ctx" \
@@ -753,10 +806,29 @@ luks-seal() {
 		--policy "$TMP/signed.policy" \
 		--sealing-input "$TMP/key.bin" \
 		${SEAL_PIN1:+ --key-auth "$SEAL_PIN1" } \
-		--public "$PREFIX$DIR/sealed.public" \
-		--private "$PREFIX$DIR/sealed.secret" \
+		--public "$TMP/sealed.public" \
+		--private "$TMP/sealed.priv" \
 		>> /tmp/tpm.log \
 	|| die "Unable to create TPM key context"
+
+	tpm2 load \
+		--parent-context "$TMP/primary.ctx" \
+		--public "$TMP/sealed.pub" \
+		--private "$TMP/sealed.priv" \
+		--name "$TMP/sealed.name" \
+		--key-context "$TMP/sealed.ctx" \
+	|| die "Unable to load sealed object into TPM"
+
+	tpm2 evictcontrol \
+		--hierarchy owner \
+		--object-context "$TPM_SEALED_HANDLE" \
+	|| warn "Unable to evict existing sealed handle $TPM_SEALED_HANDLE, ignoring"
+
+	tpm2 evictcontrol \
+		--hierarchy owner \
+		--object-context "$TMP/sealed.ctx" \
+		"$TPM_SEALED_HANDLE" \
+	|| die "Unable to persist sealed data into the TPM"
 
 	# make sure the crypttab has the unlock script referenced
 	if ! grep keyscript "$PREFIX/etc/crypttab" > /dev/null ; then
@@ -800,6 +872,12 @@ luks-seal() {
 
 	update-initramfs -u \
 	|| die "Unable to update initramfs"
+
+	linux-sign "$LINUX_TARGET" \
+	|| die "Unable to sign kernel"
+
+	pcrs-sign "$LINUX_TARGET" "0123456789abcdef" \
+	|| die "Unable to sign PCRs"
 }
 
 ########################################
