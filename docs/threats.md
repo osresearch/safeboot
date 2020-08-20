@@ -49,9 +49,12 @@ setup instructions include:
 ### Booting
 * LUKS block device encryption on `/`, `/home`, `/var` and swap.
 * TPM Sealing the disk encryption key with the UEFI firmware and configuration values
-* If unsealing fails, attesting to the firmware state with TOTP
-* Storing the unsealed key in a kernel keyring and logging 
+* The TPM sealed secret can be protected with a PIN
+* The TPM sealed secret can be protected from rollback with a TPM counter
+* If unsealing fails, attesting to the firmware state with TOTP and using a recovery key
+* Storing the unsealed key in a protected kernel keyring and logging 
 * Enabling `intel_iommu=on` and `efi=disable_early_pci_dma` to eliminate some hardware attacks
+
 
 ### Runtime
 * Enabling `lockdown=confidentiality` mode to prevent root from accessing keyrings or memory
@@ -68,8 +71,6 @@ setup instructions include:
 * TODO: Prevent network reconfiguration
 * TODO: Device VM separation
 * TODO: Separate `/home` encryption
-* TODO: TPM pin requirement
-* TODO: TPM counter for rollback protection
 * TODO: Multiparty signatures for higher assurance
 * TODO: Allowed list of USB device IDs.
 
@@ -134,6 +135,12 @@ and the administrator can verify it against their authenticator app.
 With TPM2, the HMAC is computed in the TPM itself, so the secret is never
 accessible to the operating system.
 
+* The PCR values in the TPM are not "secret", so an adversary with physical access
+could directly wire to the TPM and provide it with the correct measurements to
+extend the PCRs to match the signed values.  The user PIN is still necessary to unseal
+the secret and the TPM dictionary attack protections both rate-limit and retry-limit
+the attacker.
+
 * Discrete TPM tampering on the LPC bus is not necessarily detectable by this system;
 an adversary with unlimited internal physical access can also probe sealed secrets.
 If a TPM PIN is used then the secrets might be brute-forcable, but would require
@@ -195,6 +202,15 @@ the modified image since the signature is checked when they are loaded
 into RAM at boot.  There should not be any runtime TOCTOU since the DRAM has
 been initialized and there is space to store the entire image prior to
 validating the signature.
+
+* The adversary might roll back to a prior version of the signed kernel and initrd,
+with a prior signed version of the PCRs.  This is prevented by using monotonic
+TPM counter in addition to the signature.  When a security critical update is
+available, the TPM counter is incremented and the PCRs are signed with that new
+value. The TPM will refuse to unseal older sealed data since the counter no longer
+matches.  The TPM counter should be protected against rollback since deleting and
+re-creating a counter does not reset it to zero, but instead to the highest value
+that any counter in the TPM has ever reached.
 
 * Adversaries might try to gain persistence by gaining write access to the
 encrypted and dmverity protected `/` filesystem, which requires a
