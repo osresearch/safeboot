@@ -37,10 +37,3 @@ copy_file safeboot-keys "$(dirname "$CERT")/$(basename "$CERT" .pem).pub" "$DIR/
 if [ -r "$DIR/local.conf" ]; then
 	copy_file safeboot-local "$DIR/local.conf"
 fi
-
-# If there are sealed LUKS secrets, move them too
-if [ -r "$DIR/sealed.public" ]; then
-	copy_file safeboot-sealed "$DIR/sealed.policy"
-	copy_file safeboot-sealed "$DIR/sealed.public"
-	copy_file safeboot-sealed "$DIR/sealed.secret"
-fi
