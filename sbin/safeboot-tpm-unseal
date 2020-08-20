@@ -54,7 +54,6 @@ log "TPM mode=$MODE pcrs=$PCRS $BOOTMODE_PCR"
 
 if [ "$MODE" = "recovery" ] \
 || [ -r "/tmp/unseal-failed" ] \
-|| [ ! -r "/etc/safeboot/sealed.public" ] \
 ; then
 	log "Falling back to user pass phrase"
 
