@@ -56,6 +56,14 @@ die() { echo "$die_msg""$*" >&2 ; exit 1 ; }
 warn() { echo "$@" >&2 ; }
 debug() { [ "$VERBOSE" == 1 ] && echo "$@" >&2 ; }
 
+tpm2() {
+	if [ "$VERBOSE" == 1 ]; then
+		/usr/bin/time -f '%E %C' /usr/sbin/tpm2 "$@"
+	else
+		/usr/sbin/tpm2 "$@"
+	fi
+}
+
 cleanup() {
 	if [ "$TMP_MOUNT" == "y" ]; then
 		warn "$TMP: Unmounting"
@@ -550,7 +558,7 @@ tpm2_create_policy()
 	fi
 
 	warn "Using TPM counter $VERSION"
-	echo -n "$VERSION" | hex2bin \
+	echo -n "$VERSION" | hex2bin | \
 	tpm2 policynv \
 		--session "$TMP/session.ctx" \
 		"$TPM_NV_VERSION" eq \
@@ -621,10 +629,7 @@ pcrs-sign() {
 	# for the Linux kernel (which will be loaded as the boot application).
 	# This works on the Thinkpad X1, which extends PCR4
 	# with EFI_EV_SEPARATOR and then the PE hash of the EFI_BOOT_APPLICATION
-	linux_hash="$(sbsign.safeboot --hash-only "$linux")"
-	if [ "$?" != "0" ]; then
-		die "$linux: PE hash failed"
-	fi
+	linux_hash="$(sbsign.safeboot --hash-only "$linux" || die "unable to hash")"
 	ev_sep="$(printf "\x00\x00\x00\x00" | tpm2_trial_extend 0)"
 	pcr4_computed="$(echo -n "${ev_sep}${linux_hash}" | hex2bin | sha256)"
 
@@ -848,6 +853,8 @@ luks-seal() {
 			's: luks: keyscript=/usr/sbin/safeboot-tpm-unseal,luks:' \
 			$PREFIX/etc/crypttab \
 		|| die "$PREFIX/etc/crypttab: unable to add keyscript"
+
+		need_update_initramfs=1
 	fi
 
 	# ask for the disk encryption key
@@ -880,12 +887,17 @@ luks-seal() {
 
 	warn "$dev: sealed with PCR $PCRS,$BOOTMODE_PCR"
 
-	update-initramfs -u \
-	|| die "Unable to update initramfs"
+	if [ -n "$need_update_initramfs" ]; then
+		warn "-------- Need to update initramfs --------"
+		update-initramfs -u \
+		|| die "Unable to update initramfs"
 
-	linux-sign "$LINUX_TARGET" \
-	|| die "Unable to sign kernel"
+		warn "-------- Need to sign new kernel --------"
+		linux-sign "$LINUX_TARGET" \
+		|| die "Unable to sign kernel"
+	fi
 
+	warn "-------- Need to sign PCR and counter values --------"
 	pcrs-sign "allow-rollback" "$LINUX_TARGET" \
 	|| die "Unable to sign PCRs"
 }
