@@ -176,17 +176,24 @@ if [ "$SEAL_PIN" != "1" ]; then
 	tpm2_unseal ""
 else
 	for tries in 1 2 3; do
-		# Use the askpass program to try to get a pin
-		# retrieve a tpmtotp attestation so that the user knows
-		# that the firmware is unmodified and that it is safe to
-		# enter their credentials.
-		totp="$(/usr/sbin/tpm2-totp --time calculate || echo TPM TOTP FAILED)"
-		msg="$totp $MODE (Try $tries)
+		while true; do
+			# Use the askpass program to try to get a pin
+			# retrieve a tpmtotp attestation so that the user knows
+			# that the firmware is unmodified and that it is safe to
+			# enter their credentials.
+			totp="$(/usr/sbin/tpm2-totp --time calculate || echo TPM TOTP FAILED)"
+			msg="$totp $MODE (Try $tries)
 
-Enter unseal PIN for $CRYPTTAB_SOURCE ($CRYPTTAB_NAME): "
+	Enter unseal PIN for $CRYPTTAB_SOURCE ($CRYPTTAB_NAME): "
 
-		PIN="$(/lib/cryptsetup/askpass "$msg")"
+			PIN="$(/lib/cryptsetup/askpass "$msg")"
 
+			if [ "$PIN" != "" ]; then
+				break
+			fi
+		done
+
+		# try to unseal with the provided PIN
 		tpm2_unseal "+$PIN"
 	done
 fi
