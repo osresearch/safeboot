@@ -768,14 +768,15 @@ luks-seal() {
 	# Ask for a PIN that will be used to decrypt, if configured
 	if [ "$SEAL_PIN" = "1" ]; then
 		while true; do
-			read -r -s -p "Unsealing PIN: " SEAL_PIN1
-			echo
-			read -r -s -p "PIN again: " SEAL_PIN2
+			read -r -s -p "New unsealing PIN: " SEAL_PIN1
 			echo
 			if [ "$SEAL_PIN1" = "" ]; then
 				echo >&2 'PIN must not be empty, unset $SEAL_PIN in /etc/safeboot/local.conf instead'
 				continue
 			fi
+
+			read -r -s -p "Unsealing PIN again: " SEAL_PIN2
+			echo
 			if [ "$SEAL_PIN1" = "$SEAL_PIN2" ]; then
 				break
 			fi
