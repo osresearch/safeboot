@@ -522,7 +522,13 @@ uefi-set-keys()
 tpm2_create_policy()
 {
 	PCR_FILE="$1"
-	VERSION="${2-0123456789abcdef}"
+	if [ -n "$2" ]; then
+		VERSION="$2"
+		warn "Using TPM counter $VERSION"
+	else
+		VERSION="0123456789abcdef"
+		warn "Using placeholder TPM counter version"
+	fi
 
 	tpm2_flushall
 
@@ -557,7 +563,6 @@ tpm2_create_policy()
 		|| die "Unable to create auth value policy"
 	fi
 
-	warn "Using TPM counter $VERSION"
 	echo -n "$VERSION" | hex2bin | \
 	tpm2 policynv \
 		--session "$TMP/session.ctx" \
