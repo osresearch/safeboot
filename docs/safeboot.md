@@ -82,12 +82,16 @@ this automatically.
 
 ## pcrs-sign
 Usage:
-safeboot pcrs-sign [path-to-unified-kernel]
+safeboot pcrs-sign [prevent-rollback] [path-to-unified-kernel]
 
 Generate a signature for the PCRs that can be used to unseal the LUKS key
 according to the policy created by `safeboot luks-seal`.  The PCRs used
 are specified in the `/etc/safeboot/safeboot.conf` or `local.conf` files, and
 must match the values that were configured during `luks-seal`.
+
+If the prevent-rollback argument is `prevent-rollback`, the TPM version counter
+will be incremented, which will invalidate all previous PCR signatures and prevent
+the older unified kernel images from being able to unseal the PCR data.
 
 The signature is persisted in a UEFI NVRAM variable, defined in `safeboot.conf`.
 
@@ -104,8 +108,11 @@ be required on the next normal boot in place of the recovery code.
 
 If this is the first time the disk has been sealed, `/etc/crypttab`
 will be updated to include a call to the unsealing script to retrieve
-the keys from the TPM.  After running this it is necessary to
-to rebuild the initrd, and then re-run `sudo linux-sign && sudo pcrs-sign`
+the keys from the TPM, and a counter will be created to prevent rollbacks.
+
+After sealing the secret, the initrd will be rebuild, the kernel signed,
+and the new predicted PCRs signed.  Any previous sealed data will be
+invalidated since the version counter will be incremented.
 
 Right now only a single crypt disk is supported.
 
