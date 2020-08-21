@@ -76,7 +76,8 @@ TMP=$(mktemp -d)
 TMP_MOUNT=n
 trap cleanup EXIT
 
-hex2bin() { perl -ne 'chomp; print pack("H*", $_)' ; }
+hex2bin() { xxd -p -r ; }
+bin2hex() { xxd -p ; }
 sha256() { sha256sum - | cut -d' ' -f1 ; }
 PCR_DEFAULT=0000000000000000000000000000000000000000000000000000000000000000
 
@@ -123,7 +124,7 @@ efivar() {
 	var="/sys/firmware/efi/efivars/$1"
 	chattr -i "$var"
 
-	printf "\x07\x00\x00\x00" > "$TMP/efivar.bin"
+	echo "07 00 00 00" | hex2bin > "$TMP/efivar.bin"
 	cat - >> "$TMP/efivar.bin"
 	#xxd -g1 "$TMP/efivar.bin"
 
@@ -635,7 +636,7 @@ pcrs-sign() {
 	# This works on the Thinkpad X1, which extends PCR4
 	# with EFI_EV_SEPARATOR and then the PE hash of the EFI_BOOT_APPLICATION
 	linux_hash="$(sbsign.safeboot --hash-only "$linux" || die "unable to hash")"
-	ev_sep="$(printf "\x00\x00\x00\x00" | tpm2_trial_extend 0)"
+	ev_sep="$(echo "00000000" | hex2bin | tpm2_trial_extend 0)"
 	pcr4_computed="$(echo -n "${ev_sep}${linux_hash}" | hex2bin | sha256)"
 
 	pcr4_read="$(tpm2 pcrread sha256:4 | tail -1 | cut -c9- | tr '[:upper:]' '[:lower:]')"
