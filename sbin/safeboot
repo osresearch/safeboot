@@ -118,10 +118,15 @@ tpm2_flushall() {
 }
 
 efivar() {
+	EFIVARDIR="/sys/firmware/efi/efivars"
 	if [ -z "$1" ]; then
 		die "efivar: variable name required"
 	fi
-	var="/sys/firmware/efi/efivars/$1"
+	if ! mount | grep -q "$EFIVARDIR" ; then
+		mount -t efivarfs none "$EFIVARDIR" \
+		|| die "$EFIVARDIR: unable to mount"
+	fi
+	var="$EFIVARDIR/$1"
 	chattr -i "$var"
 
 	echo "07 00 00 00" | hex2bin > "$TMP/efivar.bin"
@@ -649,14 +654,13 @@ pcrs-sign() {
 		warn "PCR4 $pcr4_computed"
 
 		# HACK: replace the PCR with the computed one
+		# initrd dd does not support iflag=fullblock status=none
 		echo -n "$pcr4_computed" | hex2bin \
 		| dd \
 			of="$TMP/pcrs.bin" \
 			conv=notrunc \
 			seek=2 \
 			bs=32 \
-			iflag=fullblock \
-			status=none \
 			2>/dev/null \
 		|| die "$TPM/pcrs.bin: unable to update PCR4"
 	fi
@@ -746,13 +750,13 @@ luks-seal() {
 	fi
 
 	# Determine which device is the cryptdisk
-	uuid=$(perl -ne '/UUID=(.*?) / && print "$1"' $PREFIX/etc/crypttab)
+	uuid="$(cut -d' ' -f2 $PREFIX/etc/crypttab)"
 	if [ -z "$uuid" ]; then
 		die "Unable to find UUID in crypttab"
 	fi
-	dev=$(blkid -U "$uuid")
+	dev=$(blkid -U "${uuid#UUID=}")
 	if [ -z "$dev" ]; then
-		die "Unable to find device for uuid $uuid"
+		die "Unable to find device for $uuid"
 	fi
 
 	# Use a tmpfs mount instead of just a temp directory so that
