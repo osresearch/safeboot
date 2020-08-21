@@ -25,10 +25,43 @@ DIR="/etc/safeboot"
 [ -r "$DIR/safeboot.conf" ] && . "$DIR/safeboot.conf"
 [ -r "$DIR/local.conf" ] && . "$DIR/local.conf"
 
+# Programs required to unseal the secrets and decrypt the disk
 copy_exec /usr/bin/sha256sum
 copy_exec /usr/sbin/tpm2-totp
 copy_exec /usr/sbin/tpm2
 copy_exec /lib/x86_64-linux-gnu/libtss2-tcti-device.so.0
+
+# Things so that the recovery shell is easier to use and can
+# sign/seal the root filesystem
+copy_exec /bin/bash
+copy_exec /usr/bin/setsid
+copy_exec /usr/sbin/veritysetup
+copy_exec /usr/bin/xxd
+copy_exec /usr/bin/dd
+copy_exec /sbin/safeboot
+copy_exec /sbin/sbsign.safeboot
+copy_exec /usr/bin/openssl
+copy_file safeboot /etc/opensc/opensc.conf
+copy_file safeboot /usr/lib/ssl/openssl.cnf
+copy_exec /usr/lib/x86_64-linux-gnu/engines-1.1/pkcs11.so
+copy_exec /usr/lib/x86_64-linux-gnu/p11-kit-proxy.so
+copy_exec /lib/x86_64-linux-gnu/libffi.so.7
+copy_exec /usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-trust.so
+copy_exec /lib/x86_64-linux-gnu/libtasn1.so.6
+copy_exec /usr/lib/x86_64-linux-gnu/pkcs11/opensc-pkcs11.so
+copy_exec /lib/x86_64-linux-gnu/libopensc.so.6
+copy_exec /lib/x86_64-linux-gnu/libz.so.1
+copy_exec /lib/x86_64-linux-gnu/libgio-2.0.so.0
+copy_exec /lib/x86_64-linux-gnu/libgobject-2.0.so.0
+copy_exec /lib/x86_64-linux-gnu/libglib-2.0.so.0
+copy_exec /lib/x86_64-linux-gnu/libgmodule-2.0.so.0
+copy_exec /lib/x86_64-linux-gnu/libmount.so.1
+copy_exec /lib/x86_64-linux-gnu/libselinux.so.1
+copy_exec /lib/x86_64-linux-gnu/libresolv.so.2
+copy_exec /lib/x86_64-linux-gnu/libpcre.so.3
+copy_exec /lib/x86_64-linux-gnu/libblkid.so.1
+copy_exec /lib/x86_64-linux-gnu/libpcre2-8.so.0
+copy_exec /lib/x86_64-linux-gnu/libpcsclite.so.1
 
 # Move the configuration and keys into the initrd as well
 copy_file safeboot "$DIR/safeboot.conf"
