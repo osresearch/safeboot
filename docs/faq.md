@@ -78,6 +78,13 @@ modifications by a physically proximate attacker with internal access to the har
 However, if the attacker uses a flash programmer to change the Platform Keys in the flash,
 the TPM measurements of the `Setup` variable will be different and the TPM should refuse
 to unseal the disk encryption key since the PCR values will not match the sealed ones.
+The adversary might try to roll back to an vulnerable version of the kernel and the
+earlier signed PCRs, but the TPM will refuse to unseal since monotonic counter value
+will not match the signed one.
+
+An adversary might create a fake PIN entry screen to try to harvest the unsealing PIN
+or the recovery key, although in any of these cases, the TPM TOTP six-digit authenicator
+value will not be correct since the TPM will not unseal it with modified firmware.
 Additionally the system should fail [remote attestation](attestation.md) if it attempts
 to connect to a server that validates the TPM quote, improving platform resiliency even
 when attackers do gain persistence.
@@ -125,11 +132,39 @@ although it is a work in progress.
 There are other factors involved in configuring Qubes to use dm-verity and TPM sealed
 secrets that have not been addressed yet, as well as an [open qubes-issue on distribution signing keys](https://github.com/QubesOS/qubes-issues/issues/4371#issuecomment-668639572).
 
-## Why does the TPM unsealing fail often?
+## What causes the TPM unsealing to fail?
 ![TPM with wires soldered to the pins](images/tpm.jpg)
 
-It's super fragile right now.  Need to reconsider which PCRs are included
-and what they mean.  Suggestions welcome!
+The TPM will only unseal the disk encryption key if:
+
+* The policy is signed by the UEFI platform key.
+* The PCRs in `$PCRS` match the ones computed by the TPM, which typically include the firmware, UEFI setup variable, UEFI key database, and the PE hash of the kernel + initrd.
+* The boot mode PCR in `$BOOTMODE_PCR` matches the sha256 hash of the `safeboot.mode=` kernel command line parameter and has not been extended post-boot.
+* The TPM monotonic counter in `$TPM_NV_VERSION` matches the one in the policy.
+* The user PIN matches the on used to seal the data.
+
+These requirements are violated by several different attacks, although
+they can also fail if a new kernel is installed with `safeboot linux-sign`
+and `safeboot pcrs-sign` was not successful.  Typically kernel updates can be
+handled seamlessly since the PCR4 value can be predicted from the PE hash of the
+new kernel and initrd.
+
+The PCRs will also be different when the system has had a firmware update
+from [`fwupd`](https://fwupd.org/) (usually measured into PCR0), or if
+the UEFI configuration is changed by the administrator (usually measured
+into PCR1 and PCR5).
+In both of these cases it is hard to predict what
+the resulting PCR values will be, so it is typically necessary to reboot
+into the `recovery` target to extend the PCRs with the new measurements
+and then update the PCR policy with the new values by running `safeboot
+pcrs-sign`.  Some vendors publish the new PCR0 values, and it might be possible
+to predict it by evaluating the TPM event log, but it is not guaranteed.
+
+For a fleet of identical systems, however, it is usually possible to do this upgrade
+on one offline machine and then distribute the signed kernel along with the signed PCR
+policy to the other machines.  This requires some additional work to make practical,
+since the TPM counters are not synchronized.
+
 
 ## How is safeboot's SIP related to macOS SIP?
 ![`dmverity` merkle tree diagram](images/dmverity.png)
