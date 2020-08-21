@@ -25,11 +25,20 @@ DIR="/etc/safeboot"
 [ -r "$DIR/safeboot.conf" ] && . "$DIR/safeboot.conf"
 [ -r "$DIR/local.conf" ] && . "$DIR/local.conf"
 
+# Move the configuration and keys into the initrd as well
+copy_file safeboot "$DIR/safeboot.conf"
+copy_file safeboot-keys "$(dirname "$CERT")/$(basename "$CERT" .pem).pub" "$DIR/cert.pub"
+
+if [ -r "$DIR/local.conf" ]; then
+	copy_file safeboot-local "$DIR/local.conf"
+fi
+
 # Programs required to unseal the secrets and decrypt the disk
 copy_exec /usr/bin/sha256sum
 copy_exec /usr/sbin/tpm2-totp
 copy_exec /usr/sbin/tpm2
 copy_exec /lib/x86_64-linux-gnu/libtss2-tcti-device.so.0
+manual_add_modules nls_iso8859-1
 
 # Things so that the recovery shell is easier to use and can
 # sign/seal the root filesystem
@@ -38,14 +47,24 @@ copy_exec /usr/bin/setsid
 copy_exec /usr/sbin/veritysetup
 copy_exec /usr/bin/xxd
 copy_exec /usr/bin/dd
+copy_exec /usr/bin/chattr
 copy_exec /sbin/safeboot
 copy_exec /sbin/sbsign.safeboot
+
+# openssl has lots of dependencies to be able to talk to
+# the pkcs11 smart cards
 copy_exec /usr/bin/openssl
-copy_file safeboot /etc/opensc/opensc.conf
-copy_file safeboot /usr/lib/ssl/openssl.cnf
+copy_file opensc /etc/opensc/opensc.conf
+copy_file opensc /usr/lib/ssl/openssl.cnf
 copy_exec /usr/lib/x86_64-linux-gnu/engines-1.1/pkcs11.so
 copy_exec /usr/lib/x86_64-linux-gnu/p11-kit-proxy.so
 copy_exec /lib/x86_64-linux-gnu/libffi.so.7
+
+for dir in /usr/share/p11-kit ; do
+	mkdir -p "$DESTDIR$dir"
+	cp -rt "$DESTDIR$dir/.." "$dir"
+done
+
 copy_exec /usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-trust.so
 copy_exec /lib/x86_64-linux-gnu/libtasn1.so.6
 copy_exec /usr/lib/x86_64-linux-gnu/pkcs11/opensc-pkcs11.so
@@ -63,10 +82,29 @@ copy_exec /lib/x86_64-linux-gnu/libblkid.so.1
 copy_exec /lib/x86_64-linux-gnu/libpcre2-8.so.0
 copy_exec /lib/x86_64-linux-gnu/libpcsclite.so.1
 
-# Move the configuration and keys into the initrd as well
-copy_file safeboot "$DIR/safeboot.conf"
-copy_file safeboot-keys "$(dirname "$CERT")/$(basename "$CERT" .pem).pub" "$DIR/cert.pub"
+# pcscd is required for talking to the yubikey
+# and requires its own libraries to be brought along.
+# HOWEVER, it should be brought by the cryptopensc hook,
+# but that doesn't install for some reason. This code is copied
+# from /usr/share/initramfs/hooks/cryptopensc:
 
-if [ -r "$DIR/local.conf" ]; then
-	copy_file safeboot-local "$DIR/local.conf"
-fi
+# Install directories needed by smartcard reading daemon, command, and
+# key-script
+mkdir -p -- "$DESTDIR/etc/opensc" "$DESTDIR/usr/lib/pcsc" "$DESTDIR/var/run" "$DESTDIR/tmp"
+
+# Install pcscd daemon, drivers, conf file
+copy_exec /usr/sbin/pcscd
+LIBC_DIR="$(ldd /usr/sbin/pcscd | sed -nr 's#.* => (/lib.*)/libc\.so\.[0-9.-]+ \(0x[[:xdigit:]]+\)$#\1#p')"
+find -L "$LIBC_DIR" "/usr$LIBC_DIR" -maxdepth 1 \( -name 'libgcc_s.*' -o -name 'libusb-*.so*' -o -name 'libpcsclite.so*' \) -type f | while read so; do
+    copy_exec "$so"
+done
+
+cp -rt "$DESTDIR/usr/lib" /usr/lib/pcsc
+cp -t "$DESTDIR/etc" /etc/reader.conf || true
+cp -t "$DESTDIR/etc" /etc/libccid_Info.plist
+
+# Install opensc commands and conf file
+copy_exec /usr/bin/opensc-tool
+copy_exec /usr/bin/pkcs15-crypt
+cp -t "$DESTDIR/etc/opensc" /etc/opensc/opensc.conf
+
