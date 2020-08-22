@@ -96,4 +96,6 @@ safeboot pcrs-sign
 
 EOF
 
+SAFEBOOT="recovery"
+export SAFEBOOT
 panic "Recovery shell: exit or Control-D to resume boot"
