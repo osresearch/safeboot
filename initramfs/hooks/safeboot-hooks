@@ -1,10 +1,16 @@
 #!/bin/sh
-# Install the tpm2_unseal and direct access library
-# into the initramdisk so that it can be used to
-# unseal the disk encryption key
+# Install the safeboot tools into the initial ramdisk.
+#
+# This copies the /sbin/safeboot script and all of its tools,
+# as well as the tpm2_unseal and direct access library
+# into the initrd when `update-initramfs -u` is run.
 #
 # The tpm2_unseal program uses dlopen() to load the raw device
 # library, so it is necessary to explicitly copy it as well.
+#
+# The pcscd program and openssl and all of its libraries are necessary
+# for the recovery shell to be able to hash the root file system,
+# generate signed kernel images, sign the PCRs, etc.
 #
 # This script should be copied to /etc/initramfs-tools/hooks/tpm2
 # (or a symlink from there to here):
@@ -106,7 +112,7 @@ find -L "$LIBC_DIR" "/usr$LIBC_DIR" -maxdepth 1 \( -name 'libgcc_s.*' -o -name '
 done
 
 cp -rt "$DESTDIR/usr/lib" /usr/lib/pcsc
-cp -t "$DESTDIR/etc" /etc/reader.conf || true
+cp -t "$DESTDIR/etc" /etc/reader.conf 2>/dev/null || true
 cp -t "$DESTDIR/etc" /etc/libccid_Info.plist
 
 # Install opensc commands and conf file
