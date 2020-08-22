@@ -23,7 +23,7 @@ bin/tpm2			usr/sbin/
 
 # scripts to interface with secure boot in the initramfs
 initramfs/hooks/dmverity-root	etc/initramfs-tools/hooks/
-initramfs/hooks/tpm-unseal	etc/initramfs-tools/hooks/
+initramfs/hooks/safeboot-hooks	etc/initramfs-tools/hooks/
 initramfs/scripts/dmverity-root	etc/initramfs-tools/scripts/local-premount/
 initramfs/scripts/blockdev-readonly etc/initramfs-tools/scripts/local-premount/
 initramfs/scripts/safeboot-bootmode etc/initramfs-tools/scripts/init-top/
