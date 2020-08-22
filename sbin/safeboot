@@ -9,7 +9,7 @@
 #
 # turn off "expressions don't expand in single quotes"
 # and "can't follow non-constant sources"
-# shellcheck disable=SC2016 disable=SC1090
+# shellcheck disable=SC2016 disable=SC1090 disable=SC1091
 set -e -o pipefail
 export LC_ALL=C
 
@@ -309,6 +309,13 @@ pem2der()
 		-pubkey \
 		-out "$pub_file" \
 	|| die "$pub_file: Unable to create PUB file from $1"
+}
+
+yubikey_daemon() {
+	if ! pidof pscsd >/dev/null ; then
+		warn "Starting PCSCD for yubikey support"
+		pcscd --foreground &
+	fi
 }
 
 yubikey_init_usage='
@@ -616,6 +623,8 @@ pcrs-sign() {
 	target="${2-linux}"
 	linux="$EFIDIR/$target/linux.efi"
 
+	yubikey_daemon
+
 	if [ "$prevent_rollback" = "prevent-rollback" ]; then
 		warn "$linux: Incrementing TPM version to prevent rollback"
 		tpm2 nvincrement \
@@ -732,6 +741,8 @@ luks-seal() {
 		BOOTMODE_PCR="$1"
 		shift
 	fi
+
+	yubikey_daemon
 
 	KEYSLOT=1
 
@@ -936,6 +947,8 @@ commands+="|sign-kernel"
 
 sign-kernel() {
 	show_help "$1" "$sign_kernel_usage"
+
+	yubikey_daemon
 
 	TARGET="$1" ; shift
 
@@ -1164,6 +1177,16 @@ recovery-sign()
 	|| die "Kernel signing failed!"
 }
 
+reboot() {
+	umount /boot/efi
+	umount /boot
+	mount -o ro,remount "$ROOTDEV"
+
+	warn "Initiating reboot!"
+	sleep 2
+	/sbin/reboot
+}
+
 ########################################
 
 recovery_reboot_usage='
@@ -1189,9 +1212,6 @@ recovery-reboot()
 {
 	show_help "$1" "$recovery_reboot_usage"
 	bootnext "${RECOVERY_TARGET}"
-
-	warn "Initiating reboot!"
-	sleep 2
 	reboot
 }
 
@@ -1212,8 +1232,10 @@ commands+="|bootnext"
 
 efiboot-entry() {
 	TARGET=${1:-recovery}
+
+	# output looks like "Boot0001* linux" or "Boot0015  recovery"
 	efibootmgr \
-	| perl -ne "/^Boot([0-9A-F]+). ${TARGET}\$/ and print \$1"
+	| awk "/^Boot[0-9A-F]+. ${TARGET}\$/ { print substr(\$1,5,4) }"
 }
 
 bootnext()
@@ -1524,7 +1546,8 @@ safeboot unlock
 
 This is a recovery shell command to scan the `/etc/crypttab` for devices
 and call `cryptsetup luksOpen` on each of them, and then scan the LVM groups
-for volumes.
+for volumes.  After it succeeds you can call `safeboot mount` to mount
+the root filesystem (read-only) on `/root`.
 '
 
 usage+=$unlock_usage
@@ -1540,13 +1563,63 @@ unlock() {
 	. /lib/cryptsetup/functions
 
 	TABFILE=/cryptroot/crypttab \
-	crypttab_foreach_entry unlock_entry
+	crypttab_foreach_entry unlock_entry \
+	|| die "unable to unlock every encrypted disk"
 
 	lvm pvscan
 	lvm vgscan
 	lvm lvscan
+}
 
-	# should also try to mount /boot and /boot/efi
+mount_usage='
+## mount
+Usage:
+```
+safeboot mount
+```
+
+This is a recovery shell command to attempt to mount the root disk read-only
+on `/root`, as well as the `/boot` and `/boot/efi` if they exist in
+`/root/etc/fstab`.
+'
+
+mount-by-uuid() {
+	partition="$1"
+	fstab="${2:-/etc/fstab}"
+	dev="$(awk "/^[^#]/ { if (\$2 == '$partition') print $1 }" "$fstab" )"
+
+	if [ -z "$dev" ]; then
+		warn "$partition: Not found in $fstab"
+		return 0
+	fi
+
+	case "$dev" in
+		UUID=*)
+			mount "/dev/disk/by-uuid/${dev#UUID=}" "$partition"
+			;;
+		/dev/*)
+			mount "$dev" "$partition"
+			;;
+		*)
+			die "$partition: unknown dev $dev"
+			;;
+	esac
+}
+
+usage+=$mount_usage
+commands+="|mount"
+
+mount() {
+	mkdir -p /root
+
+	warn "$ROOTDEV: setting to read-only"
+	blockdev --setro "$ROOTDEV"
+
+	mount -o ro "$ROOTDEV" /root \
+	|| die "$ROOTDEV: unable to mount"
+
+	mount-by-uuid /boot /root/etc/fstab
+	mount-by-uuid /boot/efi /root/etc/fstab
 }
 
 ########################################
@@ -1564,7 +1637,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign-kernel|linux-sign|recovery-sign|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext|unlock)
+	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign-kernel|linux-sign|recovery-sign|reboot|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext|unlock|mount)
 		$command "$@"
 		;;
 	*)
