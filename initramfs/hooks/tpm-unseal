@@ -48,6 +48,8 @@ copy_exec /usr/sbin/veritysetup
 copy_exec /usr/bin/xxd
 copy_exec /usr/bin/dd
 copy_exec /usr/bin/chattr
+copy_exec /usr/bin/objcopy
+copy_exec /bin/efibootmgr
 copy_exec /sbin/safeboot
 copy_exec /sbin/sbsign.safeboot
 
