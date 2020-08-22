@@ -86,7 +86,7 @@ Useful commands:
 [1;32msafeboot unlock[m
 
 # Mount the root filesystem read-only and /boot
-[1;32msafeboot mount[m
+[1;32msafeboot mount-all[m
 
 # Fixup the root filesystem hashes and sign the new PCRs
 [1;32msafeboot linux-sign[m

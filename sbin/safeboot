@@ -1571,22 +1571,25 @@ unlock() {
 	lvm lvscan
 }
 
-mount_usage='
-## mount
+mount_all_usage='
+## mount-all
 Usage:
 ```
-safeboot mount
+safeboot mount-all
 ```
 
 This is a recovery shell command to attempt to mount the root disk read-only
 on `/root`, as well as the `/boot` and `/boot/efi` if they exist in
 `/root/etc/fstab`.
 '
+usage+=$mount_all_usage
+commands+="|mounta-all"
+
 
 mount-by-uuid() {
 	partition="$1"
 	fstab="${2:-/etc/fstab}"
-	dev="$(awk "/^[^#]/ { if (\$2 == '$partition') print $1 }" "$fstab" )"
+	dev="$(awk "/^[^#]/ { if (\$2 == \"$partition\") print \$1 }" "$fstab" )"
 
 	if [ -z "$dev" ]; then
 		warn "$partition: Not found in $fstab"
@@ -1606,10 +1609,7 @@ mount-by-uuid() {
 	esac
 }
 
-usage+=$mount_usage
-commands+="|mount"
-
-mount() {
+mount-all() {
 	mkdir -p /root
 
 	warn "$ROOTDEV: setting to read-only"
@@ -1637,7 +1637,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign-kernel|linux-sign|recovery-sign|reboot|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext|unlock|mount)
+	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign-kernel|linux-sign|recovery-sign|reboot|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext|unlock|mount-all)
 		$command "$@"
 		;;
 	*)
