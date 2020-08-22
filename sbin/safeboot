@@ -1181,10 +1181,20 @@ reboot() {
 	umount /boot/efi
 	umount /boot
 	mount -o ro,remount "$ROOTDEV"
+	sync ; sync ; sync
 
 	warn "Initiating reboot!"
 	sleep 2
-	/sbin/reboot
+	sync ; sync ; sync
+
+	if [ -x "/usr/bin/reboot" ]; then
+		# busybox reboot, no init to go through
+		exec /usr/bin/reboot -f
+	fi
+	if [ -x "/sbin/reboot" ]; then
+		# normal reboot process
+		exec /sbin/reboot
+	fi
 }
 
 ########################################
