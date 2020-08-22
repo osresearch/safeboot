@@ -53,7 +53,9 @@ copy_exec /usr/bin/objcopy
 copy_exec /bin/efibootmgr
 copy_exec /sbin/safeboot
 copy_exec /sbin/sbsign.safeboot
+copy_exec /usr/sbin/fsck.fat
 copy_file efi-stub /usr/lib/systemd/boot/efi/linuxx64.efi.stub
+copy_file fstab /etc/fstab /etc/safeboot/fstab
 
 # openssl has lots of dependencies to be able to talk to
 # the pkcs11 smart cards
