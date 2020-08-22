@@ -312,7 +312,7 @@ pem2der()
 }
 
 yubikey_daemon() {
-	if ! pidof pscsd >/dev/null ; then
+	if ! pidof pcscd >/dev/null ; then
 		warn "Starting PCSCD for yubikey support"
 		pcscd --foreground &
 	fi
