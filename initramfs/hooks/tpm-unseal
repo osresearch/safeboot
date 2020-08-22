@@ -28,6 +28,7 @@ DIR="/etc/safeboot"
 # Move the configuration and keys into the initrd as well
 copy_file safeboot "$DIR/safeboot.conf"
 copy_file safeboot-keys "$(dirname "$CERT")/$(basename "$CERT" .pem).pub" "$DIR/cert.pub"
+copy_file safeboot-keys "$CERT"
 
 if [ -r "$DIR/local.conf" ]; then
 	copy_file safeboot-local "$DIR/local.conf"
@@ -52,6 +53,7 @@ copy_exec /usr/bin/objcopy
 copy_exec /bin/efibootmgr
 copy_exec /sbin/safeboot
 copy_exec /sbin/sbsign.safeboot
+copy_file efi-stub /usr/lib/systemd/boot/efi/linuxx64.efi.stub
 
 # openssl has lots of dependencies to be able to talk to
 # the pkcs11 smart cards
