@@ -184,7 +184,7 @@ else
 			totp="$(/usr/sbin/tpm2-totp --time calculate || echo TPM TOTP FAILED)"
 			msg="$totp $MODE (Try $tries)
 
-	Enter unseal PIN for $CRYPTTAB_SOURCE ($CRYPTTAB_NAME): "
+Enter unseal PIN for $CRYPTTAB_SOURCE ($CRYPTTAB_NAME): "
 
 			PIN="$(/lib/cryptsetup/askpass "$msg")"
 
