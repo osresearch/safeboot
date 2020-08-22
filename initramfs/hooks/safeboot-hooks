@@ -17,7 +17,7 @@
 # ln -s `pwd`/initramfs-unseal-hook /etc/initramfs-tools/hooks/tpm2
 #
 # turn off "expressions don't expand in single quotes" and "can't follow non-constant sources"
-# shellcheck disable=SC2016,SC1090,SC1091
+# shellcheck disable=SC2016,SC1090,SC1091,SC2043
 
 set -e
 
@@ -107,7 +107,7 @@ mkdir -p -- "$DESTDIR/etc/opensc" "$DESTDIR/usr/lib/pcsc" "$DESTDIR/var/run" "$D
 # Install pcscd daemon, drivers, conf file
 copy_exec /usr/sbin/pcscd
 LIBC_DIR="$(ldd /usr/sbin/pcscd | sed -nr 's#.* => (/lib.*)/libc\.so\.[0-9.-]+ \(0x[[:xdigit:]]+\)$#\1#p')"
-find -L "$LIBC_DIR" "/usr$LIBC_DIR" -maxdepth 1 \( -name 'libgcc_s.*' -o -name 'libusb-*.so*' -o -name 'libpcsclite.so*' \) -type f | while read so; do
+find -L "$LIBC_DIR" "/usr$LIBC_DIR" -maxdepth 1 \( -name 'libgcc_s.*' -o -name 'libusb-*.so*' -o -name 'libpcsclite.so*' \) -type f | while read -r so; do
     copy_exec "$so"
 done
 
