@@ -1515,6 +1515,42 @@ you can unwind the changes that were made.
 
 ########################################
 
+unlock_usage='
+## unlock
+Usage:
+```
+safeboot unlock
+```
+
+This is a recovery shell command to scan the `/etc/crypttab` for devices
+and call `cryptsetup luksOpen` on each of them, and then scan the LVM groups
+for volumes.
+'
+
+usage+=$unlock_usage
+commands+="|unlock"
+
+unlock_entry() {
+	cryptsetup luksOpen \
+		"$(resolve_device_spec "$CRYPTTAB_SOURCE")" \
+		"$CRYPTTAB_NAME"
+}
+
+unlock() {
+	. /lib/cryptsetup/functions
+
+	TABFILE=/cryptroot/crypttab \
+	crypttab_foreach_entry unlock_entry
+
+	lvm pvscan
+	lvm vgscan
+	lvm lvscan
+
+	# should also try to mount /boot and /boot/efi
+}
+
+########################################
+
 if [ $# -lt 1 ]; then
 	die "Usage: $0 [$commands] ...."
 fi
@@ -1528,7 +1564,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign-kernel|linux-sign|recovery-sign|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext)
+	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign-kernel|linux-sign|recovery-sign|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext|unlock)
 		$command "$@"
 		;;
 	*)

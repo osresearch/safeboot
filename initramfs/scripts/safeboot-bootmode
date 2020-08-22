@@ -82,7 +82,7 @@ cat >&2 <<'EOF'
 Hints:
 
 # Decrypt disks and scan LVM groups
-crypt_unlock
+safeboot unlock
 
 # Read TPM PCRs
 tpm2 pcrread
@@ -95,24 +95,5 @@ safeboot linux-sign
 safeboot pcrs-sign
 
 EOF
-
-cat > /sbin/crypt_unlock <<'EOF'
-#!/bin/sh
-. /lib/cryptsetup/functions
-export TABFILE=/cryptroot/crypttab
-
-unlock_entry() {
-	cryptsetup luksOpen \
-		"$(resolve_device_spec "$CRYPTTAB_SOURCE")" \
-		"$CRYPTTAB_NAME"
-}
-
-crypttab_foreach_entry unlock_entry
-
-lvm pvscan
-lvm vgscan
-lvm lvscan
-EOF
-chmod +x /sbin/crypt_unlock
 
 panic "Recovery shell: exit or Control-D to resume boot"
