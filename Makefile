@@ -1,4 +1,4 @@
-VERSION ?= 0.6
+VERSION ?= 0.7
 
 BINS += bin/sbsign.safeboot
 BINS += bin/sign-efi-sig-list.safeboot

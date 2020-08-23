@@ -1,3 +1,14 @@
+safeboot (0.7) unstable; urgency=medium
+
+  * Added signed PCRs
+  * Added TPM counters for rollback protection
+  * safeboot.conf is now included in the initrd, fewer params on command line
+  * Recovery boot can now sign and hash root filesystem
+  * Helpers for recovery boot to unlock cryptdisk, mount filesystems, etc
+  * No more perl in /sbin/safeboot
+
+ -- Trammell Hudson <hudson@unicycle>  Sun, 23 Aug 2020 18:12:58 +0200
+
 safeboot (0.6) unstable; urgency=medium
 
   * Lots of documentation updates

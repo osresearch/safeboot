@@ -32,8 +32,8 @@ Releases for the the safeboot Debian package are in [safeboot/releases](https://
 * Resizing '/' to 8GB during the install if you want to enable SIP
 
 ```
-wget https://github.com/osresearch/safeboot/releases/download/release-0.6/safeboot_0.6_amd64.deb
-sudo apt install safeboot_0.6_amd64.deb
+wget https://github.com/osresearch/safeboot/releases/download/release-0.7/safeboot_0.7_amd64.deb
+sudo apt install safeboot_0.7_amd64.deb
 sudo update-initramfs -u
 sudo safeboot yubikey-init /CN=foo/ # or safeboot key-init if you don't have a token
 sudo safeboot uefi-sign-keys
