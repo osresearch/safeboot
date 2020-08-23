@@ -653,7 +653,21 @@ pcrs-sign() {
 	ev_sep="$(echo "00000000" | hex2bin | tpm2_trial_extend 0)"
 	pcr4_computed="$(echo -n "${ev_sep}${linux_hash}" | hex2bin | sha256)"
 
+	pcr2_read="$(tpm2 pcrread sha256:2 | tail -1 | cut -c9- | tr '[:upper:]' '[:lower:]')"
 	pcr4_read="$(tpm2 pcrread sha256:4 | tail -1 | cut -c9- | tr '[:upper:]' '[:lower:]')"
+
+	# HACK: this assumes PCR2 is the second in the list
+	if [ "$pcr2_read" != "$ev_sep" ]; then
+		warn "PCR2: ignoring BootMenu entries"
+		echo -n "$ev_sep" | hex2bin \
+		| dd \
+			of="$TMP/pcrs.bin" \
+			conv=notrunc \
+			seek=1 \
+			bs=32 \
+			2>/dev/null \
+		|| die "$TPM/pcrs.bin: unable to update PCR2"
+	fi
 
 	warn "$linux: PE hash $linux_hash"
 
@@ -662,7 +676,7 @@ pcrs-sign() {
 	else
 		warn "PCR4 $pcr4_computed"
 
-		# HACK: replace the PCR with the computed one
+		# HACK: replace the PCR with the computed one, assuming PCR14 is the 3rd
 		# initrd dd does not support iflag=fullblock status=none
 		echo -n "$pcr4_computed" | hex2bin \
 		| dd \
