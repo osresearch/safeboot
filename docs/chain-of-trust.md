@@ -96,7 +96,66 @@ based on the Profile settings.
 
 ## UEFI
 
+![uefitool-ne showing Phoenix hash range in a Lenovo firmware](images/uefitool.png)
+
+After some parts of the UEFI firmware are hashed and validated by
+BootGuard, the ACM executes a `GETSEC` instruction to jump to either
+the legacy reset vector at `0xFFFFFFF0` or the address in the BootGuard
+manifest.  This is typically in the PEI firmware volume and in the
+`SecCore.efi` executable with the `VolumeTopFile` GUID.
+
+At this point the chain of trust is now controlled by the OEM and
+they are responsible for validating the rest of the firmware.  Usually
+they will jump into the Intel FSP to initialze DRAM (on AMD the PSP
+has initialized DRAM prior to starting the BIOS, although they have
+a separate chain of trust entirely).
+
+Once DRAM is initialized, the `SecCore` copies the DXE firmware volumes
+from flash into RAM and computes their hashes.  The major BIOS vendors (IBV)
+have their own data structures, such as the AMIHash or PhoenixHash, that
+are used to enumerate the regions to be hashed.  This is another common
+area of TOCTOU attacks against the boot process.
+
+(Need to document when UEFI capsule updates are searched and when the PRR
+are locked to prevent further flash writes)
+
+The UEFI firmware stores non-volatile configuration data in the flash as well.
+These "nvram variables" are controlled by the computer owner and begin the
+chain of trust transition from the OEM to the owner.  The `SecureBoot` variable
+tells the firmware if it should enable UEFI Secure Boot.  If it is set, then
+the firmware will attempt to enforce the secure boot policy.
+
+To do this it has a Platform Key (`PK`), which signs the Key-Exchange-Key
+(`KEK`), which signs entries in the key database (`db`) as well as
+key revocation entries (`dbx`).  Typically the `PK` and `KEK` are
+OEM keys (I think) and the `db` is preloaded with Microsoft's key.
+Linux distributions and tools like `grub` have paid Microsoft to sign
+their bootloaders, which allow them to boot on commodity systems with
+UEFI Secure Boot enabled. It is also possible to replace these keys,
+and the safeboot project loads an owner controlled key into the PK to
+ensure that only owner signed code will be booted.
+
+However, before the firmware can locate the boot disk, which might be
+SATA, NVME, USB, or network, it needs to initialize the hardware and
+possibly load _Option ROMs_ from devices to configure them.  These Options
+ROMs are literally x86 code that is run in ring 0 while the system is
+still in a very vulnerable state, so it is important that they be signed.
+Option ROMs have been an easy vulnerability for local attackers for many
+years (Heasman BH'07, snare BH'12, Hudson 31C3/BH'15).
+
+Once the devices have been initialized, UEFI transitions to the Boot Device Selector
+phase (`BDS`), which uses the nvram variables `BootNext`, `Boot0000`, `Boot0001`,
+etc to determine which boot loader to use.  The BDS also calls `bs->ExitBootServices()`
+to tell the firmware that the OS is about to start, which locks some of the firmware
+variables from further updates.
+
 ## Linux
+
+(To be added: `shim` protocol?)
+
+Linux has a kernel key ring that is loaded at boot time with the UEFI keys as well
+as a compile-time key.  It validates kernel modules with this key.  (To be written)
 
 ## TPM
 
+(To be written)
