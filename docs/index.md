@@ -1,10 +1,10 @@
 ![Linux on a classic Butterfly Thinkpad](images/installation-header.jpg)
 
-# Safe Boot: Booting Linux Safely
+# safeboot: Booting Linux Safely
 
 ## Goals
 
-Safe Boot has five goals to improve the safety of booting Linux
+`safeboot` has five goals to improve the safety of booting Linux
 on normal laptops:
 
 * **Booting only code that is authorized by the system owner** (by installing a hardware protected platform key for the kernel and initrd)

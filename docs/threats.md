@@ -43,7 +43,7 @@ setup instructions include:
 * Enabling UEFI Secure Boot, Supervisor password, Tamper Switches, etc
 * Generating an owner controlled signing key in a hardware token
 * Installing the owner's signing key as the UEFI Secure Boot Platform Key (`PK`)
-* Removing OEM and Microsoft keys from the UEFI Secure Boot key database ('db')
+* Removing OEM and Microsoft keys from the UEFI Secure Boot key database (`db`)
 * Signing the kernel, initrd and command line with the owner's hardware key
 
 ### Booting
