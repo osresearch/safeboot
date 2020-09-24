@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url>
+     <loc>https://safeboot.dev/</loc>
+     <lastmod>2020-09-24</lastmod>
+     <changefreq>daily</changefreq>
+    </url><url>
+     <loc>https://safeboot.dev/install/</loc>
+     <lastmod>2020-09-24</lastmod>
+     <changefreq>daily</changefreq>
+    </url><url>
+     <loc>https://safeboot.dev/faq/</loc>
+     <lastmod>2020-09-24</lastmod>
+     <changefreq>daily</changefreq>
+    </url><url>
+     <loc>https://safeboot.dev/threats/</loc>
+     <lastmod>2020-09-24</lastmod>
+     <changefreq>daily</changefreq>
+    </url><url>
+     <loc>https://safeboot.dev/attestation/</loc>
+     <lastmod>2020-09-24</lastmod>
+     <changefreq>daily</changefreq>
+    </url><url>
+     <loc>https://safeboot.dev/chain-of-trust/</loc>
+     <lastmod>2020-09-24</lastmod>
+     <changefreq>daily</changefreq>
+    </url><url>
+     <loc>https://safeboot.dev/safeboot/</loc>
+     <lastmod>2020-09-24</lastmod>
+     <changefreq>daily</changefreq>
+    </url><url>
+     <loc>https://safeboot.dev/tpm2-attest/</loc>
+     <lastmod>2020-09-24</lastmod>
+     <changefreq>daily</changefreq>
+    </url>
+</urlset>

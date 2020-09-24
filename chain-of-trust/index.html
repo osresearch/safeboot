@@ -1,0 +1,688 @@
+
+
+
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Debian package to enable UEFI SecureBoot, enroll your own hardware backed platform key, sign the kernel and initrd, decrypt the disk with the TPM, and enable system integrity protection with dmverity">
+      
+      
+        <link rel="canonical" href="https://safeboot.dev/chain-of-trust/">
+      
+      
+      <link rel="shortcut icon" href="../images/favicon.ico">
+      <meta name="generator" content="mkdocs-1.1.2, mkdocs-material-5.5.13">
+    
+<!--
+ fill in the opengraph meta tags, with defaults from the site config
+ or values in the yaml metadata for the specific page (summary and image).
+-->
+<meta property="og:title"
+      content="Chain of Trust">
+<meta property="og:site_name" content="safeboot">
+<meta property="og:url" content="https://safeboot.dev/chain-of-trust/">
+<meta property="og:description"
+	content="Debian package to enable UEFI SecureBoot, enroll your own hardware backed platform key, sign the kernel and initrd, decrypt the disk with the TPM, and enable system integrity protection with dmverity">
+<meta property="og:image"
+      content="https://safeboot.dev/images/logo.png">
+
+    
+      
+        <title>Chain of Trust - safeboot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.077507d7.min.css">
+      
+      
+    
+    
+    
+       <!-- Load fonts from Google -->
+       
+         <link href="https://fonts.gstatic.com" rel="preconnect" crossorigin />
+         <link rel="stylesheet" type="text/css"
+             href="https://fonts.googleapis.com/css?family=IBM+Plex+Serif:300,400,400i,700%7CIBM+Plex+Sans:500,600,700%7CIBM+Plex+Mono&display=fallback" />
+         <style>
+           body, input {
+             font-family: "IBM Plex Serif", "Helvetica Neue",
+               Helvetica, Arial, sans-serif;
+           }
+           pre, code, kbd {
+             font-family: "IBM Plex Mono", "Courier New",
+               Courier, monospace;
+           }
+	   h1, h2, h3, h4, h5, h6 {
+             font-family: "IBM Plex Sans", sans-serif;
+	     font-weight: 700 !important;
+           }
+         </style>
+       
+     
+    
+    
+      <link rel="stylesheet" href="../extra.css">
+    
+    
+      
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#chain-of-trust" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <header class="md-header" data-md-component="header">
+  <nav class="md-header-nav md-grid" aria-label="Header">
+    <a href="https://safeboot.dev/" title="safeboot" class="md-header-nav__button md-logo" aria-label="safeboot">
+      
+  <img src="../images/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header-nav__button md-icon" for="__drawer">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2z"/></svg>
+    </label>
+    <div class="md-header-nav__title" data-md-component="header-title">
+      
+        <div class="md-header-nav__ellipsis">
+          <span class="md-header-nav__topic md-ellipsis">
+            safeboot
+          </span>
+          <span class="md-header-nav__topic md-ellipsis">
+            
+              Chain of Trust
+            
+          </span>
+        </div>
+      
+    </div>
+    
+      <label class="md-header-nav__button md-icon" for="__search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0116 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 019.5 16 6.5 6.5 0 013 9.5 6.5 6.5 0 019.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"/></svg>
+      </label>
+      
+<div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" data-md-state="active">
+      <label class="md-search__icon md-icon" for="__search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0116 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 019.5 16 6.5 6.5 0 013 9.5 6.5 6.5 0 019.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
+      </label>
+      <button type="reset" class="md-search__icon md-icon" aria-label="Clear" data-md-component="search-reset" tabindex="-1">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg>
+      </button>
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header-nav__source">
+        
+<a href="https://github.com/osresearch/safeboot/" title="Go to repository" class="md-source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><path d="M439.55 236.05L244 40.45a28.87 28.87 0 00-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 01-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 000 40.81l195.61 195.6a28.86 28.86 0 0040.8 0l194.69-194.69a28.86 28.86 0 000-40.81z"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+        
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              <div class="md-sidebar md-sidebar--primary" data-md-component="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="https://safeboot.dev/" title="safeboot" class="md-nav__button md-logo" aria-label="safeboot">
+      
+  <img src="../images/logo.png" alt="logo">
+
+    </a>
+    safeboot
+  </label>
+  
+    <div class="md-nav__source">
+      
+<a href="https://github.com/osresearch/safeboot/" title="Go to repository" class="md-source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><path d="M439.55 236.05L244 40.45a28.87 28.87 0 00-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 01-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 000 40.81l195.61 195.6a28.86 28.86 0 0040.8 0l194.69-194.69a28.86 28.86 0 000-40.81z"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href=".." title="Overview" class="md-nav__link">
+      Overview
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../install/" title="Installation" class="md-nav__link">
+      Installation
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../faq/" title="Frequently Asked Questions" class="md-nav__link">
+      Frequently Asked Questions
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../threats/" title="Threat Model" class="md-nav__link">
+      Threat Model
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../attestation/" title="Remote Attestation" class="md-nav__link">
+      Remote Attestation
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+  
+
+
+  <li class="md-nav__item md-nav__item--active">
+    
+    <input class="md-nav__toggle md-toggle" data-md-toggle="toc" type="checkbox" id="__toc">
+    
+      
+    
+    
+      <label class="md-nav__link md-nav__link--active" for="__toc">
+        Chain of Trust
+        <span class="md-nav__icon md-icon"></span>
+      </label>
+    
+    <a href="./" title="Chain of Trust" class="md-nav__link md-nav__link--active">
+      Chain of Trust
+    </a>
+    
+      
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#keys-and-certificates" class="md-nav__link">
+    Keys and certificates
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#me-startup" class="md-nav__link">
+    ME Startup
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#x86-ucode-and-acm" class="md-nav__link">
+    x86 ucode and ACM
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uefi" class="md-nav__link">
+    UEFI
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#linux" class="md-nav__link">
+    Linux
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tpm" class="md-nav__link">
+    TPM
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+    
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../safeboot/" title="safeboot subcommands" class="md-nav__link">
+      safeboot subcommands
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../tpm2-attest/" title="tpm2-attest subcommands" class="md-nav__link">
+      tpm2-attest subcommands
+    </a>
+  </li>
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#keys-and-certificates" class="md-nav__link">
+    Keys and certificates
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#me-startup" class="md-nav__link">
+    ME Startup
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#x86-ucode-and-acm" class="md-nav__link">
+    x86 ucode and ACM
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uefi" class="md-nav__link">
+    UEFI
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#linux" class="md-nav__link">
+    Linux
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tpm" class="md-nav__link">
+    TPM
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          <div class="md-content">
+            <article class="md-content__inner md-typeset">
+              
+                
+                
+                  
+                
+                
+                <h1 id="chain-of-trust">Chain of Trust</h1>
+<p><img alt="No longer the 8086" src="../images/not-8086.jpg" /></p>
+<p>Booting a modern x86 CPU is no longer as simple as it used to be.
+This page attempts to document the entire chain of trust and
+keys involved in securing the boot process.  It is based on reverse
+engineered and observed behaviour, so it may not be entirely accurate.
+Hopefully it is still helpful.</p>
+<h2 id="keys-and-certificates">Keys and certificates</h2>
+<ul>
+<li>Intel's ME public key hash on die</li>
+<li>Intel's ME public key stored in flash</li>
+<li>Intel's ucode symmetric key (burned into the CPU?)</li>
+<li>Intel's ucode public key hash (burned into the CPU?)</li>
+<li>Intel's ucode public key stored in ucode file in the flash</li>
+<li>Intel's ACM public key hash (in CPU and updatable in microcode?)</li>
+<li>Intel's ACM public key in the ACM header</li>
+<li>OEM Key Manifest Security Version Number (KMSVN, stored in fuses in PCH)</li>
+<li>OEM root public key hash (OTP fuses in the PCH, delivered from ME to x86)</li>
+<li>Bootguard Key Manifest (with KMSVN to protect against rollback) signed by OEM public key </li>
+<li>OEM root public key in the Bootguard Key Manifest in the flash</li>
+<li>OEM per-model public key stored in Bootguard Key Manifest</li>
+<li>Bootguard Boot Policy, signed by OEM per-model public key</li>
+<li>Bootguard region hashes, stored in Bootguard Boot Policy</li>
+<li>UEFI Platform Key (PK) / Key Exchange Key (KEK) / Database keys (DB) / Revocation Database (DBX)</li>
+<li>CA root key</li>
+<li>TPM OEM root certificate</li>
+<li>TPM OEM intermediate certificate</li>
+<li>TPM Endorsement Key</li>
+<li>TPM Attestation Key</li>
+<li>Linux kernel keyring</li>
+</ul>
+<h2 id="me-startup">ME Startup</h2>
+<p><img alt="Time series of reads from the SPI flash during system startup" src="../images/boot-reads.jpg" /></p>
+<p>As soon as power is available, the ME boots up from its on-die boot
+ROM, checks some straps and fuses to determine its configuration,
+and typically then copies the flash partition table from the ME
+region of the flash to its on-die SRAM (although <code>ROMB</code> fused
+chips have limited security). The boot ROM locates the <code>FTPR</code>
+partition and copies it from the SPI flash into the on-die SRAM. It then
+checks that the SHA-1 hash of the key stored in the parition manifest
+matches the one in its on-die ROM and validates the RSA signature
+on the rest of the partition manifest. The partition table contains
+hashes of each of the modules in the partition, allowing the modules
+to be validated after they are copied into the on-die SRAM for execution
+(<a href="https://www.blackhat.com/docs/eu-17/materials/eu-17-Sklyarov-Intel-ME-Flash-File-System-Explained.pdf">Intel ME Flash File System Explained</a> - Sklyarov et al, BH-EU 2017).</p>
+<h2 id="x86-ucode-and-acm">x86 ucode and ACM</h2>
+<p>When the ME starts the clocks for the x86 CPU, the on-die microcode fetches the
+<a href="https://github.com/tianocore/edk2-platforms/blob/a89235068ee957828bdb7f1ea3d2fde2546d666a/Silicon/Intel/IntelSiliconPkg/Include/IndustryStandard/FirmwareInterfaceTable.h">Firmware Interface Table (FIT) pointer at <code>0xFFFFFFC0</code></a>
+ which points to the FIT table somewhere in the
+SPI flash image. This table is then searched for microcode updates that
+match the CPU ID. The current microcode copies them from flash in a
+linear fashion (into L3 cache?) and decrypts with an on-die symmetric
+AES key (<a href="https://www.dcddcc.com/docs/2014_paper_microcode.pdf">Chen &amp; Ahn 2014</a>),
+then validates with (on-die?) RSA key. It's likely that
+these ucode updates also contain the key hashes for the ACM.</p>
+<p>Next the x86 ucode goes back to the FIT to find the Startup ACM and does
+an odd copy of it into L3 (looks like multiple hyperthreads are copying
+4KB chunks?). The ACM contains an RSA public key; the ucode compares it
+against either an on-die key (hash?) or one stored in the ucode update and
+halts the CPU if it does not match. The ucode then checks the signature
+on the ACM and again halts if it does not match.</p>
+<p><img alt="Graph of memory read addresses versus time, showing TOCTOU vulnerability" src="../images/toctou.jpg" /></p>
+<p>The Startup ACM is supposed to run entirely out of L3, although there
+have been bugs (<a href="https://trmm.net/TOCTOU">Bosch &amp; Hudson, 2019</a>)
+that allowed a proximate attacker to use devices like the
+<a href="https://trmm.net/Spispy">Spispy</a>
+to detect accidental cache misses and TOCTOU the firmware. The ACM
+receives the OEM public key hash and Bootguard Profile from the ME via
+MSR. (Not certain of the order of operations here).</p>
+<p>The ACM reads the BootGuard Key Manifest from the SPI flash (pointed to
+by the FIT and identified by <code>__KEYM__</code>) into L3 and hashes the
+RSA public key stored in it. If it doesn't match the OEM public key hash
+or if the OEM public key signature on the Key Manifest or if the stored
+KmSvn isn't right, the ACM takes action based on the Bootguard Profile
+bits. If it does match, it locates the Bootguard Policy in the FIT (and
+identified by <code>__ACBP__</code>) and copies it into L3. The ACM then
+computes the hash of the RSA public key in the Policy and compares it
+to the SHA256 hash stored in the Key Manifest. If that fails to match,
+or if the RSA signature on the Policy doesn't match, then the ACM again
+takes action based on the Profile settings.</p>
+<p>The ACM uses the now validated Bootguard Policy structure to read the
+Initial Boot Block (IBB) segments into L3, hashing them as they are
+copied (and hopefully not causing any cache misses). If this computed
+hash doesn't match the "IBB Digest" in the Policy, the ACM takes action
+based on the Profile settings.</p>
+<h2 id="uefi">UEFI</h2>
+<p><img alt="uefitool-ne showing Phoenix hash range in a Lenovo firmware" src="../images/uefitool.png" /></p>
+<p>After some parts of the UEFI firmware are hashed and validated by
+BootGuard, the ACM executes a <code>GETSEC</code> instruction to jump to either
+the legacy reset vector at <code>0xFFFFFFF0</code> or the address in the BootGuard
+manifest.  This is typically in the PEI firmware volume and in the
+<code>SecCore.efi</code> executable with the <code>VolumeTopFile</code> GUID.</p>
+<p>At this point the chain of trust is now controlled by the OEM and
+they are responsible for validating the rest of the firmware.  Usually
+they will jump into the Intel FSP to initialze DRAM (on AMD the PSP
+has initialized DRAM prior to starting the BIOS, although they have
+a separate chain of trust entirely).</p>
+<p>Once DRAM is initialized, the <code>SecCore</code> copies the DXE firmware volumes
+from flash into RAM and computes their hashes.  The major BIOS vendors (IBV)
+have their own data structures, such as the AMIHash or PhoenixHash, that
+are used to enumerate the regions to be hashed.  This is another common
+area of TOCTOU attacks against the boot process.</p>
+<p>(Need to document when UEFI capsule updates are searched and when the PRR
+are locked to prevent further flash writes)</p>
+<p>The UEFI firmware stores non-volatile configuration data in the flash as well.
+These "nvram variables" are controlled by the computer owner and begin the
+chain of trust transition from the OEM to the owner.  The <code>SecureBoot</code> variable
+tells the firmware if it should enable UEFI Secure Boot.  If it is set, then
+the firmware will attempt to enforce the secure boot policy.</p>
+<p>To do this it has a Platform Key (<code>PK</code>), which signs the Key-Exchange-Key
+(<code>KEK</code>), which signs entries in the key database (<code>db</code>) as well as
+key revocation entries (<code>dbx</code>).  Typically the <code>PK</code> and <code>KEK</code> are
+OEM keys (I think) and the <code>db</code> is preloaded with Microsoft's key.
+Linux distributions and tools like <code>grub</code> have paid Microsoft to sign
+their bootloaders, which allow them to boot on commodity systems with
+UEFI Secure Boot enabled. It is also possible to replace these keys,
+and the safeboot project loads an owner controlled key into the PK to
+ensure that only owner signed code will be booted.</p>
+<p>However, before the firmware can locate the boot disk, which might be
+SATA, NVME, USB, or network, it needs to initialize the hardware and
+possibly load <em>Option ROMs</em> from devices to configure them.  These Options
+ROMs are literally x86 code that is run in ring 0 while the system is
+still in a very vulnerable state, so it is important that they be signed.
+Option ROMs have been an easy vulnerability for local attackers for many
+years (Heasman BH'07, snare BH'12, Hudson 31C3/BH'15).</p>
+<p>Once the devices have been initialized, UEFI transitions to the Boot Device Selector
+phase (<code>BDS</code>), which uses the nvram variables <code>BootNext</code>, <code>Boot0000</code>, <code>Boot0001</code>,
+etc to determine which boot loader to use.  The BDS also calls <code>bs-&gt;ExitBootServices()</code>
+to tell the firmware that the OS is about to start, which locks some of the firmware
+variables from further updates.</p>
+<h2 id="linux">Linux</h2>
+<p>(To be added: <code>shim</code> protocol?)</p>
+<p>Linux has a kernel key ring that is loaded at boot time with the UEFI keys as well
+as a compile-time key.  It validates kernel modules with this key.  (To be written)</p>
+<h2 id="tpm">TPM</h2>
+<p>(To be written)</p>
+                
+                  
+                    
+
+<hr>
+<div class="md-source-date">
+  <small>
+    
+      Last update: <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date">September 8, 2020</span>
+    
+  </small>
+</div>
+                  
+                
+              
+              
+                
+
+
+              
+            </article>
+          </div>
+        </div>
+      </main>
+      
+        
+<footer class="md-footer">
+  
+    <div class="md-footer-nav">
+      <nav class="md-footer-nav__inner md-grid" aria-label="Footer">
+        
+          <a href="../attestation/" title="Remote Attestation" class="md-footer-nav__link md-footer-nav__link--prev" rel="prev">
+            <div class="md-footer-nav__button md-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
+            </div>
+            <div class="md-footer-nav__title">
+              <div class="md-ellipsis">
+                <span class="md-footer-nav__direction">
+                  Previous
+                </span>
+                Remote Attestation
+              </div>
+            </div>
+          </a>
+        
+        
+          <a href="../safeboot/" title="safeboot subcommands" class="md-footer-nav__link md-footer-nav__link--next" rel="next">
+            <div class="md-footer-nav__title">
+              <div class="md-ellipsis">
+                <span class="md-footer-nav__direction">
+                  Next
+                </span>
+                safeboot subcommands
+              </div>
+            </div>
+            <div class="md-footer-nav__button md-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11H4z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    </div>
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-footer-copyright">
+        
+        Made with
+        <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+          Material for MkDocs
+        </a>
+      </div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    
+      <script src="../assets/javascripts/vendor.2d1db4bd.min.js"></script>
+      <script src="../assets/javascripts/bundle.6627ddf3.min.js"></script><script id="__lang" type="application/json">{"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents"}</script>
+      
+      <script>
+        app = initialize({
+          base: "..",
+          features: [],
+          search: Object.assign({
+            worker: "../assets/javascripts/worker/search.5eca75d3.min.js"
+          }, typeof search !== "undefined" && search)
+        })
+      </script>
+      
+    
+  </body>
+</html>
