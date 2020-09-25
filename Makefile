@@ -42,6 +42,7 @@ libtss2-mu = tpm2-tss/src/tss2-mu/.libs/libtss2-mu.a
 libtss2-rc = tpm2-tss/src/tss2-rc/.libs/libtss2-rc.a
 libtss2-sys = tpm2-tss/src/tss2-sys/.libs/libtss2-sys.a
 libtss2-esys = tpm2-tss/src/tss2-esys/.libs/libtss2-esys.a
+libtss2-tcti = tpm2-tss/src/tss2-tcti/.libs/libtss2-tctildr.a
 
 $(libtss2-esys): tpm2-tss/Makefile
 	$(MAKE) -C $(dir $<)
@@ -72,6 +73,8 @@ tpm2-tools/Makefile: $(libtss2-esys)
 		TSS2_MU_LIBS="../$(libtss2-mu)" \
 		TSS2_SYS_CFLAGS=-I../tpm2-tss/include \
 		TSS2_SYS_LIBS="../$(libtss2-sys)" \
+		TSS2_TCTI_CFLAGS=-I../tpm2-tss/include \
+		TSS2_TCTI_LIBS="../$(libtss2-tcti)" \
 		TSS2_ESYS_3_0_CFLAGS=-I../tpm2-tss/include \
 		TSS2_ESYS_3_0_LIBS="../$(libtss2-esys) -ldl" \
 
