@@ -896,7 +896,7 @@ the <code>resize2fs</code> fails.  Either run this on a machine that doesn't hav
 important data, or be certain that you have a good backup.</p>
 </div>
 <p>In the recovery shell, run these commands to decrypt the root disk, make sure
-it is clena, resize the filesystem, and then resize the logical volume.
+it is clean, resize the filesystem, and then resize the logical volume.
 No need for <code>sudo</code>, since the recovery shell is always root.</p>
 <div class="highlight"><pre><span></span><code>crypt_unlock
 fsck -f /dev/vgubuntu/root
