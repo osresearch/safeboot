@@ -14,10 +14,13 @@ case $1 in
         ;;
 esac
 
+BOOTMODE_PCR=14
+
 . /scripts/functions
 . /etc/safeboot/functions.sh
+. /etc/safeboot/safeboot.conf
+. /etc/safeboot/local.conf
 
-BOOTMODE_PCR=14
 MODE=unknown
 
 # shellcheck disable=SC2013
