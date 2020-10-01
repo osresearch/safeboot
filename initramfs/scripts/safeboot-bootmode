@@ -41,7 +41,7 @@ done
 warn "TPM mode=$MODE pcrs=$PCRS $BOOTMODE_PCR"
 
 tpm2 pcrread >&2 \
-	'sha256:$PCRS,$BOOTMODE_PCR"
+	"sha256:$PCRS,$BOOTMODE_PCR"
 
 #
 # Extend PCR14 with the boot mode so that recovery
