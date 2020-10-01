@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Ensure that the boot mode PCR is set by the init-top initramfs.
 # This is run in the initramfs context, not in the normal user space.
 #
@@ -15,11 +15,18 @@ case $1 in
 esac
 
 BOOTMODE_PCR=14
+PCRS=0
 
-. /scripts/functions
-. /etc/safeboot/functions.sh
-. /etc/safeboot/safeboot.conf
-. /etc/safeboot/local.conf
+for f in \
+	/scripts/functions \
+	/etc/safeboot/functions.sh \
+	/etc/safeboot/safeboot.conf \
+	/etc/safeboot/local.conf \
+; do
+	if [ -r "$f" ]; then
+		. "$f" || warn "$f: failed to souce"
+	fi
+done
 
 MODE=unknown
 
@@ -47,19 +54,17 @@ tpm2 pcrread >&2 \
 # Extend PCR14 with the boot mode so that recovery
 # boots aren't able to access the sealed disk key.
 #
-if ! echo -n "$MODE" | tpm2_extend "$BOOTMODE_PCR" >&2 ; then
-	log_failure_msg "$PREFIX: unable to extend boot mode PCR $BOOTMODE_PCR"
-fi
+echo -n "$MODE" | tpm2_extend "$BOOTMODE_PCR" >&2 \
+|| log_failure_msg "$PREFIX: unable to extend boot mode PCR $BOOTMODE_PCR"
 
-if [ "$MODE" != "recovery" ]; then
+if [ "$MODE" != "recovery" ] ; then
 	log_success_msg "$PREFIX: boot mode $MODE"
 	exit 0
 fi
 
 # Setup some files that we will need
-mkdir -p /boot/efi
-mount -t efivarfs none /sys/firmware/efi/efivars
-
+mkdir -p /boot/efi || warn "mkdir /boot/efi failed"
+mount -t efivarfs none /sys/firmware/efi/efivars || warn "mount efivarfs failed"
 
 cat >&2 <<'EOF'
 [1;44;35m

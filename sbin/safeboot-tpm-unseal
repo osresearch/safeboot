@@ -22,8 +22,14 @@ if [ -z "$DIR" ]; then
 	DIR="/etc/safeboot"
 fi
 
-for script in safeboot.conf local.conf functions.sh ; do
-	[ -r "$DIR/$script" ] && . "$DIR/$script"
+for script in \
+	safeboot.conf \
+	local.conf \
+	functions.sh \
+; do
+	if [ -r "$DIR/$script" ]; then
+		. "$DIR/$script" || warn "$DIR/$script: failed to source"
+	fi
 done
 
 # Override die to extend the boot mode PCR to indicate the failure
@@ -79,7 +85,7 @@ VERSION="$(tpm2 nvread "$TPM_NV_VERSION" | bin2hex)"
 TPM_SESSION_TYPE=policy
 TPM_POLICY_SIG="$TMP/pcr.policy.sig"
 
-efivar-read "$PCR_SIGNATURE" > "$TPM_POLICY_SIG"
+efivar_read "$PCR_SIGNATURE" > "$TPM_POLICY_SIG"
 
 tpm2_create_policy "" "$VERSION"
 

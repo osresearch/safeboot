@@ -1,14 +1,16 @@
-#!/bin/bash
+#!/bin/sh
+# Note that this is parsed with /bin/sh, not bash, so that
+# it can work with some of the initramfs scripts.
+#
 # turn off "expressions don't expand in single quotes"
 # and "can't follow non-constant sources"
 # shellcheck disable=SC2016 disable=SC1090 disable=SC1091
-set -e -o pipefail
 export LC_ALL=C
 
 die_msg=""
 die() { echo "$die_msg""$*" >&2 ; exit 1 ; }
 warn() { echo "$@" >&2 ; }
-debug() { [ "$VERBOSE" == 1 ] && echo "$@" >&2 ; }
+debug() { [ "$VERBOSE" = 1 ] && echo "$@" >&2 ; }
 
 
 ########################################
@@ -16,7 +18,7 @@ debug() { [ "$VERBOSE" == 1 ] && echo "$@" >&2 ; }
 # Temporary directory in $TMP.
 # It will be removed when the script exits.
 #
-# mount-tmp can be used to create a tempfs filesystem
+# mount_tmp can be used to create a tempfs filesystem
 # so that the secrets do not ever touch a real disk.
 #
 ########################################
@@ -24,7 +26,7 @@ debug() { [ "$VERBOSE" == 1 ] && echo "$@" >&2 ; }
 TMP=$(mktemp -d)
 TMP_MOUNT=n
 cleanup() {
-	if [ "$TMP_MOUNT" == "y" ]; then
+	if [ "$TMP_MOUNT" = "y" ]; then
 		warn "$TMP: Unmounting"
 		umount "$TMP" || die "DANGER: umount $TMP failed. Secrets might be exposed."
 	fi
@@ -33,7 +35,7 @@ cleanup() {
 
 trap cleanup EXIT
 
-mount-tmp() {
+mount_tmp() {
 	mount -t tmpfs none "$TMP" \
 	|| die "Unable to mount temp directory"
 
@@ -63,7 +65,7 @@ PCR_DEFAULT=0000000000000000000000000000000000000000000000000000000000000000
 
 TPM2="$(command -v tpm2)"
 if [ -z "$TPM2" ]; then
-	die "tpm2 program not found"
+	warn "tpm2 program not found"
 fi
 
 # if the TPM2 resource manager is running, talk to it.
@@ -74,7 +76,7 @@ fi
 
 
 tpm2() {
-	if [ "$VERBOSE" == 1 ]; then
+	if [ "$VERBOSE" = 1 ]; then
 		/usr/bin/time -f '%E %C' "$TPM2" "$@"
 	else
 		"$TPM2" "$@"
@@ -91,12 +93,12 @@ tpm2() {
 #
 tpm2_trial_extend() {
 	initial="$1"
-	if [ "0" == "$initial" ]; then
+	if [ "0" = "$initial" ]; then
 		initial="$PCR_DEFAULT"
 	fi
 
 	newhash="$(sha256)"
-	echo -n "$initial$newhash" | hex2bin | sha256
+	printf "%s" "$initial$newhash" | hex2bin | sha256
 }
 
 #
@@ -169,7 +171,7 @@ tpm2_create_policy()
 		|| die "Unable to create auth value policy"
 	fi
 
-	echo -n "$VERSION" | hex2bin | \
+	printf "%s" "$VERSION" | hex2bin | \
 	tpm2 policynv \
 		--session "$TMP/session.ctx" \
 		"$TPM_NV_VERSION" eq \
@@ -209,7 +211,7 @@ tpm2_create_policy()
 
 EFIVARDIR="/sys/firmware/efi/efivars"
 
-efivar-setup() {
+efivar_setup() {
 	if [ -z "$1" ]; then
 		die "efivar: variable name required"
 	fi
@@ -221,8 +223,8 @@ efivar-setup() {
 	var="$EFIVARDIR/$1"
 }
 
-efivar-write() {
-	efivar-setup "$1"
+efivar_write() {
+	efivar_setup "$1"
 	chattr -i "$var"
 
 	echo "07 00 00 00" | hex2bin > "$TMP/efivar.bin"
@@ -233,12 +235,12 @@ efivar-write() {
 	cat "$TMP/efivar.bin" > "$var"
 }
 
-efivar-read() {
-	efivar-setup "$1"
+efivar_read() {
+	efivar_setup "$1"
 	cat "$var" | tail -c +5
 }
 
-efiboot-entry() {
+efiboot_entry() {
 	TARGET=${1:-recovery}
 
 	# output looks like "Boot0001* linux" or "Boot0015  recovery"
@@ -246,12 +248,12 @@ efiboot-entry() {
 	| awk "/^Boot[0-9A-F]+. ${TARGET}\$/ { print substr(\$1,5,4) }"
 }
 
-efi-bootnext()
+efi_bootnext()
 {
 	TARGET="$1"
 
 	# Find the recovery entry in the efibootmgr
-	entry=$(efiboot-entry "${TARGET}")
+	entry=$(efiboot_entry "${TARGET}")
 	if [ -z "$entry" ]; then
 		die "${TARGET} boot entry not in efibootmgr?"
 	fi
@@ -268,7 +270,7 @@ efi-bootnext()
 #
 ########################################
 
-mount-by-uuid() {
+mount_by_uuid() {
 	partition="$1"
 	fstab="${2:-/etc/fstab}"
 	dev="$(awk "/^[^#]/ { if (\$2 == \"$partition\") print \$1 }" "$fstab" )"

@@ -565,7 +565,7 @@ pcrs-sign() {
 		"$TMP/pcr.policy" \
 	|| die "Unable to sign PCR policy"
 
-	efivar-write "$PCR_SIGNATURE" < "$TMP/pcr.policy.sig" \
+	efivar_write "$PCR_SIGNATURE" < "$TMP/pcr.policy.sig" \
 	|| die "$PCR_SIGNATURE: Unable to write to EFI variable"
 }
 
@@ -639,7 +639,7 @@ luks-seal() {
 
 	# Use a tmpfs mount instead of just a temp directory so that
 	# the disk encryption key doesn't touch a persistent disk.
-	mount-tmp
+	mount_tmp
 
 	# The PCR contents are not important here, only the list of them.
 	# The signed PCR values created by pcrs_sign will be used for unsealing
@@ -1084,7 +1084,7 @@ commands+="|recovery-reboot"
 recovery-reboot()
 {
 	show_help "$1" "$recovery_reboot_usage"
-	efi-bootnext "${RECOVERY_TARGET}" \
+	efi_bootnext "${RECOVERY_TARGET}" \
 	|| die "${RECOVERY_TARGET}: unable to select for next boot"
 
 	warn "Rebooting in 3 seconds"
@@ -1110,7 +1110,7 @@ commands+="|bootnext"
 bootnext()
 {
 	show_help "$1" "$bootnext_usage"
-	efi-bootnext "${1:-recovery}"
+	efi_bootnext "${1:-recovery}"
 }
 
 ########################################
@@ -1454,8 +1454,8 @@ mount-all() {
 	mount -o ro "$ROOTDEV" /root \
 	|| die "$ROOTDEV: unable to mount"
 
-	mount-by-uuid /boot /root/etc/fstab
-	mount-by-uuid /boot/efi /root/etc/fstab
+	mount_by_uuid /boot /root/etc/fstab
+	mount_by_uuid /boot/efi /root/etc/fstab
 }
 
 ########################################
