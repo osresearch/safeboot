@@ -85,21 +85,21 @@ tpm2_create_policy "" "$VERSION"
 
 tpm2 flushcontext --transient-object
 
-
+#
+# Attempt and unseal, and if successful, write the key
+# to stdout as well as extending the boot mode PCR
+#
 tpm2_unseal()
 {
 	PIN="$1"
 	tpm2 unseal \
-		--auth "session:/tmp/session.ctx$PIN" \
+		--auth "session:$TMP/session.ctx$PIN" \
 		--object-context "$TPM_SEALED_HANDLE" \
-		> /tmp/secret.bin \
 	|| return $?
 
 	# Successfully unsealed, extend the bootmode PCR
 	warn "TPM disk key unsealed"
 	tpm2 pcrextend >&2 "$BOOTMODE_PCR:sha256=$(echo postboot | sha256)"
-	cat /tmp/secret.bin
-	rm /tmp/secret.bin
 	exit 0
 }
 
