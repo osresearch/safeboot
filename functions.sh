@@ -66,6 +66,13 @@ if [ -z "$TPM2" ]; then
 	die "tpm2 program not found"
 fi
 
+# if the TPM2 resource manager is running, talk to it.
+# otherwise use a direct connection to the TPM
+if ! pidof tpm2-abrmd > /dev/null ; then
+	export TPM2TOOLS_TCTI="device:/dev/tpmrm0"
+fi
+
+
 tpm2() {
 	if [ "$VERBOSE" == 1 ]; then
 		/usr/bin/time -f '%E %C' "$TPM2" "$@"
@@ -92,15 +99,6 @@ tpm2_trial_extend() {
 }
 
 tpm2_flushall() {
-	# if the TPM2 resource manager is running, talk to it.
-	# otherwise use a direct connection to the TPM and flush
-	# any current operations
-	if pidof tpm2-abrmd > /dev/null ; then
-		return 0
-	fi
-
-	export TPM2TOOLS_TCTI="device:/dev/tpmrm0"
-
 	tpm2 flushcontext \
 		--transient-object \
 	|| die "tpm2_flushcontext: unable to flush transient handles"
@@ -113,6 +111,8 @@ tpm2_flushall() {
 # Create the TPM policy for sealing/unsealing the disk encryption key
 # If an optional argument is provided, use that for the PCR data
 # If an second optional argument is provided, use that for the version counter file
+# If the environment TPM_SESSION_TYPE is set, that will be passed into
+# the createauthsession (usually only needed for unsealing)
 tpm2_create_policy()
 {
 	PCR_FILE="$1"
@@ -136,6 +136,7 @@ tpm2_create_policy()
 	|| die "Unable to load platform public key into TPM"
 
 	tpm2 startauthsession \
+		${TPM_SESSION_TYPE:+ --"${TPM_SESSION_TYPE}-session" } \
 		--session "$TMP/session.ctx" \
 		>> /tmp/tpm.log \
 	|| die "Unable to start TPM auth session"
@@ -166,11 +167,24 @@ tpm2_create_policy()
 		>> /tmp/tpm.log \
 	|| die "Unable to create version policy"
 
+	if [ -n "$TPM_POLICY_SIG" ]; then
+		tpm2 verifysignature \
+			--hash-algorithm sha256 \
+			--scheme rsassa \
+			--key-context "$TMP/key.ctx" \
+			--message "$TMP/pcr.policy" \
+			--signature "$TPM_POLICY_SIG" \
+			--ticket "$TMP/pcr.policy.tkt" \
+			>> /tmp/tpm.log \
+		|| die "Unable to verify PCR signature"
+	fi
+
 	tpm2 policyauthorize \
 		--session "$TMP/session.ctx" \
 		--name "$TMP/key.name" \
 		--input "$TMP/pcr.policy" \
 		--policy "$TMP/signed.policy" \
+		${TPM_POLICY_SIG:+ --ticket "$TMP/pcr.policy.tkt" } \
 		>> /tmp/tpm.log \
 	|| die "Unable to create authorized policy"
 }
@@ -182,8 +196,9 @@ tpm2_create_policy()
 #
 ########################################
 
-efivar() {
-	EFIVARDIR="/sys/firmware/efi/efivars"
+EFIVARDIR="/sys/firmware/efi/efivars"
+
+efivar-setup() {
 	if [ -z "$1" ]; then
 		die "efivar: variable name required"
 	fi
@@ -191,7 +206,12 @@ efivar() {
 		mount -t efivarfs none "$EFIVARDIR" \
 		|| die "$EFIVARDIR: unable to mount"
 	fi
+
 	var="$EFIVARDIR/$1"
+}
+
+efivar-write() {
+	efivar-setup "$1"
 	chattr -i "$var"
 
 	echo "07 00 00 00" | hex2bin > "$TMP/efivar.bin"
@@ -202,6 +222,10 @@ efivar() {
 	cat "$TMP/efivar.bin" > "$var"
 }
 
+efivar-read() {
+	efivar-setup "$1"
+	cat "$var" | tail -c +5
+}
 
 efiboot-entry() {
 	TARGET=${1:-recovery}

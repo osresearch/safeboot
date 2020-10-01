@@ -563,7 +563,7 @@ pcrs-sign() {
 		"$TMP/pcr.policy" \
 	|| die "Unable to sign PCR policy"
 
-	efivar "$PCR_SIGNATURE" < "$TMP/pcr.policy.sig" \
+	efivar-write "$PCR_SIGNATURE" < "$TMP/pcr.policy.sig" \
 	|| die "$PCR_SIGNATURE: Unable to write to EFI variable"
 }
 
