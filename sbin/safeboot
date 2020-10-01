@@ -549,6 +549,8 @@ pcrs-sign() {
 	warn "mode=${LINUX_TARGET} PCR$BOOTMODE_PCR=$pcr14"
 	echo -n "$pcr14" | hex2bin \
 		>> "$TMP/pcrs.bin"
+	echo "final PCRs:"
+	xxd -g32 -c32 "$TMP/pcrs.bin" | awk '{print $2}'
 
 	tpm2_create_policy "$TMP/pcrs.bin" "$VERSION"
 

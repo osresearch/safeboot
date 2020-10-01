@@ -105,7 +105,7 @@ tpm2_trial_extend() {
 tpm2_extend() {
 	pcr="$1"
 	newhash="$(sha256)"
-	tpm2 pcrextend "sha256:$pcr=$newhash"
+	tpm2 pcrextend "$pcr:sha256=$newhash"
 }
 
 
