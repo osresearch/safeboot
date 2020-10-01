@@ -15,26 +15,17 @@
 set -e -o pipefail
 export LC_ALL=C
 
-die_msg=""
-die() { echo "$die_msg""$*" >&2 ; exit 1 ; }
-warn() { echo "$@" >&2 ; }
-debug() { [ "$VERBOSE" == 1 ] && echo "$@" >&2 ; }
+: "${PREFIX:=}"
+: "${DIR:=/etc/safeboot}"
 
-cleanup() {
-	if [ "$NOCLEANUP" == "1" ]; then
-		warn "$TMP: Not cleaning up"
-	else
-		rm -rf "$TMP"
-	fi
-}
+. "$DIR/functions.sh"
 
-hex2bin() { perl -ne 'chomp; print pack("H*", $_)' "$@" ; }
-bin2hex() { perl -ne 'print unpack("H*", $_)' "$@" ; }
-sha256() { sha256sum - | cut -d' ' -f1 ; }
-
-DIR="/etc/safeboot"
-TMP="$(mktemp -d)"
-trap cleanup EXIT
+if [ -r "$PREFIX$DIR/safeboot.conf" ]; then
+	. $PREFIX$DIR/safeboot.conf
+fi
+if [ -r "$PREFIX$DIR/local.conf" ]; then
+	. $PREFIX$DIR/local.conf
+fi
 
 # Expected values for the EK and AK types to ensure that they
 # are created inside a TPM and have the proper policies associated.
@@ -62,20 +53,6 @@ show_help() {
 		echo "$2"
 		exit 0
 	fi
-}
-
-tpm2_flush_all()
-{
-	# prevent "out of memory for object contexts" by
-	# flushing transient handles, as well as transient sessions
-	warn "tpm2: flushing resources"
-	tpm2 flushcontext \
-		--transient-object \
-	|| die "tpm2_flushcontext: unable to flush transient handles"
-
-	tpm2 flushcontext \
-		--loaded-session \
-	|| die "tpm2_flushcontext: unable to flush sessions"
 }
 
 tpm2_secret_session()
@@ -146,7 +123,7 @@ quote()
 	QUOTE_NONCE=${1:-0decafbad0}
 	QUOTE_PCRS=${2:-0,1,2}
 
-	tpm2_flush_all ""
+	tpm2_flushall ""
 
 	echo -n "$QUOTE_NONCE" > "$TMP/nonce" \
 	|| die "$TMP/nonce: unable to create"
@@ -225,7 +202,7 @@ quote()
 	tpm2 flushcontext --transient-object
 
 	# get a quote using this attestation key
-	tpm2_flush_all ""
+	tpm2_flushall ""
 	warn "tpm2: generating quote"
 	tpm2 quote >&2 \
 		--key-context "ak.ctx" \
@@ -618,7 +595,7 @@ unseal()
 
 
 	# recreate the endorsement key context since it doesn't change per call
-	tpm2_flush_all ""
+	tpm2_flushall ""
 	tpm2 createek \
 		--ek-context "$TMP/ek.ctx" \
 		--key-algorithm "rsa" \

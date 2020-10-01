@@ -4,8 +4,9 @@ sbin/safeboot-tpm-unseal	usr/sbin/
 sbin/tpm2-attest		usr/sbin/
 sbin/tpm2-pcr-validate		usr/sbin/
 
-# configuration files
+# configuration files and helper functions
 safeboot.conf			etc/safeboot/
+functions.sh			etc/safeboot/
 
 # TPM certs and a script to refresh them
 tpm-certs.txt			etc/safeboot/

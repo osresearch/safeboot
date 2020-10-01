@@ -14,18 +14,21 @@ case $1 in
         ;;
 esac
 
-. /scripts/functions
-
 BOOTMODE_PCR=14
+PCRS=0
+
+for f in \
+	/scripts/functions \
+	/etc/safeboot/functions.sh \
+	/etc/safeboot/safeboot.conf \
+	/etc/safeboot/local.conf \
+; do
+	if [ -r "$f" ]; then
+		. "$f" || warn "$f: failed to souce"
+	fi
+done
+
 MODE=unknown
-
-# Direct access to the kernel resource manager
-# since there is no standalone TPM resource manager in the initrd
-export TPM2TOOLS_TCTI="device:/dev/tpmrm0"
-
-sha256() { echo -n "$@" | sha256sum | cut -d' ' -f1 ; }
-log() { echo >&2 "$@" ; }
-die() { echo >&2 "$@" ; exit 1 ; }
 
 # shellcheck disable=SC2013
 for arg in $(cat /proc/cmdline)
@@ -42,28 +45,26 @@ do
     esac
 done
 
-log "TPM mode=$MODE pcrs=$PCRS $BOOTMODE_PCR"
+warn "TPM mode=$MODE pcrs=$PCRS $BOOTMODE_PCR"
 
-/usr/sbin/tpm2 pcrread >&2 \
-	'sha256:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16'
+tpm2 pcrread >&2 \
+	"sha256:$PCRS,$BOOTMODE_PCR"
 
 #
 # Extend PCR14 with the boot mode so that recovery
 # boots aren't able to access the sealed disk key.
 #
-if ! /usr/sbin/tpm2 pcrextend >&2 "$BOOTMODE_PCR:sha256=$(sha256 "$MODE")" ; then
-	log_failure_msg "$PREFIX: unable to extend boot mode PCR $BOOTMODE_PCR"
-fi
+echo -n "$MODE" | tpm2_extend "$BOOTMODE_PCR" >&2 \
+|| log_failure_msg "$PREFIX: unable to extend boot mode PCR $BOOTMODE_PCR"
 
-if [ "$MODE" != "recovery" ]; then
+if [ "$MODE" != "recovery" ] ; then
 	log_success_msg "$PREFIX: boot mode $MODE"
 	exit 0
 fi
 
 # Setup some files that we will need
-mkdir -p /boot/efi
-mount -t efivarfs none /sys/firmware/efi/efivars
-
+mkdir -p /boot/efi || warn "mkdir /boot/efi failed"
+mount -t efivarfs none /sys/firmware/efi/efivars || warn "mount efivarfs failed"
 
 cat >&2 <<'EOF'
 [1;44;35m

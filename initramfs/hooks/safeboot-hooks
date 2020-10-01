@@ -33,6 +33,7 @@ DIR="/etc/safeboot"
 
 # Move the configuration and keys into the initrd as well
 copy_file safeboot "$DIR/safeboot.conf"
+copy_file safeboot-functions "$DIR/functions.sh"
 copy_file safeboot-keys "$(dirname "$CERT")/$(basename "$CERT" .pem).pub" "$DIR/cert.pub"
 copy_file safeboot-keys "$CERT"
 
