@@ -165,3 +165,13 @@ shellcheck:
 update-certs:
 	#./refresh-certs
 	c_rehash certs
+
+# Fake an overlay mount to replace files in /etc/safeboot with these
+fake-mount:
+	mount --bind `pwd`/safeboot.conf /etc/safeboot/safeboot.conf
+	mount --bind `pwd`/functions.sh /etc/safeboot/functions.sh
+	mount --bind `pwd`/sbin/safeboot /sbin/safeboot
+	mount --bind `pwd`/sbin/safeboot-tpm-unseal /sbin/safeboot-tpm-unseal
+	mount --bind `pwd`/sbin/tpm2-attest /sbin/tpm2-attest
+fake-unmount:
+	mount | awk '/safeboot/ { print $$3 }' | xargs umount
