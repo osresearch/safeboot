@@ -150,6 +150,7 @@ shellcheck:
 		sbin/safeboot* \
 		sbin/tpm2-attest \
 		initramfs/*/* \
+		functions.sh \
 	; do \
 		shellcheck $$file ; \
 	done

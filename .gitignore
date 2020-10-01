@@ -32,3 +32,4 @@ nonce
 *.bin
 *.deb
 blob
+local.conf
