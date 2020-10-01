@@ -29,7 +29,7 @@ done
 # Override die to extend the boot mode PCR to indicate the failure
 die() {
 	echo >&2 "$@"
-	tpm2 pcrextend >&2 "$BOOTMODE_PCR:sha256=$(echo bootfail | sha256)"
+	echo -n bootfail | tpm2_extend "$BOOTMODE_PCR"
 	touch "/tmp/unseal-failed"
 	exit 1
 }
@@ -99,7 +99,7 @@ tpm2_unseal()
 
 	# Successfully unsealed, extend the bootmode PCR
 	warn "TPM disk key unsealed"
-	tpm2 pcrextend >&2 "$BOOTMODE_PCR:sha256=$(echo postboot | sha256)"
+	echo -n postboot | tpm2_extend "$BOOTMODE_PCR"
 	exit 0
 }
 

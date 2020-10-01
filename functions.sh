@@ -95,8 +95,19 @@ tpm2_trial_extend() {
 		initial="$PCR_DEFAULT"
 	fi
 
-	( echo -n "$initial" ; sha256 ) | hex2bin | sha256
+	newhash="$(sha256)"
+	echo -n "$initial$newhash" | hex2bin | sha256
 }
+
+#
+# Extend a PCR with a value from stdin
+#
+tpm2_extend() {
+	pcr="$1"
+	newhash="$(sha256)"
+	tpm2 pcrextend "sha256:$pcr=$newhash"
+}
+
 
 tpm2_flushall() {
 	tpm2 flushcontext \
