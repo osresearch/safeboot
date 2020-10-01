@@ -612,8 +612,8 @@ luks-seal() {
 	KEYSLOT=1
 
 	# check to see if the initramfs hook is installed
-	if [ ! -x "$PREFIX/etc/initramfs-tools/hooks/tpm-unseal" ]; then
-		warn "!!! $PREFIX/etc/initramfs-tools/hooks/tpm-unseal is not installed; this will probably not work"
+	if [ ! -x "$PREFIX/etc/initramfs-tools/hooks/safeboot-hooks" ]; then
+		warn "!!! $PREFIX/etc/initramfs-tools/hooks/safeboot-hooks is not installed; this will probably not work"
 	fi
 
 	# and make sure that the unlock script is installed as expected
