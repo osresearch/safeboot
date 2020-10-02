@@ -10,7 +10,7 @@ export LC_ALL=C
 die_msg=""
 die() { echo "$die_msg""$*" >&2 ; exit 1 ; }
 warn() { echo "$@" >&2 ; }
-debug() { [ "$VERBOSE" = 1 ] && echo "$@" >&2 ; }
+debug() { if [ "$VERBOSE" = 1 ] ; then echo "$@" >&2 ; else true ; fi }
 
 
 ########################################
@@ -215,7 +215,7 @@ efivar_setup() {
 	if [ -z "$1" ]; then
 		die "efivar: variable name required"
 	fi
-	if ! mount | grep -q "$EFIVARDIR" ; then
+	if ! mount | grep  " $EFIVARDIR " >/dev/null ; then
 		mount -t efivarfs none "$EFIVARDIR" \
 		|| die "$EFIVARDIR: unable to mount"
 	fi
