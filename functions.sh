@@ -119,6 +119,10 @@ tpm2_flushall() {
 	tpm2 flushcontext \
 		--loaded-session \
 	|| die "tpm2_flushcontext: unable to flush sessions"
+
+	tpm2 flushcontext \
+		--saved-session \
+	|| die "tpm2_flushcontext: unable to flush saved session"
 }
 
 # Create the TPM policy for sealing/unsealing the disk encryption key
