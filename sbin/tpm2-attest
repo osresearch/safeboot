@@ -400,13 +400,23 @@ ek-verify()
 		-out "$TMP/ek.pem" \
 	|| die "$TMP/ek.crt: unable to convert to PEM"
 
-	openssl verify \
-		-CAfile "$CA_ROOT" \
-		-CApath "$CA_PATH" \
+	# check to see if the EK was signed with the safeboot key, which
+	# happens if this the TPM did not include its own OEM cert
+	if ! openssl verify \
+		-CAfile "$CERT" \
 		-show_chain \
 		-verbose \
 		"$TMP/ek.pem" \
-	|| die "$TMP/ek.pem: SSL verification failure"
+	; then
+		# not a safeboot key, try to verify the EK with the CA chain
+		openssl verify \
+			-CAfile "$CA_ROOT" \
+			-CApath "$CA_PATH" \
+			-show_chain \
+			-verbose \
+			"$TMP/ek.pem" \
+		|| die "$TMP/ek.pem: SSL verification failure"
+	fi
 
 	warn "$QUOTE_TAR: ek.crt certificate chain valid"
 
