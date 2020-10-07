@@ -63,9 +63,9 @@ sha256() { sha256sum - | cut -d' ' -f1 ; }
 
 PCR_DEFAULT=0000000000000000000000000000000000000000000000000000000000000000
 
-TPM2="$(command -v tpm2)"
+TPM2="$(command -v tpm2 || true)"
 if [ -z "$TPM2" ]; then
-	warn "tpm2 program not found"
+	warn "tpm2 program not found! things will probably break"
 fi
 
 # if the TPM2 resource manager is running, talk to it.
