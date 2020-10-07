@@ -151,6 +151,7 @@ quote()
 	# and for stupid tpm2-tools reasons it has to be in the
 	# non-standard TPM2B_PUBLIC format rather than a useful PEM file.
 	warn "tpm2: reading endorsement key"
+	tpm2_flushall ""
 	tpm2 createek >&2 \
 		--ek-context "$TMP/ek.ctx" \
 		--key-algorithm "rsa" \
@@ -683,23 +684,40 @@ tpm2 createek -c /tmp/ek.ctx -f PEM -u ek.pem
 
 For Google Cloud ShieldedVM machines see:
 https://cloud.google.com/security/shielded-cloud/retrieving-endorsement-key
+
+The resulting signed `ek.crt` can be loaded into the TPM (note that this
+will erase an existing OEM cert if you have one):
+
+```
+tpm2 nvdefine -s 1500 0x1c00002
+tpm2 nvwrite -i ek.crt 0x1c00002
+```
 '
 usage+="$ek_sign_usage"
 commands+="|ek-sign"
 
 ek-sign()
 {
-	show_help "$1" "$eksign_usage"
+	show_help "$1" "$ek_sign_usage"
 	if [ "$#" -gt 1 ]; then
 		die "Too many arguments.$ek_sign_usage"
 	fi
 
+	# Default subject is empty
+	SUBJECT="${1:-/}"
+
+	# if the system doesn't have a safeboot key configured,
+	# then the CSR signing will fail
 	if [ ! -r "$CERT" ]; then
 		die "$CERT: CA certificate not found"
 	fi
 
-	# Default subject is empty
-	SUBJECT="${1:-/}"
+	# Fake the certificate serial number if it
+	# does not already exist
+	SRL="$(dirname "$CERT")/$(basename "$CERT" .pem).srl"
+	if [ ! -r "$SRL" ]; then
+		echo "01" > "$SRL"
+	fi
 
 	EK="$TMP/ek.pem"
 	CRT="$TMP/ek.crt"
@@ -709,20 +727,18 @@ ek-sign()
 
 	# Create a certificate configuration
 	cat <<EOF > "$TMP/csr.config"
-openssl_conf = openssl_init
-[openssl_init]
 [req]
-default_bits = 2048
-encrypt_key = yes
-utf8 = yes
-string_mask = utf8only
-certificatePolicies= 2.23.133.2.1
-distinguished_name = req_distinguished_name
-req_extensions = v3_req
+	default_bits		= 2048
+	encrypt_key		= yes
+	utf8			= yes
+	string_mask		= utf8only
+	certificatePolicies	= 2.23.133.2.1
+	distinguished_name	= req_distinguished_name
+	req_extensions		= v3_req
 [req_distinguished_name]
 [v3_req]
-basicConstraints=critical,CA:FALSE
-keyUsage = keyEncipherment
+	basicConstraints	= critical,CA:FALSE
+	keyUsage		= keyEncipherment
 EOF
 
 	# Generate a CSR with a throwaway key using this config;
@@ -739,13 +755,6 @@ EOF
 		-config "$TMP/csr.config" \
 		> /dev/null \
 	|| die "req creation failed"
-
-	# Fake the certificate serial number if it
-	# does not already exist
-	SRL="$(dirname "$CERT")/$(basename "$CERT" .pem).srl"
-	if [ ! -r "$SRL" ]; then
-		echo "01" > "$SRL"
-	fi
 
 	if [ "$KEY" == "pkcs11:" ]; then
 		# KEY is a hardware token, use the yubikey engine
@@ -771,10 +780,12 @@ EOF
 		-extensions v3_req \
 		-days 3652 \
 		-sha256 \
+		-outform DER \
 		-out "$CRT" \
 	|| die "$EK: signing failed"
 
 	openssl x509 \
+		-inform DER \
 		-in "$CRT" \
 		-noout \
 		-text \
