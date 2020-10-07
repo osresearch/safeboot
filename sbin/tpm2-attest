@@ -125,8 +125,9 @@ quote()
 		die "Unexpected arguments.$quote_usage"
 	fi
 
-	QUOTE_NONCE=${1:-0decafbad0}
-	QUOTE_PCRS=${2:-0,1,2}
+	QUOTE_TIME="$(( $(date '+%s') / 30 ))"
+	QUOTE_NONCE="${1:-$(printf '%08x' $QUOTE_TIME)}"
+	QUOTE_PCRS="${2:-$PCRS}"
 
 	tpm2_flushall ""
 
