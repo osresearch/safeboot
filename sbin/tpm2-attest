@@ -18,14 +18,19 @@ export LC_ALL=C
 : "${PREFIX:=}"
 : "${DIR:=/etc/safeboot}"
 
-. "$DIR/functions.sh"
+. "$PREFIX$DIR/functions.sh"
 
 if [ -r "$PREFIX$DIR/safeboot.conf" ]; then
 	. $PREFIX$DIR/safeboot.conf
+else
+	warn "$PREFIX$DIR/safeboot.conf not present?"
 fi
 if [ -r "$PREFIX$DIR/local.conf" ]; then
 	. $PREFIX$DIR/local.conf
 fi
+
+# Apply $PREFIX to files and use default value
+CERT=$PREFIX${CERT:-$DIR/cert.pem}
 
 # Expected values for the EK and AK types to ensure that they
 # are created inside a TPM and have the proper policies associated.
@@ -659,6 +664,127 @@ verify-and-seal()
 	|| die "$QUOTE_TAR: sealing failed"
 }
 
+ek_sign_usage='
+## ek-sign
+Usage:
+```
+tpm2-attest ek-sign < ek.pem > ek.crt [/CN=device-name/]
+```
+
+Some TPMs do not include manufacturer signed endorsement key
+certificates, so it is necessary to extract the EK and sign it
+with a trusted key.  This will produce `ek.crt`, signed with
+the safeboot key.
+
+The key can be extracted from the TPM with:
+```
+tpm2 createek -c /tmp/ek.ctx -f PEM -u ek.pem
+```
+
+For Google Cloud ShieldedVM machines see:
+https://cloud.google.com/security/shielded-cloud/retrieving-endorsement-key
+'
+usage+="$ek_sign_usage"
+commands+="|ek-sign"
+
+ek-sign()
+{
+	show_help "$1" "$eksign_usage"
+	if [ "$#" -gt 1 ]; then
+		die "Too many arguments.$ek_sign_usage"
+	fi
+
+	if [ ! -r "$CERT" ]; then
+		die "$CERT: CA certificate not found"
+	fi
+
+	# Default subject is empty
+	SUBJECT="${1:-/}"
+
+	EK="$TMP/ek.pem"
+	CRT="$TMP/ek.crt"
+
+	# Read the EK from stdin
+	cat > "$EK"
+
+	# Create a certificate configuration
+	cat <<EOF > "$TMP/csr.config"
+openssl_conf = openssl_init
+[openssl_init]
+[req]
+default_bits = 2048
+encrypt_key = yes
+utf8 = yes
+string_mask = utf8only
+certificatePolicies= 2.23.133.2.1
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+[req_distinguished_name]
+[v3_req]
+basicConstraints=critical,CA:FALSE
+keyUsage = keyEncipherment
+EOF
+
+	# Generate a CSR with a throwaway key using this config;
+	# the actual TPM public endorsement key will be
+	# replaced in the next step
+	openssl req \
+		-batch \
+		-new \
+		-sha256 \
+		-subj "$SUBJECT" \
+		-passout pass:1234 \
+		-keyout /dev/null \
+		-out "$TMP/ek.csr" \
+		-config "$TMP/csr.config" \
+		> /dev/null \
+	|| die "req creation failed"
+
+	# Fake the certificate serial number if it
+	# does not already exist
+	SRL="$(dirname "$CERT")/$(basename "$CERT" .pem).srl"
+	if [ ! -r "$SRL" ]; then
+		echo "01" > "$SRL"
+	fi
+
+	if [ "$KEY" == "pkcs11:" ]; then
+		# KEY is a hardware token, use the yubikey engine
+		KEY_ENGINE="-engine pkcs11 -CAkeyform engine"
+	else
+		# KEY is a normal file, don't use an openssl engine
+		KEY=$PREFIX${KEY:-$DIR/cert.priv}
+		KEY_ENGINE=""
+	fi
+
+	# Sign the CSR, swapping out the public key for the
+	# actual TPM2 EK that was read in, instead of the
+	# throw-away key that is in the CSR.
+	openssl x509 \
+		-in "$TMP/ek.csr" \
+		-req \
+		-force_pubkey "$EK" \
+		-keyform PEM \
+		-CA "$CERT" \
+		-CAkey "$KEY" \
+		$KEY_ENGINE \
+		-extfile "$TMP/csr.config" \
+		-extensions v3_req \
+		-days 3652 \
+		-sha256 \
+		-out "$CRT" \
+	|| die "$EK: signing failed"
+
+	openssl x509 \
+		-in "$CRT" \
+		-noout \
+		-text \
+		>&2 \
+	|| die "$CRT: unable to parse"
+
+	# output the signed certificate on stdout
+	cat "$CRT"
+}
+
 
 
 if [ $# -lt 1 ]; then
@@ -674,7 +800,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	commands|quote|verify-and-seal|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify)
+	commands|quote|verify-and-seal|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify|ek-sign)
 		$command "$@"
 		;;
 	*)
