@@ -125,7 +125,7 @@ quote()
 		die "Unexpected arguments.$quote_usage"
 	fi
 
-	QUOTE_TIME="$(( $(date '+%s') / 30 ))"
+	QUOTE_TIME="$(date '+%s')"
 	QUOTE_NONCE="${1:-$(printf '%08x' $QUOTE_TIME)}"
 	QUOTE_PCRS="${2:-$PCRS}"
 
@@ -402,23 +402,25 @@ ek-verify()
 
 	# check to see if the EK was signed with the safeboot key, which
 	# happens if this the TPM did not include its own OEM cert
-	if ! openssl verify \
+	if openssl verify \
 		-CAfile "$CERT" \
-		-show_chain \
-		-verbose \
 		"$TMP/ek.pem" \
+		1>/dev/null \
+		2>/dev/null \
 	; then
-		# not a safeboot key, try to verify the EK with the CA chain
-		openssl verify \
+		warn "$QUOTE_TAR: ek.crt certificate validated with safeboot cert"
+	elif openssl verify \
 			-CAfile "$CA_ROOT" \
 			-CApath "$CA_PATH" \
 			-show_chain \
 			-verbose \
 			"$TMP/ek.pem" \
-		|| die "$TMP/ek.pem: SSL verification failure"
+	; then
+		warn "$QUOTE_TAR: ek.crt certificate validated with SSL cert"
+	else
+		die "$TMP/ek.pem: SSL verification failure"
 	fi
 
-	warn "$QUOTE_TAR: ek.crt certificate chain valid"
 
 	# make sure the EK has the proper key attributes
 	tpm2 print \
@@ -492,7 +494,14 @@ quote-verify()
 
 	if [ "$QUOTE_NONCE" = "" ]; then
 		# if no nonce was specified, read it from the tar file
+		# and check it for freshness compared to the current time
 		QUOTE_NONCE="$(cat "$TMP/nonce")"
+		VERIFY_TIME="$(date '+%s')"
+		QUOTE_TIME="$(printf "%d" "0x$QUOTE_NONCE")"
+		DELTA_TIME="$(( VERIFY_TIME - QUOTE_TIME ))"
+		if [ "$DELTA_TIME" -gt 30 ]; then
+			die "Old nonce: $QUOTE_TIME > $VERIFY_TIME + 30"
+		fi
 	fi
 
 	# Read the attributes from the ak.pub and ensure that they
