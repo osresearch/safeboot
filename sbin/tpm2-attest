@@ -675,20 +675,19 @@ tpm2-attest ek-sign < ek.pem > ek.crt [/CN=device-name/]
 Some TPMs do not include manufacturer signed endorsement key
 certificates, so it is necessary to extract the EK and sign it
 with a trusted key.  This will produce `ek.crt`, signed with
-the safeboot key.
-
-The key can be extracted from the TPM with:
-```
-tpm2 createek -c /tmp/ek.ctx -f PEM -u ek.pem
-```
+the safeboot key.  The signing operation can be done out-of-band
+on a different machine.
 
 For Google Cloud ShieldedVM machines see:
 https://cloud.google.com/security/shielded-cloud/retrieving-endorsement-key
 
-The resulting signed `ek.crt` can be loaded into the TPM (note that this
-will erase an existing OEM cert if you have one):
+Usually the EK public components can be extracted from the TPM, signed,
+and the resulting signed `ek.crt` can be stored back into the TPM nvram.
+Note that this will erase an existing OEM cert if you have one!
 
 ```
+tpm2 createek -c /dev/null -f PEM -u ek.pem
+tpm2-attest ek-sign < ek.pem > ek.crt /CN=device/OU=example.org/
 tpm2 nvdefine -s 1500 0x1c00002
 tpm2 nvwrite -i ek.crt 0x1c00002
 ```

@@ -219,3 +219,24 @@ It will create the volume groups for `/var` and `/home`,
 add entries to `/etc/fstab` for them with secure mount parameters,
 and makes `/tmp` a symlink into `/var/tmp`.
 
+## unlock
+Usage:
+```
+safeboot unlock
+```
+
+This is a recovery shell command to scan the `/etc/crypttab` for devices
+and call `cryptsetup luksOpen` on each of them, and then scan the LVM groups
+for volumes.  After it succeeds you can call `safeboot mount` to mount
+the root filesystem (read-only) on `/root`.
+
+## mount-all
+Usage:
+```
+safeboot mount-all
+```
+
+This is a recovery shell command to attempt to mount the root disk read-only
+on `/root`, as well as the `/boot` and `/boot/efi` if they exist in
+`/root/etc/fstab`.
+
