@@ -8,8 +8,42 @@ import logging
 import tempfile
 import sys
 import subprocess
+import yaml
+
+# hard code the hashing algorithm used
+alg = 'sha256'
+secrets = {}
+
+# Check that all of the required PCRs are present and match the golden values.
+# It is ok if the quote or event log have more, but none must be missing.
+def pcr_validate(golden, quote):
+	if alg not in quote:
+		print("Quote does not have PCR algorithm '%s'" % (alg))
+		return false
+
+	quote = quote[alg]
+	valid = True
+
+	for pcr in golden:
+		good_pcr = golden[pcr]
+		if not pcr in quote:
+			print("PCR%d missing" % (pcr), file=sys.stderr)
+			valid = False
+		elif good_pcr != quote[pcr]:
+			print("PCR%d mismatch %x" % (pcr, quote[pcr]), file=sys.stderr)
+			valid = False
+
+	return valid
+
 
 class AttestServer(BaseHTTPRequestHandler):
+	def fail(self, msg):
+		logging.info("FAILED: ", msg)
+		self.send_response(401)
+		self.send_header('Content-type', 'text/html')
+		self.end_headers()
+		self.wfile.write(msg.encode())
+
 	def do_GET(self):
 		logging.info("GET request,\nPath: %s\nHeaders:\n%s\n", str(self.path), str(self.headers))
 		self.send_response(200)
@@ -26,32 +60,44 @@ class AttestServer(BaseHTTPRequestHandler):
 		tmp_file.write(quote_data)
 		quote_file = tmp_file.name
 
-		# invoke the attestation on the file
-		if subprocess.run(["./sbin/tpm2-attest", "verify", quote_file ],
-			stdout=sys.stdout,
+		# verify that the Endorsment Key came from an authorized TPM,
+		# that the quote is signed by a valid Attestation Key
+		sub = subprocess.run(["./sbin/tpm2-attest", "verify", quote_file ],
+			stdout=subprocess.PIPE,
 			stderr=sys.stderr,
-		).returncode != 0:
-			self.send_response(401)
-			self.send_header('Content-type', 'text/html')
-			self.end_headers()
-			self.wfile.write("QUOTE FAILED".encode())
-			return
+		)
+		if sub.returncode != 0:
+			return self.fail("QUOTE-VERIFY FAILED")
 
-		# the quote is valid, so seal some data and return it as binary
+		# The output contains YAML formatted hash of the EK and the PCRs
+		quote = yaml.load(sub.stdout, Loader=yaml.FullLoader)
+		ekhash = quote['ekhash']
+		if ekhash not in secrets:
+			return self.fail("UNKNOWN TPM EK")
+		secret = secrets[ekhash]
+
+		logging.info("%s: EK %s" % (secret['device'], ekhash))
+
+		if not pcr_validate(secret['pcrs'], quote['pcrs']):
+			return self.fail("QUOTE-PCR FAILED")
+		if not pcr_validate(secret['pcrs'], quote['eventlog-pcrs']):
+			return self.fail("EVENTLOG-PCR FAILED")
+
+		# the quote, eventlog and PCRS are valid, so seal some data and return it as binary
 		self.send_response(200)
 		self.send_header('Content-type', 'application/octet-stream')
 		self.end_headers()
 
 		subprocess.run(["./sbin/tpm2-attest", "seal", quote_file, ],
-			input="hello world!".encode(),
+			input=secret['secret'].encode(),
 			stdout=self.wfile,
 			stderr=sys.stderr,
 		)
 
-def run(server_class=HTTPServer, port=8080):
+def run(port=8080):
 	logging.basicConfig(level=logging.INFO)
 	server_address = ('', port)
-	httpd = server_class(server_address, AttestServer)
+	httpd = HTTPServer(server_address, AttestServer)
 	logging.info('Starting attestation httpd port %d...\n' % (port))
 	try:
 		httpd.serve_forever()
@@ -63,7 +109,15 @@ def run(server_class=HTTPServer, port=8080):
 if __name__ == '__main__':
 	from sys import argv
 
-	if len(argv) == 2:
-		run(port=int(argv[1]))
+	if len(argv) <= 1 or len(argv) > 3:
+		print("Usage: attest-server secrets.yaml [port]", file=sys.stderr)
+		exit(1)
+
+	with open(argv[1]) as secret_file:
+		secrets = yaml.load(secret_file, Loader=yaml.FullLoader)
+	print(secrets)
+
+	if len(argv) == 3:
+		run(secrets=secrets, port=int(argv[2]))
 	else:
 		run()
