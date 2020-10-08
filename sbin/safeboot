@@ -17,11 +17,13 @@ export LC_ALL=C
 : "${DIR:=/etc/safeboot}"
 
 # shellcheck source=functions.sh
-. "$DIR/functions.sh"
+. "$PREFIX$DIR/functions.sh"
 
 if [ -r "$PREFIX$DIR/safeboot.conf" ]; then
 	# shellcheck source=safeboot.conf
 	. $PREFIX$DIR/safeboot.conf
+else
+	warn "$PREFIX$DIR/safeboot.conf not present; was it installed?"
 fi
 if [ -r "$PREFIX$DIR/local.conf" ]; then
 	# shellcheck source=local.conf

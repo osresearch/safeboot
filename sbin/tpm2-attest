@@ -18,14 +18,19 @@ export LC_ALL=C
 : "${PREFIX:=}"
 : "${DIR:=/etc/safeboot}"
 
-. "$DIR/functions.sh"
+. "$PREFIX$DIR/functions.sh"
 
 if [ -r "$PREFIX$DIR/safeboot.conf" ]; then
 	. $PREFIX$DIR/safeboot.conf
+else
+	warn "$PREFIX$DIR/safeboot.conf not present?"
 fi
 if [ -r "$PREFIX$DIR/local.conf" ]; then
 	. $PREFIX$DIR/local.conf
 fi
+
+# Apply $PREFIX to files and use default value
+CERT=$PREFIX${CERT:-$DIR/cert.pem}
 
 # Expected values for the EK and AK types to ensure that they
 # are created inside a TPM and have the proper policies associated.
@@ -120,8 +125,9 @@ quote()
 		die "Unexpected arguments.$quote_usage"
 	fi
 
-	QUOTE_NONCE=${1:-0decafbad0}
-	QUOTE_PCRS=${2:-0,1,2}
+	QUOTE_TIME="$(date '+%s')"
+	QUOTE_NONCE="${1:-$(printf '%08x' $QUOTE_TIME)}"
+	QUOTE_PCRS="${2:-$PCRS}"
 
 	tpm2_flushall ""
 
@@ -146,6 +152,7 @@ quote()
 	# and for stupid tpm2-tools reasons it has to be in the
 	# non-standard TPM2B_PUBLIC format rather than a useful PEM file.
 	warn "tpm2: reading endorsement key"
+	tpm2_flushall ""
 	tpm2 createek >&2 \
 		--ek-context "$TMP/ek.ctx" \
 		--key-algorithm "rsa" \
@@ -393,15 +400,27 @@ ek-verify()
 		-out "$TMP/ek.pem" \
 	|| die "$TMP/ek.crt: unable to convert to PEM"
 
-	openssl verify \
-		-CAfile "$CA_ROOT" \
-		-CApath "$CA_PATH" \
-		-show_chain \
-		-verbose \
+	# check to see if the EK was signed with the safeboot key, which
+	# happens if this the TPM did not include its own OEM cert
+	if openssl verify \
+		-CAfile "$CERT" \
 		"$TMP/ek.pem" \
-	|| die "$TMP/ek.pem: SSL verification failure"
+		1>/dev/null \
+		2>/dev/null \
+	; then
+		warn "$QUOTE_TAR: ek.crt certificate validated with safeboot cert"
+	elif openssl verify \
+			-CAfile "$CA_ROOT" \
+			-CApath "$CA_PATH" \
+			-show_chain \
+			-verbose \
+			"$TMP/ek.pem" \
+	; then
+		warn "$QUOTE_TAR: ek.crt certificate validated with SSL cert"
+	else
+		die "$TMP/ek.pem: SSL verification failure"
+	fi
 
-	warn "$QUOTE_TAR: ek.crt certificate chain valid"
 
 	# make sure the EK has the proper key attributes
 	tpm2 print \
@@ -475,7 +494,14 @@ quote-verify()
 
 	if [ "$QUOTE_NONCE" = "" ]; then
 		# if no nonce was specified, read it from the tar file
+		# and check it for freshness compared to the current time
 		QUOTE_NONCE="$(cat "$TMP/nonce")"
+		VERIFY_TIME="$(date '+%s')"
+		QUOTE_TIME="$(printf "%d" "0x$QUOTE_NONCE")"
+		DELTA_TIME="$(( VERIFY_TIME - QUOTE_TIME ))"
+		if [ "$DELTA_TIME" -gt 30 ]; then
+			die "Old nonce: $QUOTE_TIME > $VERIFY_TIME + 30"
+		fi
 	fi
 
 	# Read the attributes from the ak.pub and ensure that they
@@ -659,6 +685,136 @@ verify-and-seal()
 	|| die "$QUOTE_TAR: sealing failed"
 }
 
+ek_sign_usage='
+## ek-sign
+Usage:
+```
+tpm2-attest ek-sign < ek.pem > ek.crt [/CN=device-name/]
+```
+
+Some TPMs do not include manufacturer signed endorsement key
+certificates, so it is necessary to extract the EK and sign it
+with a trusted key.  This will produce `ek.crt`, signed with
+the safeboot key.  The signing operation can be done out-of-band
+on a different machine.
+
+For Google Cloud ShieldedVM machines see:
+https://cloud.google.com/security/shielded-cloud/retrieving-endorsement-key
+
+Usually the EK public components can be extracted from the TPM, signed,
+and the resulting signed `ek.crt` can be stored back into the TPM nvram.
+Note that this will erase an existing OEM cert if you have one!
+
+```
+tpm2 createek -c /dev/null -f PEM -u ek.pem
+tpm2-attest ek-sign < ek.pem > ek.crt /CN=device/OU=example.org/
+tpm2 nvdefine -s 1500 0x1c00002
+tpm2 nvwrite -i ek.crt 0x1c00002
+```
+'
+usage+="$ek_sign_usage"
+commands+="|ek-sign"
+
+ek-sign()
+{
+	show_help "$1" "$ek_sign_usage"
+	if [ "$#" -gt 1 ]; then
+		die "Too many arguments.$ek_sign_usage"
+	fi
+
+	# Default subject is empty
+	SUBJECT="${1:-/}"
+
+	# if the system doesn't have a safeboot key configured,
+	# then the CSR signing will fail
+	if [ ! -r "$CERT" ]; then
+		die "$CERT: CA certificate not found"
+	fi
+
+	# Fake the certificate serial number if it
+	# does not already exist
+	SRL="$(dirname "$CERT")/$(basename "$CERT" .pem).srl"
+	if [ ! -r "$SRL" ]; then
+		echo "01" > "$SRL"
+	fi
+
+	EK="$TMP/ek.pem"
+	CRT="$TMP/ek.crt"
+
+	# Read the EK from stdin
+	cat > "$EK"
+
+	# Create a certificate configuration
+	cat <<EOF > "$TMP/csr.config"
+[req]
+	default_bits		= 2048
+	encrypt_key		= yes
+	utf8			= yes
+	string_mask		= utf8only
+	certificatePolicies	= 2.23.133.2.1
+	distinguished_name	= req_distinguished_name
+	req_extensions		= v3_req
+[req_distinguished_name]
+[v3_req]
+	basicConstraints	= critical,CA:FALSE
+	keyUsage		= keyEncipherment
+EOF
+
+	# Generate a CSR with a throwaway key using this config;
+	# the actual TPM public endorsement key will be
+	# replaced in the next step
+	openssl req \
+		-batch \
+		-new \
+		-sha256 \
+		-subj "$SUBJECT" \
+		-passout pass:1234 \
+		-keyout /dev/null \
+		-out "$TMP/ek.csr" \
+		-config "$TMP/csr.config" \
+		> /dev/null \
+	|| die "req creation failed"
+
+	if [ "$KEY" == "pkcs11:" ]; then
+		# KEY is a hardware token, use the yubikey engine
+		KEY_ENGINE="-engine pkcs11 -CAkeyform engine"
+	else
+		# KEY is a normal file, don't use an openssl engine
+		KEY=$PREFIX${KEY:-$DIR/cert.priv}
+		KEY_ENGINE=""
+	fi
+
+	# Sign the CSR, swapping out the public key for the
+	# actual TPM2 EK that was read in, instead of the
+	# throw-away key that is in the CSR.
+	openssl x509 \
+		-in "$TMP/ek.csr" \
+		-req \
+		-force_pubkey "$EK" \
+		-keyform PEM \
+		-CA "$CERT" \
+		-CAkey "$KEY" \
+		$KEY_ENGINE \
+		-extfile "$TMP/csr.config" \
+		-extensions v3_req \
+		-days 3652 \
+		-sha256 \
+		-outform DER \
+		-out "$CRT" \
+	|| die "$EK: signing failed"
+
+	openssl x509 \
+		-inform DER \
+		-in "$CRT" \
+		-noout \
+		-text \
+		>&2 \
+	|| die "$CRT: unable to parse"
+
+	# output the signed certificate on stdout
+	cat "$CRT"
+}
+
 
 
 if [ $# -lt 1 ]; then
@@ -674,7 +830,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	commands|quote|verify-and-seal|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify)
+	commands|quote|verify-and-seal|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify|ek-sign)
 		$command "$@"
 		;;
 	*)
