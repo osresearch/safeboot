@@ -21,22 +21,40 @@ This will result in two output files, `quote.tgz` to be sent to
 the remote side, and `ak.ctx` that is to remain on this machine
 for decrypting the return result from the remote attestation server.
 
+## attest
+Usage:
+```
+tpm2-attest attest http://server/ [nonce [pcrs,...]] > secret.txt
+```
+This will generate a quote for the nonce (or the current time if
+none is specified) and for the PCRs listed in the `$QUOTE_PCRS`
+environment variable.  It will then send the quote to a simple
+attestation server, which will validate the quote and reply with
+a sealed message that can only be decrypted by this TPM on this
+boot.
+
+No validation of the attestation server is done.
+
 ## verify
 Usage:
 ```
-tpm2-attest verify quote.tgz [good-pcrs.txt [nonce [ca-path]]]
+tpm2-attest verify quote.tgz [nonce [ca-path]]
 ```
 
 This will validate that the quote was signed with the attestation key
 with the provided nonce, and verify that the endorsement key from a valid
-TPM.
+TPM.  It outputs, but does not validate the event log; use
+`tpm2-attest eventlog-verify` once the known PCRs are available, or use a more 
+complex validation scheme.
 
 If the `nonce` is not specified, the one in the quote file will be used,
-although this opens up the possibility of a replay attack.
+although this opens up the possibility of a replay attack.  The QUOTE_MAX_AGE
+can be used to ensure that the quote is fresh.
 
 If the `ca-path` is not specified, the system one will be used.
 
-* TODO: verify event log
+The output on stdout is yaml formatted with the sha256 hash of the DER format
+EK certificate, the validated quote PCRs, and the unvalidated eventlog PCRs.
 
 ## eventlog-verify
 Usage:
@@ -66,7 +84,7 @@ has a fake key and decrypt the message in software.
 The `ca-path` should contain a file named `roots.pem` with the trusted
 root keys and have the hash symlinks created by `c_rehash`.
 
-* TODO: check parameters of attestation key.
+stdout is the sha256 hash of the DER format EK certificate.
 
 ## quote-verify
 Usage:
@@ -86,6 +104,9 @@ quote file will be used.  Note that this is a potential for a replay
 attack -- the remote attestation server should keep track of which
 nonce it used for this quote so that it can verify that the quote
 is actually live.
+
+stdout is the yaml formatted `tpm2 checkquote`, which can be used to
+validate the eventlog PCRs.
 
 ## seal
 Usage:

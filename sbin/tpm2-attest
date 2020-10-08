@@ -256,25 +256,76 @@ quote()
 	cat "$TMP/quote.tgz" || die "quote.tgz: unable to display"
 }
 
+attest_usage='
+## attest
+Usage:
+```
+tpm2-attest attest http://server/ [nonce [pcrs,...]] > secret.txt
+```
+This will generate a quote for the nonce (or the current time if
+none is specified) and for the PCRs listed in the `$QUOTE_PCRS`
+environment variable.  It will then send the quote to a simple
+attestation server, which will validate the quote and reply with
+a sealed message that can only be decrypted by this TPM on this
+boot.
+
+No validation of the attestation server is done.
+'
+usage+="$attest_usage"
+commands+="|attest"
+
+attest()
+{
+	show_help "$1" "$attest_usage"
+	if [ "$#" -gt 2 ]; then
+		die "Unexpected arguments.$attest_usage"
+	fi
+
+	SERVER="$1" ; shift
+
+	quote "$@" > "$TMP/quote-out.tgz" \
+	|| die "Unable to create quote"
+
+	curl \
+		-X POST \
+		--fail \
+		--silent \
+		--data-binary @"$TMP/quote-out.tgz" \
+		--output "$TMP/secret-reply.bin" \
+		"$SERVER" \
+	|| die "attestation failed"
+
+	unseal "ak.ctx" < "$TMP/secret-reply.bin" \
+	|| die "unsealing failed"
+
+	# cleanup the quote attestation key context
+	rm "ak.ctx"
+}
+
+
 ########################################
 
 verify_usage='
 ## verify
 Usage:
 ```
-tpm2-attest verify quote.tgz [good-pcrs.txt [nonce [ca-path]]]
+tpm2-attest verify quote.tgz [nonce [ca-path]]
 ```
 
 This will validate that the quote was signed with the attestation key
 with the provided nonce, and verify that the endorsement key from a valid
-TPM.
+TPM.  It outputs, but does not validate the event log; use
+`tpm2-attest eventlog-verify` once the known PCRs are available, or use a more 
+complex validation scheme.
 
 If the `nonce` is not specified, the one in the quote file will be used,
-although this opens up the possibility of a replay attack.
+although this opens up the possibility of a replay attack.  The QUOTE_MAX_AGE
+can be used to ensure that the quote is fresh.
 
 If the `ca-path` is not specified, the system one will be used.
 
-* TODO: verify event log
+The output on stdout is yaml formatted with the sha256 hash of the DER format
+EK certificate, the validated quote PCRs, and the unvalidated eventlog PCRs.
 '
 usage+="$verify_usage"
 commands+="|verify"
@@ -282,26 +333,34 @@ commands+="|verify"
 verify()
 {
 	show_help "$1" "$verify_usage"
-	if [ "$#" -lt 1 ] || [ "$#" -gt 4 ]; then
+	if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
 		die "Wrong arguments.$verify_usage"
 	fi
 
 	QUOTE_TAR="$1"
-	GOOD_PCRS="$2"
-	NONCE="$3"
-	CA_ROOT="${4:-$PREFIX$DIR/certs}"
+	NONCE="$2"
+	CA_ROOT="${3:-$PREFIX$DIR/certs}"
 
 	unpack-quote "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: unable to unpack"
 
-	quote-verify "$QUOTE_TAR" "$NONCE" \
-	|| die "$QUOTE_TAR: unable to verify quote"
-
-	eventlog-verify "$QUOTE_TAR" "$GOOD_PCRS" \
-	|| die "$QUOTE_TAR: unable to verify TPM event log"
+	#eventlog-verify "$QUOTE_TAR" "$GOOD_PCRS" \
+	#|| die "$QUOTE_TAR: unable to verify TPM event log"
 
 	ek-verify "$QUOTE_TAR" "$CA_ROOT" \
 	|| die "$QUOTE_TAR: unable to verify EK certificate"
+
+	quote-verify "$QUOTE_TAR" "$NONCE" \
+	|| die "$QUOTE_TAR: unable to verify quote"
+
+	# output the eventlog, with some formatting fixups to
+	# make it compatible with the other YAML outputs that
+	# have occured.
+	tpm2 eventlog "$TMP/eventlog" \
+	| sed \
+		-e '/^---/d' \
+		-e 's/^pcrs:/eventlog-pcrs:/' \
+	| tee "$TMP/eventlog.txt"
 
 	warn "$QUOTE_TAR: all tests passed"
 }
@@ -374,7 +433,7 @@ has a fake key and decrypt the message in software.
 The `ca-path` should contain a file named `roots.pem` with the trusted
 root keys and have the hash symlinks created by `c_rehash`.
 
-* TODO: check parameters of attestation key.
+stdout is the sha256 hash of the DER format EK certificate.
 '
 usage+="$ek_verify_usage"
 commands+="|ek-verify"
@@ -411,11 +470,12 @@ ek-verify()
 	; then
 		warn "$QUOTE_TAR: ek.crt certificate validated with safeboot cert"
 	elif openssl verify \
-			-CAfile "$CA_ROOT" \
-			-CApath "$CA_PATH" \
-			-show_chain \
-			-verbose \
-			"$TMP/ek.pem" \
+		-CAfile "$CA_ROOT" \
+		-CApath "$CA_PATH" \
+		-show_chain \
+		-verbose \
+		"$TMP/ek.pem" \
+		>&2 \
 	; then
 		warn "$QUOTE_TAR: ek.crt certificate validated with SSL cert"
 	else
@@ -427,7 +487,7 @@ ek-verify()
 	tpm2 print \
 		--type "TPM2B_PUBLIC" \
 		"$TMP/ek.pub" \
-	> "$TMP/ek.pub.txt" \
+		> "$TMP/ek.pub.txt" \
 	|| die "$TMP/ek.pub: unable to parse file"
 
 	if ! grep -q "value: $EK_TYPE" "$TMP/ek.pub.txt"; then
@@ -450,6 +510,7 @@ ek-verify()
 	fi
 
 	warn "$QUOTE_TAR: ek.pub matches ek.crt"
+	echo "ekhash: $(sha256 < "$TMP/ek.crt")"
 }
 
 quote_verify_usage='
@@ -471,6 +532,9 @@ quote file will be used.  Note that this is a potential for a replay
 attack -- the remote attestation server should keep track of which
 nonce it used for this quote so that it can verify that the quote
 is actually live.
+
+stdout is the yaml formatted `tpm2 checkquote`, which can be used to
+validate the eventlog PCRs.
 '
 usage+="$quote_verify_usage"
 commands+="|quote-verify"
@@ -491,6 +555,7 @@ quote-verify()
 	tpm2 print \
 		-t "TPMS_ATTEST" \
 		"$TMP/quote.out" \
+		>&2 \
 	|| die "tpm2_print: unable to parse quote"
 
 	if [ "$QUOTE_NONCE" = "" ]; then
@@ -512,7 +577,7 @@ quote-verify()
 	tpm2 print \
 		--type "TPMT_PUBLIC" \
 		"$TMP/ak.pub" \
-	> "$TMP/ak.pub.txt" \
+		> "$TMP/ak.pub.txt" \
 	|| die "$TMP/ak.pub: Unable to parse file"
 
 	if ! grep -q "value: $AK_TYPE" "$TMP/ak.pub.txt"; then
@@ -618,7 +683,6 @@ unseal()
 	fi
 
 	AK_CTX="$1"
-
 
 	# recreate the endorsement key context since it doesn't change per call
 	tpm2_flushall ""
@@ -830,7 +894,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	commands|quote|verify-and-seal|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify|ek-sign)
+	commands|quote|attest|verify-and-seal|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify|ek-sign)
 		$command "$@"
 		;;
 	*)
