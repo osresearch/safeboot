@@ -90,7 +90,7 @@ is actually live.
 ## seal
 Usage:
 ```
-echo secret | tpm2-attest seal quote.tgz [nonce] > cipher.bin
+echo secret | tpm2-attest seal quote.tgz > cipher.bin
 ```
 
 After a attested quote has been validated, an encrypted reply is sent to

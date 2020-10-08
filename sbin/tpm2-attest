@@ -31,6 +31,7 @@ fi
 
 # Apply $PREFIX to files and use default value
 CERT=$PREFIX${CERT:-$DIR/cert.pem}
+: "${QUOTE_MAX_AGE:=30}"
 
 # Expected values for the EK and AK types to ensure that they
 # are created inside a TPM and have the proper policies associated.
@@ -499,8 +500,8 @@ quote-verify()
 		VERIFY_TIME="$(date '+%s')"
 		QUOTE_TIME="$(printf "%d" "0x$QUOTE_NONCE")"
 		DELTA_TIME="$(( VERIFY_TIME - QUOTE_TIME ))"
-		if [ "$DELTA_TIME" -gt 30 ]; then
-			die "Old nonce: $QUOTE_TIME > $VERIFY_TIME + 30"
+		if [ "$DELTA_TIME" -gt "$QUOTE_MAX_AGE" ]; then
+			die "Old nonce: $QUOTE_TIME > $VERIFY_TIME + $QUOTE_MAX_AGE"
 		fi
 	fi
 
@@ -541,7 +542,7 @@ seal_usage='
 ## seal
 Usage:
 ```
-echo secret | tpm2-attest seal quote.tgz [nonce] > cipher.bin
+echo secret | tpm2-attest seal quote.tgz > cipher.bin
 ```
 
 After a attested quote has been validated, an encrypted reply is sent to
@@ -565,7 +566,6 @@ seal()
 	fi
 
 	QUOTE_TAR="$1"
-	QUOTE_NONCE="${2:-}"
 
 	unpack-quote "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: unable to unpack"
