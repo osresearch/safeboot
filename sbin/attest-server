@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""
+Simple server example for receiving attestation quotes,
+validating them, and sending back sealed data.
+"""
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import logging
+import tempfile
+import sys
+import subprocess
+
+class AttestServer(BaseHTTPRequestHandler):
+	def do_GET(self):
+		logging.info("GET request,\nPath: %s\nHeaders:\n%s\n", str(self.path), str(self.headers))
+		self.send_response(200)
+		self.send_header('Content-type', 'text/html')
+		self.end_headers()
+		self.wfile.write("Only POST is supported".encode())
+
+	def do_POST(self):
+		content_length = int(self.headers.get('Content-Length',0))
+		quote_data = self.rfile.read(content_length)
+
+		# write post data into a file
+		tmp_file = tempfile.NamedTemporaryFile()
+		tmp_file.write(quote_data)
+		quote_file = tmp_file.name
+
+		# invoke the attestation on the file
+		if subprocess.run(["./sbin/tpm2-attest", "verify", quote_file ],
+			stdout=sys.stdout,
+			stderr=sys.stderr,
+		).returncode != 0:
+			self.send_response(401)
+			self.send_header('Content-type', 'text/html')
+			self.end_headers()
+			self.wfile.write("QUOTE FAILED".encode())
+			return
+
+		# the quote is valid, so seal some data and return it as binary
+		self.send_response(200)
+		self.send_header('Content-type', 'application/octet-stream')
+		self.end_headers()
+
+		subprocess.run(["./sbin/tpm2-attest", "seal", quote_file, ],
+			input="hello world!".encode(),
+			stdout=self.wfile,
+			stderr=sys.stderr,
+		)
+
+def run(server_class=HTTPServer, port=8080):
+	logging.basicConfig(level=logging.INFO)
+	server_address = ('', port)
+	httpd = server_class(server_address, AttestServer)
+	logging.info('Starting attestation httpd port %d...\n' % (port))
+	try:
+		httpd.serve_forever()
+	except KeyboardInterrupt:
+		pass
+	httpd.server_close()
+	logging.info('Stopping httpd...\n')
+
+if __name__ == '__main__':
+	from sys import argv
+
+	if len(argv) == 2:
+		run(port=int(argv[1]))
+	else:
+		run()
