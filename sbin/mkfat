@@ -1,0 +1,45 @@
+#!/bin/bash
+# Make a fat filesystem based on an existing directory structure
+
+die() { echo "$@" >&2 ; exit 1 ; }
+
+IMG="$1"
+DIR="$2"
+
+if [ -z "$IMG" ] || [ -z "$DIR" ]; then
+	die "Usage: $0 fat.bin path-to-directory"
+fi
+
+# estimate the size of the filesystem required
+BYTES="$(du -bs "$DIR" | awk 'END {print $1}')"
+
+# Round up to the nearest 1 MB
+BLOCKS="$(( (BYTES + 1024 * 1024 - 1) / (1024 * 1024) ))"
+
+# Create a fat filesystem image with just enough size
+dd if=/dev/zero of="$IMG.tmp" bs=1M count="$BLOCKS" \
+|| die "dd"
+
+mkfs.fat "$IMG.tmp" \
+|| die "mkfs"
+
+# Build the directory structure
+( cd "$DIR" ; find . -type d -print0 ) | \
+while IFS= read -r -d '' dir; do 
+	[ "$dir" = "." ] && continue
+	echo "$DIR/$dir"
+	mmd -i "$IMG.tmp" "$dir" \
+	|| die "mkdir $dir"
+done
+
+# Copy in the files
+( cd "$DIR" ; find . -type f -print0 ) | \
+while IFS= read -r -d '' file; do 
+	echo "$DIR/$file"
+	mcopy -i "$IMG.tmp" "$DIR/$file" "::$file" \
+	|| die "cp $file"
+done
+
+# And atomically rename it to the final name
+mv "$IMG.tmp" "$IMG"
+

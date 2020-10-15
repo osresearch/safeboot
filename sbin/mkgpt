@@ -1,0 +1,41 @@
+#!/bin/bash -x
+# create disk image with a GPT that has an EFI system partition
+# on a FAT file system, as well as data partitions
+# TODO: add data partition
+die() { echo "$@" >&2 ; exit 1 ; }
+
+GPTBIN="$1"
+FATFS="$2"
+
+if [ -z "$GPTBIN" ] || [ -z "$FATFS" ]; then
+	die "Usage: $0 gpt.bin esp.bin data.bin"
+fi
+
+
+# align to next MB (https://www.thomas-krenn.com/en/wiki/Partition_Alignment)
+alignment=$(( 1024 * 1024 ))
+
+# insert the filesystem to a new file at offset 1MB
+dd \
+	if="$FATFS" \
+	of="$GPTBIN.tmp" \
+	conv=sparse \
+	obs=512 \
+	seek=$((alignment/512)) \
+|| die dd
+
+# extend the file by 1MB
+truncate -s "+${alignment}" "$GPTBIN.tmp"
+
+# apply partitioning
+parted \
+	--script \
+	--align optimal \
+	"$GPTBIN.tmp" \
+	mklabel gpt \
+	mkpart ESP "${alignment}B" '100%' \
+	set 1 boot on \
+	print all \
+|| die parted
+
+mv "$GPTBIN.tmp" "$GPTBIN"
