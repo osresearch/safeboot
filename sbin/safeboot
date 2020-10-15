@@ -1459,6 +1459,22 @@ mount-all() {
 }
 
 ########################################
+#
+# Status checking - there are lots of things to chcek...
+#
+status_usage='
+## status
+Usage:
+```
+safeboot status [verbose]
+```
+
+Check the various configurations to see if the system is configured
+with safeboot.  This is not exhaustive, but hopefully catches many
+of the common things to setup.
+'
+usage+=$status_usage
+commands+="|status"
 
 status-secureboot()
 {
@@ -1552,13 +1568,17 @@ status-kernels()
 # Check the status of safeboot
 status()
 {
+	show_help "$1" "$status_usage"
+
+	if [ "$1" = "verbose" ]; then
+		VERBOSE=1
+	fi
+
 	if [ ! -r "$PREFIX$DIR/safeboot.conf" ] ; then
-		warn "$PREFIX$DIR/safeboot.conf NOT installed?"
-		status=fail
+		die "$PREFIX$DIR/safeboot.conf NOT installed?"
 	fi
 	if [ ! -r "$PREFIX$DIR/local.conf" ]; then
-		warn "$PREFIX$DIR/safeboot.conf NOT present?"
-		status=fail
+		die "$PREFIX$DIR/safeboot.conf NOT present?"
 	fi
 
 	if [ "$SIP" != "1" ]; then
