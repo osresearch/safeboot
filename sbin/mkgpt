@@ -10,7 +10,7 @@ if [ -z "$GPTBIN" ] || [ -z "$FATFS" ]; then
 	die "Usage: $0 gpt.bin esp.bin [data.bin...]"
 fi
 
-# align each partition to 1 MB,
+# align each partition to 1 MiB,
 # the default unit for parted
 alignment=$(( 1024 * 1024 ))
 
@@ -26,7 +26,7 @@ for part_file in "$@"; do
 	fi
 
 	part_size="$( wc -c < "$part_file" )"
-	part_blocks="$(( (part_size + aligment - 1) / alignment ))"
+	part_blocks="$(( (part_size + aligment - 1) / alignment + 1 ))"
 	end="$(( start + part_blocks ))"
 
 	echo "$part_file: start $offset + $part_blocks"
@@ -58,8 +58,8 @@ for part_file in "$@"; do
 done
 
 
-# extend the file by 1MB
-truncate -s "+${alignment}" "$GPTBIN.tmp"
+# extend the file to be a full number of blocks
+truncate -s "$(( alignment * (end + 1) ))" "$GPTBIN.tmp"
 
 # apply partitioning
 echo "${parted_script[@]}"
