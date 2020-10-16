@@ -1,40 +1,74 @@
-#!/bin/bash -x
+#!/bin/bash
 # create disk image with a GPT that has an EFI system partition
 # on a FAT file system, as well as data partitions
-# TODO: add data partition
 die() { echo "$@" >&2 ; exit 1 ; }
 
-GPTBIN="$1"
-FATFS="$2"
+GPTBIN="$1" ; shift
+FATFS="$1"
 
 if [ -z "$GPTBIN" ] || [ -z "$FATFS" ]; then
-	die "Usage: $0 gpt.bin esp.bin data.bin"
+	die "Usage: $0 gpt.bin esp.bin [data.bin...]"
 fi
 
-
-# align to next MB (https://www.thomas-krenn.com/en/wiki/Partition_Alignment)
+# align each partition to 1 MB,
+# the default unit for parted
 alignment=$(( 1024 * 1024 ))
 
-# insert the filesystem to a new file at offset 1MB
-dd \
-	if="$FATFS" \
-	of="$GPTBIN.tmp" \
-	conv=sparse \
-	obs=512 \
-	seek=$((alignment/512)) \
-|| die dd
+# concatenate each of the partitions aligned to that size, building
+# the parted script along the way.  The ESP is positioned at the first 1 MB.
+part=1
+start="1"
+parts=()
+
+for part_file in "$@"; do
+	if [ ! -r "$part_file" ]; then
+		die "$part_file: unable to read"
+	fi
+
+	part_size="$( wc -c < "$part_file" )"
+	part_blocks="$(( (part_size + aligment - 1) / alignment ))"
+	end="$(( start + part_blocks ))"
+
+	echo "$part_file: start $offset + $part_blocks"
+
+	# insert the filesystem to a new file at offset 1MB
+	dd \
+		if="$part_file" \
+		of="$GPTBIN.tmp" \
+		conv=sparse,notrunc \
+		bs="$alignment" \
+		seek="$start" \
+	|| die "$part_file: unable to dd"
+
+	if [ "$part" = 1 ]; then
+		parted_script+=( \
+			mklabel gpt \
+			mkpart ESP "${start}MiB" "${end}MiB" \
+			set 1 boot on \
+		)
+	else
+		parted_script+=( \
+			mkpart "$(basename $part_file)" "${start}MiB" "${end}MiB" \
+		)
+	fi
+
+	# update the offset (in blocks) for the next partition
+	start="$end"
+	part="$(( part + 1 ))"
+done
+
 
 # extend the file by 1MB
 truncate -s "+${alignment}" "$GPTBIN.tmp"
 
 # apply partitioning
+echo "${parted_script[@]}"
+
 parted \
 	--script \
 	--align optimal \
 	"$GPTBIN.tmp" \
-	mklabel gpt \
-	mkpart ESP "${alignment}B" '100%' \
-	set 1 boot on \
+	"${parted_script[@]}" \
 	print all \
 || die parted
 
