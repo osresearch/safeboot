@@ -880,7 +880,6 @@ unify-kernel()
 
 		sections+=( \
 			--add-section		".$name=$file" \
-			--set-section-alignment ".$name=$blocksize" \
 			--change-section-vma	".$name=$offset" \
 		)
 
