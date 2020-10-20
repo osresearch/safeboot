@@ -1,0 +1,52 @@
+# setup a few directories
+mkdir /bin
+mkdir /lib
+mkdir /lib64
+symlink ../lib64 /lib/x86_64-linux-gnu
+
+# normal coreutils
+/bin/ls
+/bin/bash
+/bin/cp
+/bin/mv
+/bin/echo
+/bin/mount
+/bin/umount
+/bin/ps
+/bin/grep
+/bin/mkdir
+/usr/bin/sha256sum
+/usr/bin/xxd
+/usr/bin/lspci
+/usr/bin/head
+/usr/bin/tail
+/usr/bin/setsid
+/usr/bin/find
+/usr/bin/[
+/bin/dd
+/bin/sleep
+/bin/cat
+/bin/less
+/bin/dmesg
+/bin/fbset
+
+# disk management
+/sbin/fdisk
+/sbin/mkfs.ext4
+/sbin/mkfs.vfat
+
+# safeboot tools
+./initramfs/init /
+./sbin/safeboot
+./sbin/tpm2-attest
+./bin/tpm2
+./functions.sh /etc/safeboot
+./safeboot.conf /etc/safeboot
+
+# cryptdisk setup
+/sbin/cryptsetup
+/sbin/dmsetup
+/sbin/lvm
+
+# temporarily include vi
+/usr/bin/vi

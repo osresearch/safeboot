@@ -176,3 +176,69 @@ fake-mount:
 	mount --bind `pwd`/initramfs/scripts/safeboot-bootmode /etc/initramfs-tools/scripts/init-top/safeboot-bootmode
 fake-unmount:
 	mount | awk '/safeboot/ { print $$3 }' | xargs umount
+
+
+#
+# Build a safeboot initrd.cpio
+#
+build/initrd/gitstatus: initramfs/files.txt
+	rm -rf "$(dir $@)"
+	mkdir -p "$(dir $@)"
+	./sbin/populate "$(dir $@)" "$<"
+	git status -s > "$@"
+
+build/initrd.cpio: build/initrd/gitstatus
+	( cd $(dir $<) ; \
+		find . -print0 \
+		| cpio \
+			-0 \
+			-H newc \
+			--no-absolute-filenames \
+			-o \
+	) \
+	| ./sbin/cpio-clean \
+		initramfs/dev.cpio \
+		- \
+	> $@
+	sha256sum $@
+
+build/initrd.cpio.xz: build/initrd.cpio
+	xz \
+		--check=crc32 \
+		--lzma2=dict=1MiB \
+		-9 \
+		< "$<" \
+	| dd bs=512 conv=sync status=none > "$@.tmp"
+	@if ! cmp --quiet "$@.tmp" "$@" ; then \
+		mv "$@.tmp" "$@" ; \
+	else \
+		echo "$@: unchanged" ; \
+		rm "$@.tmp" ; \
+	fi
+	sha256sum $@
+
+
+BOOTX64=build/boot/EFI/BOOT/BOOTX64.EFI
+$(BOOTX64): build/initrd.cpio.xz build/vmlinuz initramfs/cmdline.txt
+	mkdir -p "$(dir $@)"
+	DIR=. \
+	./sbin/safeboot unify-kernel \
+		"$@" \
+		kernel=build/vmlinuz \
+		initrd=build/initrd.cpio.xz \
+		cmdline=initramfs/cmdline.txt
+
+build/esp.bin: $(BOOTX64)
+	./sbin/mkfat "$@" build/boot
+
+build/hda.bin: build/esp.bin
+	./sbin/mkgpt "$@" build/esp.bin
+
+qemu: build/hda.bin
+	-qemu-system-x86_64 \
+		-M q35,accel=kvm \
+		-m 4G \
+		-bios /usr/share/OVMF/OVMF_CODE.fd \
+		-serial stdio
+		-hda "$<" \
+	stty sane
