@@ -33,3 +33,8 @@ nonce
 *.deb
 blob
 local.conf
+*.cpio
+*.cpio.*
+*.efi
+*.squashfs
+*.img
