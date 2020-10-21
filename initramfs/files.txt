@@ -1,8 +1,8 @@
 # setup a few directories
-mkdir /bin
-mkdir /lib
-mkdir /lib64
-symlink ../lib64 /lib/x86_64-linux-gnu
+mkdir bin
+mkdir lib
+mkdir lib64
+symlink ../lib64 lib/x86_64-linux-gnu
 
 # normal coreutils
 /bin/ls
@@ -28,7 +28,6 @@ symlink ../lib64 /lib/x86_64-linux-gnu
 /bin/cat
 /bin/less
 /bin/dmesg
-/bin/fbset
 
 # disk management
 /sbin/fdisk
@@ -36,12 +35,12 @@ symlink ../lib64 /lib/x86_64-linux-gnu
 /sbin/mkfs.vfat
 
 # safeboot tools
-./initramfs/init /
+./initramfs/init .
 ./sbin/safeboot
 ./sbin/tpm2-attest
 ./bin/tpm2
-./functions.sh /etc/safeboot
-./safeboot.conf /etc/safeboot
+./functions.sh etc/safeboot
+./safeboot.conf etc/safeboot
 
 # cryptdisk setup
 /sbin/cryptsetup
