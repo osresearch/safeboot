@@ -192,9 +192,8 @@ build/initrd.cpio: build/initrd/gitstatus
 		find . -print0 \
 		| cpio \
 			-0 \
-			-H newc \
-			--no-absolute-filenames \
 			-o \
+			-H newc \
 	) \
 	| ./sbin/cpio-clean \
 		initramfs/dev.cpio \
@@ -206,7 +205,7 @@ build/initrd.cpio.xz: build/initrd.cpio
 	xz \
 		--check=crc32 \
 		--lzma2=dict=1MiB \
-		-9 \
+		--threads 0 \
 		< "$<" \
 	| dd bs=512 conv=sync status=none > "$@.tmp"
 	@if ! cmp --quiet "$@.tmp" "$@" ; then \
@@ -224,9 +223,11 @@ $(BOOTX64): build/initrd.cpio.xz build/vmlinuz initramfs/cmdline.txt
 	DIR=. \
 	./sbin/safeboot unify-kernel \
 		"$@" \
-		kernel=build/vmlinuz \
+		linux=build/vmlinuz \
 		initrd=build/initrd.cpio.xz \
-		cmdline=initramfs/cmdline.txt
+		cmdline=initramfs/cmdline.txt \
+
+	sha256sum "$@"
 
 build/esp.bin: $(BOOTX64)
 	./sbin/mkfat "$@" build/boot
@@ -238,7 +239,8 @@ qemu: build/hda.bin
 	-qemu-system-x86_64 \
 		-M q35,accel=kvm \
 		-m 4G \
-		-bios /usr/share/OVMF/OVMF_CODE.fd \
-		-serial stdio
-		-hda "$<" \
+		-bios /usr/share/ovmf/OVMF.fd \
+		-serial stdio \
+		-drive "file=$<,format=raw" \
+
 	stty sane
