@@ -233,7 +233,7 @@ quote()
 	|| die "ima: unable to copy"
 
 	tar \
-		-zcf "$TMP/quote.tgz" \
+		-cf - \
 		-C "$TMP" \
 		"ak.pub" \
 		"ek.pub" \
@@ -244,6 +244,7 @@ quote()
 		"quote.sig" \
 		"eventlog" \
 		"ima" \
+	| gzip -f > "$TMP/quote.tgz" \
 	|| die "$TMP/quote.tgz: Unable to create"
 
 	# ensure that this quote validates locally before
@@ -772,7 +773,7 @@ Note that this will erase an existing OEM cert if you have one!
 ```
 tpm2 createek -c /dev/null -f PEM -u ek.pem
 tpm2-attest ek-sign < ek.pem > ek.crt /CN=device/OU=example.org/
-tpm2 nvdefine -s 1500 0x1c00002
+tpm2 nvdefine -s 1600 -a "ownerwrite|authwrite|ownerread|authread|no_da" 0x1c0002
 tpm2 nvwrite -i ek.crt 0x1c00002
 ```
 '
