@@ -124,6 +124,12 @@ requirements:
 		curl \
 		libjson-c-dev \
 		libcurl4-openssl-dev \
+		expect \
+		socat \
+		libseccomp-dev \
+		seccomp \
+		libgnutls28-dev \
+		libtasn1-6-dev \
 
 
 # Remove the temporary files
@@ -260,6 +266,9 @@ qemu: build/hda.bin
 		-m 4G \
 		-bios /usr/share/ovmf/OVMF.fd \
 		-nographic \
+		-chardev socket,id=chrtpm,path=/tmp/vtpm/sock \
+		-tpmdev emulator,id=tpm0,chardev=chrtpm \
+		-device tpm-tis,tpmdev=tpm0 \
 		-drive "file=$<,format=raw" \
 
 	stty sane
