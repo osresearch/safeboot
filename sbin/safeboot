@@ -7,6 +7,17 @@
 #
 # For more details: https://safeboot.dev/
 #
+# External programs required:
+# [ echo openssl tar tpm2 xxd sha256sum tail cut tr dd awk efivar_write
+# mount cryptsetup bash objcopy mkdir cat cp gzip
+# grep veritysetup tee umount sync sleep reboot telinit fsck.ext4
+# blockdev lsof xargs lvcreate mv rm ln lvm mktemp chmod pidof time
+# date printf chattr tee
+#
+# optional programs:
+# yubico-piv-tool cert-to-efi-sig-list sign-efi-sig-list.safeboot
+# efibootmgr sbsign.safeboot
+#
 # turn off "expressions don't expand in single quotes"
 # and "can't follow non-constant sources"
 # shellcheck disable=SC2016 disable=SC1091
