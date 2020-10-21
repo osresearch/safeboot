@@ -232,15 +232,36 @@ $(BOOTX64): build/initrd.cpio.xz build/vmlinuz initramfs/cmdline.txt
 build/esp.bin: $(BOOTX64)
 	./sbin/mkfat "$@" build/boot
 
-build/hda.bin: build/esp.bin
-	./sbin/mkgpt "$@" build/esp.bin
+build/hda.bin: build/esp.bin build/luks.bin
+	./sbin/mkgpt "$@" $^
+
+build/key.bin:
+	echo -n "abcd1234" > "$@"
+
+build/luks.bin: build/key.bin
+	fallocate -l 512M "$@.tmp"
+	cryptsetup \
+		-y luksFormat \
+		--pbkdf pbkdf2 \
+		"$@.tmp" \
+		"build/key.bin"
+	cryptsetup luksOpen \
+		--key-file "build/key.bin" \
+		"$@.tmp" \
+		test-luks
+	#mkfs.ext4 /dev/mapper/test-luks
+	cat root.squashfs > /dev/mapper/test-luks
+	cryptsetup luksClose test-luks
+	mv "$@.tmp" "$@"
 
 qemu: build/hda.bin
 	-qemu-system-x86_64 \
 		-M q35,accel=kvm \
 		-m 4G \
 		-bios /usr/share/ovmf/OVMF.fd \
-		-serial stdio \
+		-nographic \
 		-drive "file=$<,format=raw" \
 
 	stty sane
+
+
