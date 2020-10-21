@@ -15,15 +15,30 @@ symlink ../lib64 lib/x86_64-linux-gnu
 /bin/ps
 /bin/grep
 /bin/mkdir
+/bin/mknod
 /usr/bin/sha256sum
+/usr/bin/sync
+/usr/bin/tee
 /usr/bin/xxd
+/usr/bin/gzip
+/usr/bin/tar
+/usr/bin/rm
 /usr/bin/lspci
 /usr/bin/head
 /usr/bin/tail
+/usr/bin/cut
 /usr/bin/setsid
 /usr/bin/stty
 /usr/bin/find
+/usr/bin/mktemp
 /usr/bin/[
+/usr/bin/awk
+/usr/bin/chmod
+/usr/bin/chattr
+/usr/bin/pidof
+/usr/bin/time
+/usr/bin/date
+/usr/bin/printf
 /bin/dd
 /bin/sleep
 /bin/cat
@@ -41,8 +56,10 @@ symlink ../lib64 lib/x86_64-linux-gnu
 ./sbin/safeboot
 ./sbin/tpm2-attest
 ./bin/tpm2
+/lib/x86_64-linux-gnu/libtss2-tcti-device.so.0 lib
 ./functions.sh etc/safeboot
 ./safeboot.conf etc/safeboot
+/usr/bin/openssl
 
 # cryptdisk setup
 /sbin/cryptsetup

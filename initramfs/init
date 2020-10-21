@@ -5,13 +5,18 @@ mount -t proc none /proc
 mount -t devtmpfs none /dev
 mount -t sysfs none /sys
 mount -t efivarfs none /sys/firmware/efi/efivars
+mount -t securityfs none /sys/kernel/security
 
-echo "Hello, ttyprintk" > /dev/ttyprintk
-echo "hello console" > /dev/console
+#echo "Hello, ttyprintk" > /dev/ttyprintk
+#echo "hello console" > /dev/console
 
 insmod /lib/modules/libahci.ko
 insmod /lib/modules/ahci.ko
 insmod /lib/modules/dm-crypt.ko
+
+# check the hash of the kernel/initrd/cmdline that was booted
+tpm2 pcrread sha256:4
+cat /sys/kernel/security/tpm0/binary_bios_measurements > /tmp/eventlog.bin
 
 export PS1='\h:\w# '
 exec setsid --ctty /bin/bash </dev/console >/dev/console 2>/dev/console
