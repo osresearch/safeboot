@@ -21,6 +21,7 @@ symlink ../lib64 lib/x86_64-linux-gnu
 /usr/bin/head
 /usr/bin/tail
 /usr/bin/setsid
+/usr/bin/stty
 /usr/bin/find
 /usr/bin/[
 /bin/dd
@@ -28,6 +29,7 @@ symlink ../lib64 lib/x86_64-linux-gnu
 /bin/cat
 /bin/less
 /bin/dmesg
+/usr/sbin/chroot
 
 # disk management
 /sbin/fdisk
@@ -46,6 +48,15 @@ symlink ../lib64 lib/x86_64-linux-gnu
 /sbin/cryptsetup
 /sbin/dmsetup
 /sbin/lvm
+#/sbin/kexec
+
+# hack for ahci modules
+/usr/sbin/insmod
+/lib/modules/5.4.0-48-generic/kernel/drivers/ata/ahci.ko lib/modules
+/lib/modules/5.4.0-48-generic/kernel/drivers/ata/libahci.ko lib/modules
+/lib/modules/5.4.0-48-generic/kernel/drivers/md/dm-crypt.ko lib/modules
+
+
 
 # temporarily include vi
 /usr/bin/vi

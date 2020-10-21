@@ -1,6 +1,6 @@
 #!/bin/bash
 echo "Hello, initrd"
-mkdir -p /proc /sys /tmp /dev /etc /root
+mkdir -p /proc /sys /tmp /dev /etc /root /run
 mount -t proc none /proc
 mount -t devtmpfs none /dev
 mount -t sysfs none /sys
@@ -8,6 +8,10 @@ mount -t efivarfs none /sys/firmware/efi/efivars
 
 echo "Hello, ttyprintk" > /dev/ttyprintk
 echo "hello console" > /dev/console
+
+insmod /lib/modules/libahci.ko
+insmod /lib/modules/ahci.ko
+insmod /lib/modules/dm-crypt.ko
 
 export PS1='\h:\w# '
 exec setsid --ctty /bin/bash </dev/console >/dev/console 2>/dev/console
