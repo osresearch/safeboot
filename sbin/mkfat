@@ -13,8 +13,8 @@ fi
 # estimate the size of the filesystem required
 BYTES="$(du -bs "$DIR" | awk 'END {print $1}')"
 
-# Round up to the nearest 1 MB
-BLOCKS="$(( (BYTES + 1024 * 1024 - 1) / (1024 * 1024) ))"
+# Round up to the nearest 4 MB
+BLOCKS="$(( (BYTES + 4 * 1024 * 1024 - 1) / (1024 * 1024) ))"
 
 # Create a fat filesystem image with just enough size
 dd if=/dev/zero of="$IMG.tmp" bs=1M count="$BLOCKS" \
