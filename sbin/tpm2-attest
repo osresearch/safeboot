@@ -142,6 +142,8 @@ quote()
 	tpm2 nvread -o "$TMP/ek.crt" 0x01c00002 \
 	|| die "tpm2_nvread: unable to read endorsement key cert"
 
+	sha256sum "$TMP/ek.crt" >&2
+
 	openssl x509 >&2 \
 		-inform "DER"  \
 		-in "$TMP/ek.crt" \
@@ -364,6 +366,40 @@ verify()
 	| tee "$TMP/eventlog.txt"
 
 	warn "$QUOTE_TAR: all tests passed"
+}
+
+########################################
+
+eventlog_usage='
+## eventlog
+Usage:
+```
+tpm2-attest eventlog [eventlog.bin]
+```
+
+This will read and parse the TPM2 eventlog. If no file is specified,
+the default Linux one will be parsed.  If `-` is specified, the eventlog
+will be read from stdin.
+
+'
+usage+="$eventlog_usage"
+commands+="|eventlog"
+
+eventlog()
+{
+	show_help "$1" "$eventlog_usage"
+	if [ "$#" -gt 1 ]; then
+		die "Wrong arguments.$eventlog_usage"
+	fi
+
+	EVENTLOG="/sys/kernel/security/tpm0/binary_bios_measurements"
+	if [ -n "$1" ]; then
+		EVENTLOG="$1"
+	fi
+
+	cat "$EVENTLOG" > "$TMP/eventlog.bin"
+	tpm2 eventlog "$TMP/eventlog.bin" \
+	|| die "$TMP/eventlog.bin: Unable to parse"
 }
 
 ########################################
@@ -703,6 +739,7 @@ unseal()
 		--credentialkey-auth "session:$TMP/session.ctx" \
 		--credential-blob "$TMP/cipher.bin" \
 		--certinfo-data "$TMP/secret.txt" \
+		1>&2 \
 	|| die "tpm2_activatecredential: unable to decrypt cipher text"
 
 	cat "$TMP/secret.txt"
@@ -771,9 +808,15 @@ and the resulting signed `ek.crt` can be stored back into the TPM nvram.
 Note that this will erase an existing OEM cert if you have one!
 
 ```
+# on the device
 tpm2 createek -c /dev/null -f PEM -u ek.pem
+# on the server
 tpm2-attest ek-sign < ek.pem > ek.crt /CN=device/OU=example.org/
-tpm2 nvdefine -s 1600 -a "ownerwrite|authwrite|ownerread|authread|no_da" 0x1c0002
+# on the device again
+tpm2 nvdefine \
+	-s $(wc -c < ek.crt) \
+	-a "ownerwrite|authwrite|ownerread|authread|no_da" \
+	0x1c00002
 tpm2 nvwrite -i ek.crt 0x1c00002
 ```
 '
@@ -895,7 +938,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	commands|quote|attest|verify-and-seal|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify|ek-sign)
+	commands|quote|attest|verify-and-seal|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify|ek-sign|eventlog)
 		$command "$@"
 		;;
 	*)
