@@ -128,6 +128,7 @@ requirements:
 		socat \
 		libseccomp-dev \
 		seccomp \
+		gnutls-bin \
 		libgnutls28-dev \
 		libtasn1-6-dev \
 
@@ -228,10 +229,15 @@ $(BOOTX64): build/initrd.cpio.xz build/vmlinuz initramfs/cmdline.txt
 	mkdir -p "$(dir $@)"
 	DIR=. \
 	./sbin/safeboot unify-kernel \
-		"$@" \
+		"/tmp/kernel.tmp" \
 		linux=build/vmlinuz \
 		initrd=build/initrd.cpio.xz \
 		cmdline=initramfs/cmdline.txt \
+
+	DIR=. \
+	./sbin/safeboot sign-kernel \
+		"/tmp/kernel.tmp" \
+		"$@"
 
 	sha256sum "$@"
 
@@ -260,15 +266,26 @@ build/luks.bin: build/key.bin
 	cryptsetup luksClose test-luks
 	mv "$@.tmp" "$@"
 
+
 qemu: build/hda.bin
+	@mkdir -p build/vtpm
+	swtpm socket \
+		--tpm2 \
+		--tpmstate dir="build/vtpm" \
+		--flags "startup-clear" \
+		--ctrl type=unixio,path="build/vtpm/sock" &
+		
 	-qemu-system-x86_64 \
 		-M q35,accel=kvm \
 		-m 4G \
 		-bios /usr/share/ovmf/OVMF.fd \
 		-nographic \
-		-chardev socket,id=chrtpm,path=/tmp/vtpm/sock \
+		-netdev user,id=eth0 \
+		-device e1000,netdev=eth0 \
+		-chardev socket,id=chrtpm,path=build/vtpm/sock \
 		-tpmdev emulator,id=tpm0,chardev=chrtpm \
 		-device tpm-tis,tpmdev=tpm0 \
+		-boot c \
 		-drive "file=$<,format=raw" \
 
 	stty sane
