@@ -1,6 +1,6 @@
 #!/bin/bash
 echo "Hello, initrd"
-mkdir -p /proc /sys /tmp /dev /etc /root /run
+mkdir -p /proc /sys /tmp /dev /etc /root /run /boot
 mount -t proc none /proc
 mount -t devtmpfs none /dev
 mount -t sysfs none /sys
@@ -10,13 +10,48 @@ mount -t securityfs none /sys/kernel/security
 #echo "Hello, ttyprintk" > /dev/ttyprintk
 #echo "hello console" > /dev/console
 
+# qemu hack!
+# load modules that are not built into the kernel
+# and bring up the network
 insmod /lib/modules/libahci.ko
 insmod /lib/modules/ahci.ko
 insmod /lib/modules/dm-crypt.ko
+insmod /lib/modules/e1000.ko
+ifconfig eth0 10.0.2.15
 
 # check the hash of the kernel/initrd/cmdline that was booted
 tpm2 pcrread sha256:4
 cat /sys/kernel/security/tpm0/binary_bios_measurements > /tmp/eventlog.bin
 
+# remotely attest and get a secret disk key
+SERVER="10.0.2.2"
+while true; do
+	ping -w 5 -c 1 "$SERVER" \
+	|| break
+
+	echo "network is up"
+	bash -x /bin/tpm2-attest attest "http://$SERVER:8080/attest/" > /tmp/secret.bin \
+	|| break;
+
+	echo "attestation successful"
+
+	cryptsetup luksOpen \
+		--key-file /tmp/secret.bin \
+		/dev/sda2 cryptroot \
+	|| break
+
+	echo "cryptsetup successful"
+	mount /dev/mapper/cryptroot /root \
+	|| break
+
+	echo "mount successful"
+
+	echo "booting into root filesystem...."
+	exec chroot /root /sbin/init
+done
+
+
+echo "FAILED!!!"
 export PS1='\h:\w# '
+
 exec setsid --ctty /bin/bash </dev/console >/dev/console 2>/dev/console
