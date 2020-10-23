@@ -73,7 +73,7 @@ class AttestServer(BaseHTTPRequestHandler):
 		quote = yaml.load(sub.stdout, Loader=yaml.FullLoader)
 		ekhash = quote['ekhash']
 		if ekhash not in secrets:
-			return self.fail("UNKNOWN TPM EK")
+			return self.fail("UNKNOWN TPM EK " + ekhash)
 		secret = secrets[ekhash]
 
 		logging.info("%s: EK %s" % (secret['device'], ekhash))
