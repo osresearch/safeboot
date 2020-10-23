@@ -93,6 +93,29 @@ tpm2-totp/Makefile:
 	git submodule update --init tpm2-totp
 	cd $(dir $@) ; ./bootstrap && ./configure
 
+#
+# swtpm and libtpms are used for simulating the qemu tpm2
+#
+SUBMODULES += libtpms
+libtpms/Makefile:
+	git submodule update --init --depth 1 $(dir $@)
+	cd $(dir $@) ; ./autogen.sh --enable-openssl
+libtpms/src/.libs/libtpm2.a: libtpms/Makefile
+	$(MAKE) -C $(dir $<)
+
+SUBMODULES += swtpm
+SWTPM=swtpm/src/swtpm/swtpm
+swtpm/Makefile:
+	git submodule update --init --depth 1 $(dir $@)
+	cd $(dir $@) ; \
+		LIBTPMS_LIBS="-L`pwd`/../libtpms/src/.libs -ltpms" \
+		LIBTPMS_CFLAGS="-I`pwd`/../libtpms/include" \
+		./autogen.sh \
+$(SWTPM): swtpm/Makefile
+	$(MAKE) -C $(dir $<)
+
+
+
 
 #
 # Extra package building requirements
@@ -266,14 +289,22 @@ build/luks.bin: build/key.bin
 	cryptsetup luksClose test-luks
 	mv "$@.tmp" "$@"
 
-
-qemu: build/hda.bin
-	@mkdir -p build/vtpm
-	swtpm socket \
+TPMSTATE=build/vtpm/tpm2-00.permall
+$(TPMSTATE): $(SWTPM)
+	mkdir -p build/vtpm
+	PATH=$(dir $(SWTPM)):$(PATH) \
+	swtpm/src/swtpm_setup/swtpm_setup \
 		--tpm2 \
-		--tpmstate dir="build/vtpm" \
+		--createek \
+		--tpmstate "$@" \
+		--config /dev/null \
+
+qemu: build/hda.bin $(SWTPM) $(TPMSTATE)
+	$(SWTPM) socket \
+		--tpm2 \
+		--tpmstate dir="$(dir $(TPMSTATE))" \
 		--flags "startup-clear" \
-		--ctrl type=unixio,path="build/vtpm/sock" &
+		--ctrl type=unixio,path="$(dir $(TPMSTATE))sock" &
 		
 	-qemu-system-x86_64 \
 		-M q35,accel=kvm \
@@ -282,7 +313,7 @@ qemu: build/hda.bin
 		-nographic \
 		-netdev user,id=eth0 \
 		-device e1000,netdev=eth0 \
-		-chardev socket,id=chrtpm,path=build/vtpm/sock \
+		-chardev socket,id=chrtpm,path="$(dir $(TPMSTATE))sock" \
 		-tpmdev emulator,id=tpm0,chardev=chrtpm \
 		-device tpm-tis,tpmdev=tpm0 \
 		-boot c \

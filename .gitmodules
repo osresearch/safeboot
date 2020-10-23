@@ -14,3 +14,9 @@
 [submodule "tpm2-tss"]
 	path = tpm2-tss
 	url = https://github.com/tpm2-software/tpm2-tss
+[submodule "swtpm"]
+	path = swtpm
+	url = https://github.com/stefanberger/swtpm
+[submodule "libtpms"]
+	path = libtpms
+	url = https://github.com/stefanberger/libtpms/
