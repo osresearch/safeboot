@@ -959,6 +959,8 @@ sign-kernel()
 
 		warn "$signed: signature failed! Try $try."
 	done
+
+	sbsign.safeboot --hash-only "$signed"
 }
 
 ########################################
