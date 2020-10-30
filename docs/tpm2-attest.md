@@ -56,6 +56,17 @@ If the `ca-path` is not specified, the system one will be used.
 The output on stdout is yaml formatted with the sha256 hash of the DER format
 EK certificate, the validated quote PCRs, and the unvalidated eventlog PCRs.
 
+## eventlog
+Usage:
+```
+tpm2-attest eventlog [eventlog.bin]
+```
+
+This will read and parse the TPM2 eventlog. If no file is specified,
+the default Linux one will be parsed.  If `-` is specified, the eventlog
+will be read from stdin.
+
+
 ## eventlog-verify
 Usage:
 ```
@@ -166,9 +177,25 @@ and the resulting signed `ek.crt` can be stored back into the TPM nvram.
 Note that this will erase an existing OEM cert if you have one!
 
 ```
-tpm2 createek -c /dev/null -f PEM -u ek.pem
+# on the device
+tpm2-attest ek-crt > ek.pem
+# on the server
 tpm2-attest ek-sign < ek.pem > ek.crt /CN=device/OU=example.org/
-tpm2 nvdefine -s 1500 0x1c00002
-tpm2 nvwrite -i ek.crt 0x1c00002
+# on the device again
+tpm2-attest ek-crt ek.crt
 ```
+
+## ek-crt
+Usage:
+```
+tpm2-attest ek-crt > ek.pem  # Export the TPM EK in PEM format (not cert)
+```
+or
+```
+tpm2-attest ek-crt ek.crt  # Import a signed cert for the EK in DER format
+```
+
+Export the TPM RSA endorsement key for signing by a CA or import a signed
+endorsement key certificate into the TPM NVRAM at the well-known handle.
+See `tpm2-attest ek-sign` for more details.
 

@@ -33,6 +33,9 @@ fi
 CERT=$PREFIX${CERT:-$DIR/cert.pem}
 : "${QUOTE_MAX_AGE:=30}"
 
+# RSA EK NVRAM handle
+EK_HANDLE=0x1c00002
+
 # Expected values for the EK and AK types to ensure that they
 # are created inside a TPM and have the proper policies associated.
 EK_TYPE='fixedtpm|fixedparent|sensitivedataorigin|adminwithpolicy|restricted|decrypt'
@@ -787,6 +790,8 @@ verify-and-seal()
 	|| die "$QUOTE_TAR: sealing failed"
 }
 
+########################################
+
 ek_sign_usage='
 ## ek-sign
 Usage:
@@ -809,15 +814,11 @@ Note that this will erase an existing OEM cert if you have one!
 
 ```
 # on the device
-tpm2 createek -c /dev/null -f PEM -u ek.pem
+tpm2-attest ek-crt > ek.pem
 # on the server
 tpm2-attest ek-sign < ek.pem > ek.crt /CN=device/OU=example.org/
 # on the device again
-tpm2 nvdefine \
-	-s $(wc -c < ek.crt) \
-	-a "ownerwrite|authwrite|ownerread|authread|no_da" \
-	0x1c00002
-tpm2 nvwrite -i ek.crt 0x1c00002
+tpm2-attest ek-crt ek.crt
 ```
 '
 usage+="$ek_sign_usage"
@@ -924,6 +925,99 @@ EOF
 }
 
 
+########################################
+
+ek_crt_usage='
+## ek-crt
+Usage:
+```
+tpm2-attest ek-crt > ek.pem  # Export the TPM EK in PEM format (not cert)
+```
+or
+```
+tpm2-attest ek-crt ek.crt  # Import a signed cert for the EK in DER format
+```
+
+Export the TPM RSA endorsement key for signing by a CA or import a signed
+endorsement key certificate into the TPM NVRAM at the well-known handle.
+See `tpm2-attest ek-sign` for more details.
+'
+usage+="$ek_crt_usage"
+commands+="|ek-crt"
+
+ek-crt()
+{
+	show_help "$1" "$ek_crt_usage"
+
+	if [ "$#" -gt 1 ]; then
+		die "Too many arguments.$ek_crt_usage"
+	fi
+
+	ek_crt="$1"
+	if [ -z "$ek_crt" ]; then
+		# read the EK as a PEM file and output it
+		tpm2_flushall ""
+		tpm2 createek \
+			-c /dev/null \
+			-f PEM \
+			-u "$TMP/ek.pem" \
+		|| die "unable to read TPM endorsement key"
+
+		openssl rsa \
+			-noout \
+			-text \
+			-pubin \
+			-in "$TMP/ek.pem" \
+			>&2 \
+		|| die "unable to parse TPM endorsement key"
+
+		cat "$TMP/ek.pem"
+		exit 0
+	fi
+
+	cat "$ek_crt" > "$TMP/ek.crt" \
+	|| die "unable to copy TPM endorsement key certificate"
+
+	# ensure that the cert validates
+	openssl x509 \
+		-text \
+		-noprint \
+		-in "$TMP/ek.crt" \
+		-inform "DER" \
+	|| die "$ek_crt: unable to parse certificate"
+
+	# remove the nvram if it is there
+	if tpm2 nvread "$EK_HANDLE" > /dev/null 2>/dev/null ; then
+		warn "$EK_HANDLE: removing old cert"
+		tpm2 nvundefine "$EK_HANDLE" \
+		|| die "$EK_HANDLE: unable to undefine old NVRAM cert!"
+	fi
+
+	tpm2 nvdefine \
+		-s "$(wc -c < "$TMP/ek.crt")" \
+		-a "ownerwrite|authwrite|ownerread|authread|no_da" \
+		"$EK_HANDLE" \
+	|| die "unable to define TPM NVRAM for endorsement key cert"
+
+	tpm2 nvwrite \
+		-i "$TMP/ek.crt" \
+		"$EK_HANDLE" \
+	|| die "unable to write TPM NVRAM with endorsement key cert"
+
+	tpm2 nvread \
+		-o "$TMP/ek.crt.2" \
+		"$EK_HANDLE" \
+	|| die "unable to read back TPM NVRAM"
+
+	if ! cmp -q "$TMP/ek.crt" "$TMP/ek.crt.2" ; then
+		die "TPM NVRAM does not match imported cert"
+	fi
+
+	sha256sum "$TMP/ek.crt"
+}
+
+
+########################################
 
 if [ $# -lt 1 ]; then
 	die "Usage: $0 [$commands] ...." 
@@ -938,7 +1032,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	commands|quote|attest|verify-and-seal|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify|ek-sign|eventlog)
+	commands|quote|attest|verify-and-seal|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify|ek-sign|ek-crt|eventlog)
 		$command "$@"
 		;;
 	*)
