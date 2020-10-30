@@ -17,7 +17,8 @@
 
 {% block fonts %}
        <!-- Load fonts from Google -->
-       {% if font != false %}
+       {% if config.theme.font != false %}
+         {% set font = config.theme.font %}
          <link href="https://fonts.gstatic.com" rel="preconnect" crossorigin />
          <link rel="stylesheet" type="text/css"
              href="https://fonts.googleapis.com/css?family={{
