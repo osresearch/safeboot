@@ -12,7 +12,7 @@
 # mount cryptsetup bash objcopy mkdir cat cp gzip
 # grep veritysetup tee umount sync sleep reboot telinit fsck.ext4
 # blockdev lsof xargs lvcreate mv rm ln lvm mktemp chmod pidof time
-# date printf chattr tee
+# date printf chattr tee cmp
 #
 # optional programs:
 # yubico-piv-tool cert-to-efi-sig-list sign-efi-sig-list.safeboot
