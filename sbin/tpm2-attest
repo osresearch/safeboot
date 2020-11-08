@@ -79,7 +79,7 @@ tpm2_secret_session()
 	# context is TPM_RH_ENDORSEMENT because why would you want names?
 	tpm2 policysecret >&2 \
 		--session "$SESSION" \
-		--object-context "0x4000000b" \
+		--object-context "endorsement" \
 	|| die "tpm2_policysecret: unable to set context TPM_RH_ENDORSEMENT"
 }
 
@@ -142,7 +142,7 @@ quote()
 	# and of course there is a random number that identifies it
 	# because why would you want useful names with tpm2-tools?
 	warn "tpm2: reading endorsement certificate"
-	tpm2 nvread -o "$TMP/ek.crt" 0x01c00002 \
+	tpm2 nvread -o "$TMP/ek.crt" "$EK_HANDLE" \
 	|| die "tpm2_nvread: unable to read endorsement key cert"
 
 	sha256sum "$TMP/ek.crt" >&2
@@ -981,7 +981,7 @@ ek-crt()
 	# ensure that the cert validates
 	openssl x509 \
 		-text \
-		-noprint \
+		-noout \
 		-in "$TMP/ek.crt" \
 		-inform "DER" \
 	|| die "$ek_crt: unable to parse certificate"
@@ -1009,7 +1009,7 @@ ek-crt()
 		"$EK_HANDLE" \
 	|| die "unable to read back TPM NVRAM"
 
-	if ! cmp -q "$TMP/ek.crt" "$TMP/ek.crt.2" ; then
+	if ! cmp --quiet "$TMP/ek.crt" "$TMP/ek.crt.2" ; then
 		die "TPM NVRAM does not match imported cert"
 	fi
 
