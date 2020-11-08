@@ -99,7 +99,7 @@ tpm2-totp/Makefile:
 SUBMODULES += libtpms
 libtpms/Makefile:
 	git submodule update --init --depth 1 $(dir $@)
-	cd $(dir $@) ; ./autogen.sh --enable-openssl
+	cd $(dir $@) ; ./autogen.sh --with-openssl --with-tpm2
 libtpms/src/.libs/libtpm2.a: libtpms/Makefile
 	$(MAKE) -C $(dir $<)
 
@@ -111,6 +111,7 @@ swtpm/Makefile:
 		LIBTPMS_LIBS="-L`pwd`/../libtpms/src/.libs -ltpms" \
 		LIBTPMS_CFLAGS="-I`pwd`/../libtpms/include" \
 		./autogen.sh \
+
 $(SWTPM): swtpm/Makefile
 	$(MAKE) -C $(dir $<)
 
@@ -264,7 +265,11 @@ $(BOOTX64): build/initrd.cpio.xz build/vmlinuz initramfs/cmdline.txt
 
 	sha256sum "$@"
 
-build/esp.bin: $(BOOTX64)
+build/boot/PK.auth: signing.crt
+	-./sbin/safeboot uefi-sign-keys
+	cp signing.crt PK.auth KEK.auth db.auth "$(dir $@)"
+
+build/esp.bin: $(BOOTX64) build/boot/PK.auth
 	./sbin/mkfat "$@" build/boot
 
 build/hda.bin: build/esp.bin build/luks.bin
@@ -293,31 +298,34 @@ TPMSTATE=build/vtpm/tpm2-00.permall
 $(TPMSTATE): $(SWTPM)
 	mkdir -p build/vtpm
 	PATH=$(dir $(SWTPM)):$(PATH) \
-	swtpm/src/swtpm_setup/swtpm_setup \
+	echo swtpm/src/swtpm_setup/swtpm_setup \
 		--tpm2 \
 		--createek \
-		--tpmstate "$@" \
+		--tpmstate "$(dir $@)" \
 		--config /dev/null \
 
+# uefi firmware from https://packages.debian.org/buster-backports/all/ovmf/download
 qemu: build/hda.bin $(SWTPM) $(TPMSTATE)
 	$(SWTPM) socket \
 		--tpm2 \
 		--tpmstate dir="$(dir $(TPMSTATE))" \
-		--flags "startup-clear" \
 		--ctrl type=unixio,path="$(dir $(TPMSTATE))sock" &
-		
+
+	#cp /usr/share/OVMF/OVMF_VARS.fd build
+
 	-qemu-system-x86_64 \
 		-M q35,accel=kvm \
 		-m 4G \
-		-bios /usr/share/ovmf/OVMF.fd \
-		-nographic \
+		-drive if=pflash,format=raw,readonly,file=/usr/share/OVMF/OVMF_CODE.fd \
+		-drive if=pflash,format=raw,file=build/OVMF_VARS.fd \
+		-serial stdio \
 		-netdev user,id=eth0 \
 		-device e1000,netdev=eth0 \
 		-chardev socket,id=chrtpm,path="$(dir $(TPMSTATE))sock" \
 		-tpmdev emulator,id=tpm0,chardev=chrtpm \
 		-device tpm-tis,tpmdev=tpm0 \
-		-boot c \
 		-drive "file=$<,format=raw" \
+		-boot c \
 
 	stty sane
 
