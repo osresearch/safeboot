@@ -942,7 +942,7 @@ linux-sign()
 	fi
 
 	if [ "$SIP" == 1 ]; then
-		if mount | grep "^${ROOTDEV} " ; then \
+		if mount | grep "^${ROOTDEV} " >/dev/null ; then \
 			remount_ro "$ROOTDEV" \
 				|| die "${ROOTDEV}: Could not remount"
 		fi
@@ -1278,9 +1278,9 @@ sip-init()
 	fi
 
 	# or if they have entries in the fstab for /home or /var
-	grep -q '\s/var\s' $PREFIX/etc/fstab && \
+	grep '\s/var\s' $PREFIX/etc/fstab >/dev/null && \
 		die "/var already exists in $PREFIX/etc/fstab"
-	grep -q '\s/home\s' $PREFIX/etc/fstab && \
+	grep '\s/home\s' $PREFIX/etc/fstab >/dev/null && \
 		die "/home already exists in $PREFIX/etc/fstab"
 
 	# make sure the signing cert exists
@@ -1461,6 +1461,145 @@ mount-all() {
 }
 
 ########################################
+#
+# Status checking - there are lots of things to chcek...
+#
+status_usage='
+## status
+Usage:
+```
+safeboot status [verbose]
+```
+
+Check the various configurations to see if the system is configured
+with safeboot.  This is not exhaustive, but hopefully catches many
+of the common things to setup.
+'
+usage+=$status_usage
+commands+="|status"
+
+status-secureboot()
+{
+	vendor_guid="8be4df61-93ca-11d2-aa0d-00e098032b8c"
+	secureboot="$(efivar_read "SecureBoot-$vendor_guid" | bin2hex)"
+	setupmode="$(efivar_read "SetupMode-$vendor_guid" | bin2hex)"
+
+	if [ "$secureboot" != "01" ] || [ "$setupmode" != "00" ] ; then
+		warn "UEFI SecureBoot not enabled! SecureBoot=$secureboot, SetupMode=$setupmode.  Fix in your BIOS setup menu"
+		status=fail
+	else
+		debug "UEFI SecureBoot enabled"
+	fi
+
+	if [ ! -r "$PREFIX$DIR/cert.pem" ] \
+	|| [ ! -r "$PREFIX$DIR/cert.pub" ] \
+	|| [ ! -r "$PREFIX$DIR/cert.crt" ] \
+	; then
+		warn "Platform Key not present in $DIR. use 'safeboot key-init' or 'safeboot yubikey-init' to create"
+		nokeys=1
+		status=fail
+	else
+		debug "Platform Keys present"
+	fi
+
+	if ! efivar_read "PK-$vendor_guid" > "$TMP/pk.bin" ; then
+		warn "EFI var PK not present"
+	else
+		tail -c +45 "$TMP/pk.bin" > "$TMP/pk.der" \
+		|| warn "$TMP/pk.bin: not big enough?"
+
+		if ! cmp --silent "$TMP/pk.der" "$PREFIX$DIR/cert.crt" ; then
+			warn "EFI PK does not match $DIR/cert.crt"
+			status=fail
+		else
+			debug "EFI PK maches $DIR/cert.crt"
+		fi
+	fi
+
+	true
+}
+
+status-kernel()
+{
+	TARGET="$1"
+	KERNEL="$PREFIX$EFIDIR/$TARGET/linux.efi"
+
+	if [ ! -r "$KERNEL" ]; then
+		warn "$KERNEL: kernel not present (use 'safeboot $TARGET-sign' to create"
+		status=fail
+		return 1
+	else
+		debug "$KERNEL: $TARGET kernel present"
+	fi
+
+	if ! sbverify \
+		--cert "$PREFIX$CERT" \
+		"$KERNEL" \
+	> /dev/null 2>&1 ; then
+		warn "$KERNEL: signature validation failed"
+		status=fail
+		return 1
+	else
+		debug "$KERNEL: signature validates"
+	fi
+
+	return 0
+}
+
+status-kernels()
+{
+	if ! efivar_read "$PCR_SIGNATURE" >/dev/null ; then
+		warn "PCR signature is not present (use 'safeboot pcrs-sign' to setup)"
+		status=fail
+	else
+		debug "PCR signature present"
+	fi
+	if ! tpm2 nvread "$TPM_NV_VERSION" >/dev/null ; then
+		warn "TPM rollback counter not present (use 'safeboot pcrs-sign' to setup)"
+		status=fail
+	else
+		debug "TPM rollback counter present"
+	fi
+
+	status-kernel "$RECOVERY_TARGET" || true
+	status-kernel "$LINUX_TARGET" || true
+
+	true
+}
+
+# Check the status of safeboot
+status()
+{
+	show_help "$1" "$status_usage"
+
+	if [ "$1" = "verbose" ]; then
+		VERBOSE=1
+	fi
+
+	if [ ! -r "$PREFIX$DIR/safeboot.conf" ] ; then
+		die "$PREFIX$DIR/safeboot.conf NOT installed?"
+	fi
+	if [ ! -r "$PREFIX$DIR/local.conf" ]; then
+		die "$PREFIX$DIR/safeboot.conf NOT present?"
+	fi
+
+	if [ "$SIP" != "1" ]; then
+		warn "SIP is not enabled (use 'safeboot sip-init' to setup)"
+	else
+		debug "SIP is enabled"
+	fi
+
+	status-secureboot -
+	status-kernels -
+
+	if [ "$status" = "fail" ] ; then
+		warn "safeboot is not fully configured"
+	else
+		echo "safeboot is configured"
+	fi
+}
+
+########################################
 
 if [ $# -lt 1 ]; then
 	die "Usage: $0 [$commands] ...."
@@ -1475,7 +1614,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign-kernel|linux-sign|recovery-sign|reboot|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext|unlock|mount-all)
+	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign-kernel|linux-sign|recovery-sign|reboot|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext|unlock|mount-all|status)
 		$command "$@"
 		;;
 	*)
