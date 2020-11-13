@@ -791,6 +791,48 @@ luks-seal() {
 
 ########################################
 
+sign_usage='
+## sign
+Usage:
+```
+safeboot sign exe [exe.signed]
+```
+
+Sign an EFI executable with the safeboot keys.
+
+This is the raw command; you might want to use `safeboot linux-sign` or
+`safeboot recovery-sign` instead.
+'
+
+usage+=$sign_usage
+commands+="|sign"
+
+sign() {
+	show_help "$1" "$sign_usage"
+	IN="$1"
+	if [ -z "$IN" ]; then
+		die "$sign_usage"
+	fi
+
+	OUT="$2"
+	if [ -z "$OUT" ];then
+		OUT="$IN.signed"
+	fi
+
+	yubikey_daemon
+
+	sbsign.safeboot \
+		$KEY_ENGINE \
+		--key "$KEY" \
+		--cert "$CERT" \
+		--output "$OUT" \
+		"$IN"
+
+	return $?
+}
+
+########################################
+
 sign_kernel_usage='
 ## sign-kernel
 Usage:
@@ -812,8 +854,6 @@ commands+="|sign-kernel"
 
 sign-kernel() {
 	show_help "$1" "$sign_kernel_usage"
-
-	yubikey_daemon
 
 	TARGET="$1" ; shift
 
@@ -869,12 +909,9 @@ sign-kernel() {
 
 	for try in 1 2 3 ; do
 		warn "$OUTDIR/linux.efi: Signing (ignore warnings about gaps)"
-		sbsign.safeboot \
-			$KEY_ENGINE \
-			--key "$KEY" \
-			--cert "$CERT" \
-			--output "$OUTDIR/linux.efi.new" \
+		sign \
 			"$TMP/linux.efi" \
+			"$OUTDIR/linux.efi.new" \
 		&& break
 
 		if [ "$try" == 3 ]; then
@@ -1475,7 +1512,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign-kernel|linux-sign|recovery-sign|reboot|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext|unlock|mount-all)
+	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign|sign-kernel|linux-sign|recovery-sign|reboot|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext|unlock|mount-all)
 		$command "$@"
 		;;
 	*)
