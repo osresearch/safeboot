@@ -58,6 +58,7 @@ class AttestServer(BaseHTTPRequestHandler):
 		# write post data into a file
 		tmp_file = tempfile.NamedTemporaryFile()
 		tmp_file.write(quote_data)
+		tmp_file.flush()
 		quote_file = tmp_file.name
 
 		# verify that the Endorsment Key came from an authorized TPM,
