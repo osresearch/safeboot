@@ -89,14 +89,16 @@ unpack-quote()
 	if [ -z "$QUOTE_TAR" ]; then
 		die "unpack-quote: needs an quote.tgz"
 	fi
-	if [ ! -r "$TMP/ek.crt" ]; then
+
+	# Check to see if a quote has already been unpacked
+	if [ ! -r "$TMP/ek.pub" ]; then
 		tar -zxf "$QUOTE_TAR" -C "$TMP" \
 		|| die "unpack-quote: $QUOTE_TAR failed"
 	fi
 
 	# check for the common files?
-	if [ ! -r "$TMP/ek.crt" ]; then
-		die "unpack-quote: $QUOTE_TAR is missing EK certificate"
+	if [ ! -r "$TMP/ek.pub" ]; then
+		die "unpack-quote: $QUOTE_TAR is missing EK public key"
 	fi
 }
 
@@ -130,29 +132,34 @@ quote()
 	fi
 
 	QUOTE_TIME="$(date '+%s')"
-	QUOTE_NONCE="${1:-$(printf '%08x' $QUOTE_TIME)}"
+	QUOTE_NONCE="${1:-$(printf '%08x' "$QUOTE_TIME")}"
 	QUOTE_PCRS="${2:-$PCRS}"
+	QUOTE_FILES=()
 
 	tpm2_flushall ""
 
 	echo -n "$QUOTE_NONCE" > "$TMP/nonce" \
 	|| die "$TMP/nonce: unable to create"
+	QUOTE_FILES+=("nonce")
 
 	# the cert is fixed at manufacturing time
 	# and of course there is a random number that identifies it
 	# because why would you want useful names with tpm2-tools?
 	warn "tpm2: reading endorsement certificate"
-	tpm2 nvread -o "$TMP/ek.crt" "$EK_HANDLE" \
-	|| die "tpm2_nvread: unable to read endorsement key cert"
+	if tpm2 nvread -o "$TMP/ek.crt" 0x01c00002 ; then
+		sha256sum "$TMP/ek.crt" >&2
+		openssl x509 >&2 \
+			-inform "DER"  \
+			-in "$TMP/ek.crt" \
+			-text \
+			-noout \
+		|| die "openssl x509: unable to parse endorsement key cert"
 
-	sha256sum "$TMP/ek.crt" >&2
+		QUOTE_FILES+=("ek.crt")
+	else
+		warn "tpm2_nvread: unable to read endorsement key cert"
+	fi
 
-	openssl x509 >&2 \
-		-inform "DER"  \
-		-in "$TMP/ek.crt" \
-		-text \
-		-noout \
-	|| die "openssl x509: unable to parse endorsement key cert"
 
 	# this key should always be the same
 	# and for stupid tpm2-tools reasons it has to be in the
@@ -164,6 +171,7 @@ quote()
 		--key-algorithm "rsa" \
 		--public "$TMP/ek.pub" \
 	|| die "tpm2_createek: unable to retrieve endorsement key"
+	QUOTE_FILES+=("ek.pub")
 
 	# this public key is generated each time and includes the
 	# `stclear` attribute so that it can not be persistent
@@ -211,6 +219,7 @@ quote()
 		--output "$TMP/ak.pub" \
 		--format "tpmt" \
 	|| die "tpm2_readpublic: unable to display info"
+	QUOTE_FILES+=("ak.pub")
 
 	tpm2 flushcontext --transient-object
 
@@ -225,30 +234,32 @@ quote()
 		--signature "$TMP/quote.sig" \
 		--pcr "$TMP/quote.pcr" \
 	|| die "tpm2_quote: unable to generate quote"
+	QUOTE_FILES+=("quote.out" "quote.sig" "quote.pcr")
 
-	# Include the TPM event log if it exists
-	cp \
-		/sys/kernel/security/tpm0/binary_bios_measurements \
-		"$TMP/eventlog" \
-	|| die "eventlog: unable to copy"
+	# Include the TPM event log and Linux IMA log if they exists
+	EVENTLOG="/sys/kernel/security/tpm0/binary_bios_measurements"
+	IMALOG="/sys/kernel/security/ima/ascii_runtime_measurements"
 
-	cp \
-		/sys/kernel/security/ima/ascii_runtime_measurements \
-		"$TMP/ima" \
-	|| die "ima: unable to copy"
+	if [ -r "$EVENTLOG" ]; then
+		cp \
+			"$EVENTLOG" \
+			"$TMP/eventlog" \
+		|| die "eventlog: unable to copy"
+		QUOTE_FILES+=("eventlog")
+	fi
+
+	if [ -r "$IMALOG" ]; then
+		cp \
+			"$IMALOG" \
+			"$TMP/ima" \
+		|| die "ima: unable to copy"
+		QUOTE_FILES+=("ima")
+	fi
 
 	tar \
 		-cf - \
 		-C "$TMP" \
-		"ak.pub" \
-		"ek.pub" \
-		"ek.crt" \
-		"nonce" \
-		"quote.out" \
-		"quote.pcr" \
-		"quote.sig" \
-		"eventlog" \
-		"ima" \
+		"${QUOTE_FILES[@]}" \
 	| gzip -f > "$TMP/quote.tgz" \
 	|| die "$TMP/quote.tgz: Unable to create"
 
@@ -353,8 +364,14 @@ verify()
 	#eventlog-verify "$QUOTE_TAR" "$GOOD_PCRS" \
 	#|| die "$QUOTE_TAR: unable to verify TPM event log"
 
-	ek-verify "$QUOTE_TAR" "$CA_ROOT" \
-	|| die "$QUOTE_TAR: unable to verify EK certificate"
+	if [ -r "$TMP/ek.crt" ]; then
+		ek-verify "$QUOTE_TAR" "$CA_ROOT" \
+		|| die "$QUOTE_TAR: unable to verify EK certificate"
+	else
+		# this should be an optional die if the EK is not
+		# already known to the attestation server.
+		warn "verify: no EK certificate"
+	fi
 
 	quote-verify "$QUOTE_TAR" "$NONCE" \
 	|| die "$QUOTE_TAR: unable to verify quote"
@@ -362,11 +379,19 @@ verify()
 	# output the eventlog, with some formatting fixups to
 	# make it compatible with the other YAML outputs that
 	# have occured.
-	tpm2 eventlog "$TMP/eventlog" \
-	| sed \
-		-e '/^---/d' \
-		-e 's/^pcrs:/eventlog-pcrs:/' \
-	| tee "$TMP/eventlog.txt"
+	#
+	# Note that the eventlog has not been verified
+	# by this stage, only that there was one.
+	if [ -r "$TMP/eventlog" ]; then
+		tpm2 eventlog "$TMP/eventlog" \
+		| sed \
+			-e '/^---/d' \
+			-e 's/^pcrs:/eventlog-pcrs:/' \
+		| tee "$TMP/eventlog.txt"
+	else
+		# no eventlog, so output an empty block
+		echo "eventlog-pcrs:"
+	fi
 
 	warn "$QUOTE_TAR: all tests passed"
 }
