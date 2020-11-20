@@ -575,7 +575,6 @@ ek-verify()
 	fi
 
 	warn "$QUOTE_TAR: ek.pub matches ek.crt"
-	echo "ekhash: $(sha256 < "$TMP/ek.crt")"
 }
 
 quote_verify_usage='
@@ -617,6 +616,8 @@ quote-verify()
 	unpack-quote "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: unable to unpack"
 	
+	echo "ekhash: $(sha256 < "$TMP/ek.pub")"
+
 	tpm2 print \
 		-t "TPMS_ATTEST" \
 		"$TMP/quote.out" \
