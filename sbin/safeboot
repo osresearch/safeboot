@@ -1511,7 +1511,7 @@ you can unwind the changes that were made.
 
 		warn "Moving contents of /$lv to new filesystem"
 		mv "/$lv/"* "/tmp-$lv/" \
-		|| die "$vg-$lv: unable to move everything from old mount"
+		|| warn "$vg-$lv: unable to move everything from old mount"
 
 		umount "/tmp-$lv" \
 		|| die "$vg-$lv: unable to unmount"
