@@ -924,7 +924,7 @@ sign-kernel() {
 	# Duplicate the old image and atomically move the new kernel
 	# image to avoid potentially leaving an unbootable system
 	if [ -r "$OUTDIR/linux.efi" ]; then
-		cp "$OUTDIR/linux.efi" "$OUTDIR/linux.efi.old" \
+		mv "$OUTDIR/linux.efi" "$OUTDIR/linux.efi.old" \
 		|| die "$OUTDIR/linux.efi.old: unable to backup old image"
 	fi
 
