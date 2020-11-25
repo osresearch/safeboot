@@ -105,7 +105,7 @@ libtpms/src/.libs/libtpm2.a: libtpms/Makefile
 
 SUBMODULES += swtpm
 SWTPM=swtpm/src/swtpm/swtpm
-swtpm/Makefile:
+swtpm/Makefile: libtpms/src/.libs/libtpm2.a
 	git submodule update --init --depth 1 $(dir $@)
 	cd $(dir $@) ; \
 		LIBTPMS_LIBS="-L`pwd`/../libtpms/src/.libs -ltpms" \
