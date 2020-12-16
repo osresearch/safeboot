@@ -117,10 +117,36 @@ invalidated since the version counter will be incremented.
 Right now only a single crypt disk is supported.
 
 
+## unify-kernel
+Usage:
+```
+safeboot unify-kernel linux.efi kernel=path-to-kernel initrd=path-to-initrd ...
+```
+
+Creates a unified kernel image with the named sections and files
+(typically `kernel`, `initrd`, `cmdline`, and `osrel`) bundled into
+an EFI executable.
+
+This is the raw command; you might want to use `safeboot linux-sign` or
+`safeboot recovery-sign` instead to add the EFI boot manager entry.
+
 ## sign-kernel
 Usage:
 ```
-safeboot sign-kernel boot-name [extra kernel parameters...]
+safeboot sign-kernel linux.efi [linux.signed.efi]
+```
+
+Sign a unified EFI executable with the safeboot keys.  If no destination
+is specified it will be the same name as the input kernel with `.signed.efi`
+added.
+
+This is the raw command; you might want to use `safeboot linux-sign` or
+`safeboot recovery-sign` instead to add the EFI boot manager entry.
+
+## install-kernel
+Usage:
+```
+safeboot install-kernel boot-name [extra kernel parameters...]
 ```
 
 Create an EFI boot menu entry for `boot-name`, with the specified

@@ -1,0 +1,85 @@
+# setup a few directories
+mkdir bin
+mkdir lib
+mkdir lib64
+symlink ../lib64 lib/x86_64-linux-gnu
+
+# normal coreutils
+/bin/ls
+/bin/bash
+/bin/cp
+/bin/mv
+/bin/echo
+/bin/mount
+/bin/umount
+/bin/ps
+/bin/grep
+/bin/mkdir
+/bin/mknod
+/usr/bin/sha256sum
+/usr/bin/sync
+/usr/bin/tee
+/usr/bin/xxd
+/usr/bin/gzip
+/usr/bin/tar
+/usr/bin/rm
+/usr/bin/lspci
+/usr/bin/head
+/usr/bin/tail
+/usr/bin/cut
+/usr/bin/setsid
+/usr/bin/stty
+/usr/bin/find
+/usr/bin/mktemp
+/usr/bin/[
+/usr/bin/awk
+/usr/bin/chmod
+/usr/bin/chattr
+/usr/bin/pidof
+/usr/bin/time
+/usr/bin/date
+/usr/bin/printf
+/usr/bin/wc
+/bin/dd
+/bin/sleep
+/bin/cat
+/bin/less
+/bin/dmesg
+/usr/sbin/chroot
+/usr/sbin/ifconfig
+
+# disk management
+/sbin/fdisk
+/sbin/mkfs.ext4
+/sbin/mkfs.vfat
+
+# safeboot tools
+./initramfs/init .
+./sbin/safeboot
+./sbin/tpm2-attest
+./bin/tpm2
+/lib/x86_64-linux-gnu/libtss2-tcti-device.so.0 lib
+./functions.sh etc/safeboot
+./safeboot.conf etc/safeboot
+/usr/bin/openssl
+/usr/bin/curl
+/usr/bin/ping
+/usr/bin/efibootmgr
+
+# cryptdisk setup
+/sbin/cryptsetup
+/sbin/dmsetup
+/sbin/lvm
+#/sbin/kexec
+
+# hack for ahci modules
+/usr/sbin/insmod
+/lib/modules/5.4.0-48-generic/kernel/drivers/ata/ahci.ko lib/modules
+/lib/modules/5.4.0-48-generic/kernel/drivers/ata/libahci.ko lib/modules
+/lib/modules/5.4.0-48-generic/kernel/drivers/md/dm-crypt.ko lib/modules
+/lib/modules/5.4.0-48-generic/kernel/drivers/net/ethernet/intel/e1000/e1000.ko lib/modules
+/lib/modules/5.4.0-48-generic/kernel/fs/nls/nls_iso8859-1.ko lib/modules
+
+
+# temporarily include vi
+/usr/bin/vi

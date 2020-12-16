@@ -31,6 +31,10 @@ fi
 
 # Apply $PREFIX to files and use default value
 CERT=$PREFIX${CERT:-$DIR/cert.pem}
+: "${QUOTE_MAX_AGE:=30}"
+
+# RSA EK NVRAM handle
+EK_HANDLE=0x1c00002
 
 # Expected values for the EK and AK types to ensure that they
 # are created inside a TPM and have the proper policies associated.
@@ -75,7 +79,7 @@ tpm2_secret_session()
 	# context is TPM_RH_ENDORSEMENT because why would you want names?
 	tpm2 policysecret >&2 \
 		--session "$SESSION" \
-		--object-context "0x4000000b" \
+		--object-context "endorsement" \
 	|| die "tpm2_policysecret: unable to set context TPM_RH_ENDORSEMENT"
 }
 
@@ -85,14 +89,16 @@ unpack-quote()
 	if [ -z "$QUOTE_TAR" ]; then
 		die "unpack-quote: needs an quote.tgz"
 	fi
-	if [ ! -r "$TMP/ek.crt" ]; then
+
+	# Check to see if a quote has already been unpacked
+	if [ ! -r "$TMP/ek.pub" ]; then
 		tar -zxf "$QUOTE_TAR" -C "$TMP" \
 		|| die "unpack-quote: $QUOTE_TAR failed"
 	fi
 
 	# check for the common files?
-	if [ ! -r "$TMP/ek.crt" ]; then
-		die "unpack-quote: $QUOTE_TAR is missing EK certificate"
+	if [ ! -r "$TMP/ek.pub" ]; then
+		die "unpack-quote: $QUOTE_TAR is missing EK public key"
 	fi
 }
 
@@ -126,27 +132,34 @@ quote()
 	fi
 
 	QUOTE_TIME="$(date '+%s')"
-	QUOTE_NONCE="${1:-$(printf '%08x' $QUOTE_TIME)}"
+	QUOTE_NONCE="${1:-$(printf '%08x' "$QUOTE_TIME")}"
 	QUOTE_PCRS="${2:-$PCRS}"
+	QUOTE_FILES=()
 
 	tpm2_flushall ""
 
 	echo -n "$QUOTE_NONCE" > "$TMP/nonce" \
 	|| die "$TMP/nonce: unable to create"
+	QUOTE_FILES+=("nonce")
 
 	# the cert is fixed at manufacturing time
 	# and of course there is a random number that identifies it
 	# because why would you want useful names with tpm2-tools?
 	warn "tpm2: reading endorsement certificate"
-	tpm2 nvread -o "$TMP/ek.crt" 0x01c00002 \
-	|| die "tpm2_nvread: unable to read endorsement key cert"
+	if tpm2 nvread -o "$TMP/ek.crt" 0x01c00002 ; then
+		sha256sum "$TMP/ek.crt" >&2
+		openssl x509 >&2 \
+			-inform "DER"  \
+			-in "$TMP/ek.crt" \
+			-text \
+			-noout \
+		|| die "openssl x509: unable to parse endorsement key cert"
 
-	openssl x509 >&2 \
-		-inform "DER"  \
-		-in "$TMP/ek.crt" \
-		-text \
-		-noout \
-	|| die "openssl x509: unable to parse endorsement key cert"
+		QUOTE_FILES+=("ek.crt")
+	else
+		warn "tpm2_nvread: unable to read endorsement key cert"
+	fi
+
 
 	# this key should always be the same
 	# and for stupid tpm2-tools reasons it has to be in the
@@ -158,6 +171,7 @@ quote()
 		--key-algorithm "rsa" \
 		--public "$TMP/ek.pub" \
 	|| die "tpm2_createek: unable to retrieve endorsement key"
+	QUOTE_FILES+=("ek.pub")
 
 	# this public key is generated each time and includes the
 	# `stclear` attribute so that it can not be persistent
@@ -205,6 +219,7 @@ quote()
 		--output "$TMP/ak.pub" \
 		--format "tpmt" \
 	|| die "tpm2_readpublic: unable to display info"
+	QUOTE_FILES+=("ak.pub")
 
 	tpm2 flushcontext --transient-object
 
@@ -219,30 +234,33 @@ quote()
 		--signature "$TMP/quote.sig" \
 		--pcr "$TMP/quote.pcr" \
 	|| die "tpm2_quote: unable to generate quote"
+	QUOTE_FILES+=("quote.out" "quote.sig" "quote.pcr")
 
-	# Include the TPM event log if it exists
-	cp \
-		/sys/kernel/security/tpm0/binary_bios_measurements \
-		"$TMP/eventlog" \
-	|| die "eventlog: unable to copy"
+	# Include the TPM event log and Linux IMA log if they exists
+	EVENTLOG="/sys/kernel/security/tpm0/binary_bios_measurements"
+	IMALOG="/sys/kernel/security/ima/ascii_runtime_measurements"
 
-	cp \
-		/sys/kernel/security/ima/ascii_runtime_measurements \
-		"$TMP/ima" \
-	|| die "ima: unable to copy"
+	if [ -r "$EVENTLOG" ]; then
+		cp \
+			"$EVENTLOG" \
+			"$TMP/eventlog" \
+		|| die "eventlog: unable to copy"
+		QUOTE_FILES+=("eventlog")
+	fi
+
+	if [ -r "$IMALOG" ]; then
+		cp \
+			"$IMALOG" \
+			"$TMP/ima" \
+		|| die "ima: unable to copy"
+		QUOTE_FILES+=("ima")
+	fi
 
 	tar \
-		-zcf "$TMP/quote.tgz" \
+		-cf - \
 		-C "$TMP" \
-		"ak.pub" \
-		"ek.pub" \
-		"ek.crt" \
-		"nonce" \
-		"quote.out" \
-		"quote.pcr" \
-		"quote.sig" \
-		"eventlog" \
-		"ima" \
+		"${QUOTE_FILES[@]}" \
+	| gzip -f > "$TMP/quote.tgz" \
 	|| die "$TMP/quote.tgz: Unable to create"
 
 	# ensure that this quote validates locally before
@@ -255,25 +273,76 @@ quote()
 	cat "$TMP/quote.tgz" || die "quote.tgz: unable to display"
 }
 
+attest_usage='
+## attest
+Usage:
+```
+tpm2-attest attest http://server/ [nonce [pcrs,...]] > secret.txt
+```
+This will generate a quote for the nonce (or the current time if
+none is specified) and for the PCRs listed in the `$QUOTE_PCRS`
+environment variable.  It will then send the quote to a simple
+attestation server, which will validate the quote and reply with
+a sealed message that can only be decrypted by this TPM on this
+boot.
+
+No validation of the attestation server is done.
+'
+usage+="$attest_usage"
+commands+="|attest"
+
+attest()
+{
+	show_help "$1" "$attest_usage"
+	if [ "$#" -gt 2 ]; then
+		die "Unexpected arguments.$attest_usage"
+	fi
+
+	SERVER="$1" ; shift
+
+	quote "$@" > "$TMP/quote-out.tgz" \
+	|| die "Unable to create quote"
+
+	curl \
+		-X POST \
+		--fail \
+		--silent \
+		--data-binary @"$TMP/quote-out.tgz" \
+		--output "$TMP/secret-reply.bin" \
+		"$SERVER" \
+	|| die "attestation failed"
+
+	unseal "ak.ctx" < "$TMP/secret-reply.bin" \
+	|| die "unsealing failed"
+
+	# cleanup the quote attestation key context
+	rm "ak.ctx"
+}
+
+
 ########################################
 
 verify_usage='
 ## verify
 Usage:
 ```
-tpm2-attest verify quote.tgz [good-pcrs.txt [nonce [ca-path]]]
+tpm2-attest verify quote.tgz [nonce [ca-path]]
 ```
 
 This will validate that the quote was signed with the attestation key
 with the provided nonce, and verify that the endorsement key from a valid
-TPM.
+TPM.  It outputs, but does not validate the event log; use
+`tpm2-attest eventlog-verify` once the known PCRs are available, or use a more 
+complex validation scheme.
 
 If the `nonce` is not specified, the one in the quote file will be used,
-although this opens up the possibility of a replay attack.
+although this opens up the possibility of a replay attack.  The QUOTE_MAX_AGE
+can be used to ensure that the quote is fresh.
 
 If the `ca-path` is not specified, the system one will be used.
 
-* TODO: verify event log
+The output on stdout is yaml formatted with the sha256 hash of the DER format
+EK certificate, the validated quote PCRs, and the unvalidated eventlog PCRs.
 '
 usage+="$verify_usage"
 commands+="|verify"
@@ -281,28 +350,84 @@ commands+="|verify"
 verify()
 {
 	show_help "$1" "$verify_usage"
-	if [ "$#" -lt 1 ] || [ "$#" -gt 4 ]; then
+	if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
 		die "Wrong arguments.$verify_usage"
 	fi
 
 	QUOTE_TAR="$1"
-	GOOD_PCRS="$2"
-	NONCE="$3"
-	CA_ROOT="${4:-$PREFIX$DIR/certs}"
+	NONCE="$2"
+	CA_ROOT="${3:-$PREFIX$DIR/certs}"
 
 	unpack-quote "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: unable to unpack"
 
+	#eventlog-verify "$QUOTE_TAR" "$GOOD_PCRS" \
+	#|| die "$QUOTE_TAR: unable to verify TPM event log"
+
+	if [ -r "$TMP/ek.crt" ]; then
+		ek-verify "$QUOTE_TAR" "$CA_ROOT" \
+		|| die "$QUOTE_TAR: unable to verify EK certificate"
+	else
+		# this should be an optional die if the EK is not
+		# already known to the attestation server.
+		warn "verify: no EK certificate"
+	fi
+
 	quote-verify "$QUOTE_TAR" "$NONCE" \
 	|| die "$QUOTE_TAR: unable to verify quote"
 
-	eventlog-verify "$QUOTE_TAR" "$GOOD_PCRS" \
-	|| die "$QUOTE_TAR: unable to verify TPM event log"
-
-	ek-verify "$QUOTE_TAR" "$CA_ROOT" \
-	|| die "$QUOTE_TAR: unable to verify EK certificate"
+	# output the eventlog, with some formatting fixups to
+	# make it compatible with the other YAML outputs that
+	# have occured.
+	#
+	# Note that the eventlog has not been verified
+	# by this stage, only that there was one.
+	if [ -r "$TMP/eventlog" ]; then
+		tpm2 eventlog "$TMP/eventlog" \
+		| sed \
+			-e '/^---/d' \
+			-e 's/^pcrs:/eventlog-pcrs:/' \
+		| tee "$TMP/eventlog.txt"
+	else
+		# no eventlog, so output an empty block
+		echo "eventlog-pcrs:"
+	fi
 
 	warn "$QUOTE_TAR: all tests passed"
+}
+
+########################################
+
+eventlog_usage='
+## eventlog
+Usage:
+```
+tpm2-attest eventlog [eventlog.bin]
+```
+
+This will read and parse the TPM2 eventlog. If no file is specified,
+the default Linux one will be parsed.  If `-` is specified, the eventlog
+will be read from stdin.
+
+'
+usage+="$eventlog_usage"
+commands+="|eventlog"
+
+eventlog()
+{
+	show_help "$1" "$eventlog_usage"
+	if [ "$#" -gt 1 ]; then
+		die "Wrong arguments.$eventlog_usage"
+	fi
+
+	EVENTLOG="/sys/kernel/security/tpm0/binary_bios_measurements"
+	if [ -n "$1" ]; then
+		EVENTLOG="$1"
+	fi
+
+	cat "$EVENTLOG" > "$TMP/eventlog.bin"
+	tpm2 eventlog "$TMP/eventlog.bin" \
+	|| die "$TMP/eventlog.bin: Unable to parse"
 }
 
 ########################################
@@ -373,7 +498,7 @@ has a fake key and decrypt the message in software.
 The `ca-path` should contain a file named `roots.pem` with the trusted
 root keys and have the hash symlinks created by `c_rehash`.
 
-* TODO: check parameters of attestation key.
+stdout is the sha256 hash of the DER format EK certificate.
 '
 usage+="$ek_verify_usage"
 commands+="|ek-verify"
@@ -410,11 +535,12 @@ ek-verify()
 	; then
 		warn "$QUOTE_TAR: ek.crt certificate validated with safeboot cert"
 	elif openssl verify \
-			-CAfile "$CA_ROOT" \
-			-CApath "$CA_PATH" \
-			-show_chain \
-			-verbose \
-			"$TMP/ek.pem" \
+		-CAfile "$CA_ROOT" \
+		-CApath "$CA_PATH" \
+		-show_chain \
+		-verbose \
+		"$TMP/ek.pem" \
+		>&2 \
 	; then
 		warn "$QUOTE_TAR: ek.crt certificate validated with SSL cert"
 	else
@@ -426,7 +552,7 @@ ek-verify()
 	tpm2 print \
 		--type "TPM2B_PUBLIC" \
 		"$TMP/ek.pub" \
-	> "$TMP/ek.pub.txt" \
+		> "$TMP/ek.pub.txt" \
 	|| die "$TMP/ek.pub: unable to parse file"
 
 	if ! grep -q "value: $EK_TYPE" "$TMP/ek.pub.txt"; then
@@ -470,6 +596,9 @@ quote file will be used.  Note that this is a potential for a replay
 attack -- the remote attestation server should keep track of which
 nonce it used for this quote so that it can verify that the quote
 is actually live.
+
+stdout is the yaml formatted `tpm2 checkquote`, which can be used to
+validate the eventlog PCRs.
 '
 usage+="$quote_verify_usage"
 commands+="|quote-verify"
@@ -487,9 +616,12 @@ quote-verify()
 	unpack-quote "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: unable to unpack"
 	
+	echo "ekhash: $(sha256 < "$TMP/ek.pub")"
+
 	tpm2 print \
 		-t "TPMS_ATTEST" \
 		"$TMP/quote.out" \
+		>&2 \
 	|| die "tpm2_print: unable to parse quote"
 
 	if [ "$QUOTE_NONCE" = "" ]; then
@@ -499,8 +631,8 @@ quote-verify()
 		VERIFY_TIME="$(date '+%s')"
 		QUOTE_TIME="$(printf "%d" "0x$QUOTE_NONCE")"
 		DELTA_TIME="$(( VERIFY_TIME - QUOTE_TIME ))"
-		if [ "$DELTA_TIME" -gt 30 ]; then
-			die "Old nonce: $QUOTE_TIME > $VERIFY_TIME + 30"
+		if [ "$DELTA_TIME" -gt "$QUOTE_MAX_AGE" ]; then
+			die "Old nonce: $QUOTE_TIME > $VERIFY_TIME + $QUOTE_MAX_AGE"
 		fi
 	fi
 
@@ -511,7 +643,7 @@ quote-verify()
 	tpm2 print \
 		--type "TPMT_PUBLIC" \
 		"$TMP/ak.pub" \
-	> "$TMP/ak.pub.txt" \
+		> "$TMP/ak.pub.txt" \
 	|| die "$TMP/ak.pub: Unable to parse file"
 
 	if ! grep -q "value: $AK_TYPE" "$TMP/ak.pub.txt"; then
@@ -541,7 +673,7 @@ seal_usage='
 ## seal
 Usage:
 ```
-echo secret | tpm2-attest seal quote.tgz [nonce] > cipher.bin
+echo secret | tpm2-attest seal quote.tgz > cipher.bin
 ```
 
 After a attested quote has been validated, an encrypted reply is sent to
@@ -565,7 +697,6 @@ seal()
 	fi
 
 	QUOTE_TAR="$1"
-	QUOTE_NONCE="${2:-}"
 
 	unpack-quote "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: unable to unpack"
@@ -619,7 +750,6 @@ unseal()
 
 	AK_CTX="$1"
 
-
 	# recreate the endorsement key context since it doesn't change per call
 	tpm2_flushall ""
 	tpm2 createek \
@@ -638,6 +768,7 @@ unseal()
 		--credentialkey-auth "session:$TMP/session.ctx" \
 		--credential-blob "$TMP/cipher.bin" \
 		--certinfo-data "$TMP/secret.txt" \
+		1>&2 \
 	|| die "tpm2_activatecredential: unable to decrypt cipher text"
 
 	cat "$TMP/secret.txt"
@@ -685,6 +816,8 @@ verify-and-seal()
 	|| die "$QUOTE_TAR: sealing failed"
 }
 
+########################################
+
 ek_sign_usage='
 ## ek-sign
 Usage:
@@ -706,10 +839,12 @@ and the resulting signed `ek.crt` can be stored back into the TPM nvram.
 Note that this will erase an existing OEM cert if you have one!
 
 ```
-tpm2 createek -c /dev/null -f PEM -u ek.pem
+# on the device
+tpm2-attest ek-crt > ek.pem
+# on the server
 tpm2-attest ek-sign < ek.pem > ek.crt /CN=device/OU=example.org/
-tpm2 nvdefine -s 1500 0x1c00002
-tpm2 nvwrite -i ek.crt 0x1c00002
+# on the device again
+tpm2-attest ek-crt ek.crt
 ```
 '
 usage+="$ek_sign_usage"
@@ -816,6 +951,99 @@ EOF
 }
 
 
+########################################
+
+ek_crt_usage='
+## ek-crt
+Usage:
+```
+tpm2-attest ek-crt > ek.pem  # Export the TPM EK in PEM format (not cert)
+```
+or
+```
+tpm2-attest ek-crt ek.crt  # Import a signed cert for the EK in DER format
+```
+
+Export the TPM RSA endorsement key for signing by a CA or import a signed
+endorsement key certificate into the TPM NVRAM at the well-known handle.
+See `tpm2-attest ek-sign` for more details.
+'
+usage+="$ek_crt_usage"
+commands+="|ek-crt"
+
+ek-crt()
+{
+	show_help "$1" "$ek_crt_usage"
+
+	if [ "$#" -gt 1 ]; then
+		die "Too many arguments.$ek_crt_usage"
+	fi
+
+	ek_crt="$1"
+	if [ -z "$ek_crt" ]; then
+		# read the EK as a PEM file and output it
+		tpm2_flushall ""
+		tpm2 createek \
+			-c /dev/null \
+			-f PEM \
+			-u "$TMP/ek.pem" \
+		|| die "unable to read TPM endorsement key"
+
+		openssl rsa \
+			-noout \
+			-text \
+			-pubin \
+			-in "$TMP/ek.pem" \
+			>&2 \
+		|| die "unable to parse TPM endorsement key"
+
+		cat "$TMP/ek.pem"
+		exit 0
+	fi
+
+	cat "$ek_crt" > "$TMP/ek.crt" \
+	|| die "unable to copy TPM endorsement key certificate"
+
+	# ensure that the cert validates
+	openssl x509 \
+		-text \
+		-noout \
+		-in "$TMP/ek.crt" \
+		-inform "DER" \
+	|| die "$ek_crt: unable to parse certificate"
+
+	# remove the nvram if it is there
+	if tpm2 nvread "$EK_HANDLE" > /dev/null 2>/dev/null ; then
+		warn "$EK_HANDLE: removing old cert"
+		tpm2 nvundefine "$EK_HANDLE" \
+		|| die "$EK_HANDLE: unable to undefine old NVRAM cert!"
+	fi
+
+	tpm2 nvdefine \
+		-s "$(wc -c < "$TMP/ek.crt")" \
+		-a "ownerwrite|authwrite|ownerread|authread|no_da" \
+		"$EK_HANDLE" \
+	|| die "unable to define TPM NVRAM for endorsement key cert"
+
+	tpm2 nvwrite \
+		-i "$TMP/ek.crt" \
+		"$EK_HANDLE" \
+	|| die "unable to write TPM NVRAM with endorsement key cert"
+
+	tpm2 nvread \
+		-o "$TMP/ek.crt.2" \
+		"$EK_HANDLE" \
+	|| die "unable to read back TPM NVRAM"
+
+	if ! cmp --quiet "$TMP/ek.crt" "$TMP/ek.crt.2" ; then
+		die "TPM NVRAM does not match imported cert"
+	fi
+
+	sha256sum "$TMP/ek.crt"
+}
+
+
+########################################
 
 if [ $# -lt 1 ]; then
 	die "Usage: $0 [$commands] ...." 
@@ -830,7 +1058,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	commands|quote|verify-and-seal|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify|ek-sign)
+	commands|quote|attest|verify-and-seal|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify|ek-sign|ek-crt|eventlog)
 		$command "$@"
 		;;
 	*)

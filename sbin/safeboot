@@ -7,6 +7,17 @@
 #
 # For more details: https://safeboot.dev/
 #
+# External programs required:
+# [ echo openssl tar tpm2 xxd sha256sum tail cut tr dd awk efivar_write
+# mount cryptsetup bash objcopy mkdir cat cp gzip
+# grep veritysetup tee umount sync sleep reboot telinit fsck.ext4
+# blockdev lsof xargs lvcreate mv rm ln lvm mktemp chmod pidof time
+# date printf chattr tee cmp
+#
+# optional programs:
+# yubico-piv-tool cert-to-efi-sig-list sign-efi-sig-list.safeboot
+# efibootmgr sbsign.safeboot
+#
 # turn off "expressions don't expand in single quotes"
 # and "can't follow non-constant sources"
 # shellcheck disable=SC2016 disable=SC1091
@@ -162,7 +173,7 @@ key-init() {
 		die "$key_init_usage"
 	fi
 
-	subject=$1
+	subject="$1"
 
 	if [ "$KEY" == "pkcs11:" ]; then
 		warn "\$KEY=pkcs11:; updating in local.conf"
@@ -269,7 +280,7 @@ yubikey-init() {
 		die "$yubikey_init_usage"
 	fi
 
-	subject=$1
+	subject="$1"
 
 	if [ "$KEY" != "pkcs11:" ]; then
 		warn "Adding KEY=pkcs11: to local.conf"
@@ -831,13 +842,134 @@ sign() {
 	return $?
 }
 
+unify_kernel_usage='
+## unify-kernel
+Usage:
+```
+safeboot unify-kernel linux.efi kernel=path-to-kernel initrd=path-to-initrd ...
+```
+
+Creates a unified kernel image with the named sections and files
+(typically `kernel`, `initrd`, `cmdline`, and `osrel`) bundled into
+an EFI executable.
+
+This is the raw command; you might want to use `safeboot linux-sign` or
+`safeboot recovery-sign` instead to add the EFI boot manager entry.
+'
+
+usage+=$unify_kernel_usage
+commands+="|unify-kernel"
+
+unify-kernel()
+{
+	show_help "$1" "$unify_kernel_usage"
+	unified="$1"
+
+	if [ -z "$unified" ]; then
+		die "$unify_kernel_usage"
+	fi
+
+	warn "$unified: Creating merged Linux/initrd image"
+	shift
+	sections=()
+	offset=$((0x20000))
+	blocksize=$((0x10000))
+
+	# Build the list of sections to add, splitting on = signs
+	for section in "$@"; do
+		name="${section%=*}"
+		file="${section#*=}"
+		if [ "$name" = "$section" ]; then
+			die "$name: format error (not name=file?)"
+		fi
+		if [ ! -r "$file" ]; then
+			die "$file: unable to read"
+		fi
+
+		size="$(wc -c < "$file")"
+		warn ".$name=$file: $size @ $offset"
+
+		sections+=( \
+			--add-section		".$name=$file" \
+			--change-section-vma	".$name=$offset" \
+		)
+
+		# round up the offset to the next block size
+		offset="$(( (offset + size + blocksize-1) / blocksize * blocksize ))"
+	done
+
+	objcopy \
+		"${sections[@]}" \
+		"$PREFIX/usr/lib/systemd/boot/efi/linuxx64.efi.stub" \
+		"$unified" \
+	|| die "$unified: unable to create"
+}
+
 ########################################
 
 sign_kernel_usage='
 ## sign-kernel
 Usage:
 ```
-safeboot sign-kernel boot-name [extra kernel parameters...]
+safeboot sign-kernel linux.efi [linux.signed.efi]
+```
+
+Sign a unified EFI executable with the safeboot keys.  If no destination
+is specified it will be the same name as the input kernel with `.signed.efi`
+added.
+
+This is the raw command; you might want to use `safeboot linux-sign` or
+`safeboot recovery-sign` instead to add the EFI boot manager entry.
+'
+
+usage+=$sign_kernel_usage
+commands+="|sign-kernel"
+
+sign-kernel()
+{
+	show_help "$1" "$sign_kernel_usage"
+	unified="$1"
+
+	if [ -z "$unified" ]; then
+		die "$sign_kernel_usage"
+	fi
+
+	if [ ! -r "$unified" ]; then
+		die "$unified: kernel is not readable"
+	fi
+
+	signed="$2"
+	if [ -z "$signed" ]; then
+		signed="${unified%.efi}.signed.efi"
+	fi
+
+	for try in 1 2 3 ; do
+		warn "$signed: Signing (ignore warnings about gaps)"
+		sbsign.safeboot \
+			$KEY_ENGINE \
+			--key "$KEY" \
+			--cert "$CERT" \
+			--output "$signed" \
+			"$unified" \
+		&& break
+
+		if [ "$try" == 3 ]; then
+			die "$signed: failed after $try tries"
+		fi
+
+		warn "$signed: signature failed! Try $try."
+	done
+
+	sbsign.safeboot --hash-only "$signed"
+}
+
+########################################
+
+install_kernel_usage='
+## install-kernel
+Usage:
+```
+safeboot install-kernel boot-name [extra kernel parameters...]
 ```
 
 Create an EFI boot menu entry for `boot-name`, with the specified
@@ -849,10 +981,10 @@ This is the raw command; you might want to use `safeboot linux-sign` or
 `safeboot recovery-sign` instead.
 '
 
-usage+=$sign_kernel_usage
-commands+="|sign-kernel"
+usage+=$install_kernel_usage
+commands+="|install-kernel"
 
-sign-kernel() {
+install-kernel() {
 	show_help "$1" "$sign_kernel_usage"
 
 	TARGET="$1" ; shift
@@ -893,33 +1025,15 @@ sign-kernel() {
 
 	echo "Kernel commandline: '$(cat "$TMP/cmdline.txt")'"
 
-	warn "$TMP/linux.efi: Creating merged Linux/initrd image"
-	objcopy \
-		--add-section .osrel="$PREFIX/etc/os-release" \
-		--add-section .cmdline="$TMP/cmdline.txt" \
-		--add-section .linux="$KERNEL" \
-		--add-section .initrd="$INITRD" \
-		--change-section-vma .osrel=0x20000 \
-		--change-section-vma .cmdline=0x30000 \
-		--change-section-vma .linux=0x40000 \
-		--change-section-vma .initrd=0x3000000 \
-		"$PREFIX/usr/lib/systemd/boot/efi/linuxx64.efi.stub" \
-		"$TMP/linux.efi" \
-	|| die "linux.efi: unable to create"
+	unify-kernel "$TMP/linux.efi" \
+		osrel="$PREFIX/etc/os-release" \
+		cmdline="$TMP/cmdline.txt" \
+		linux="$KERNEL" \
+		initrd="$INITRD" \
+	|| die "$TMP/linux.efi: unable to unify image"
 
-	for try in 1 2 3 ; do
-		warn "$OUTDIR/linux.efi: Signing (ignore warnings about gaps)"
-		sign \
-			"$TMP/linux.efi" \
-			"$OUTDIR/linux.efi.new" \
-		&& break
-
-		if [ "$try" == 3 ]; then
-			die "$OUTDIR/linux.efi: failed after $try tries"
-		fi
-
-		warn "$OUTDIR/linux.efi: signature failed! Try $try."
-	done
+	sign-kernel "$TMP/linux.efi" "$OUTDIR/linux.efi.new" \
+	|| die "$OUTDIR/linux.efi: unable to sign"
 
 	# Duplicate the old image and atomically move the new kernel
 	# image to avoid potentially leaving an unbootable system
@@ -932,12 +1046,6 @@ sign-kernel() {
 	|| die "$OUTDIR/linux.efi: unable to install new image"
 
 	sha256sum "$OUTDIR/linux.efi"
-
-	if [ -r "$TMP/verity.log" ]; then
-		# stash a copy of the verity log in the boot directory
-		# so that repeat signing can be done more quickly
-		cp "$TMP/verity.log" "$OUTDIR"
-	fi
 }
 
 ########################################
@@ -1019,12 +1127,18 @@ linux-sign()
 		"
 	fi
 
-	sign-kernel "$TARGET" \
+	install-kernel "$TARGET" \
 		"$LINUX_COMMANDLINE" \
 		"$ROOT_ARGS" \
 		"safeboot.mode=$TARGET" \
 		"$@" \
 	|| die "Kernel signing failed!"
+
+	if [ -r "$TMP/verity.log" ]; then
+		# stash a copy of the verity log in the boot directory
+		# so that repeat signing can be done more quickly
+		cp "$TMP/verity.log" "$OUTDIR"
+	fi
 }
 
 ########################################
@@ -1070,7 +1184,7 @@ recovery-sign()
 		ROOT_ARGS=""
 	fi
 
-	sign-kernel "${RECOVERY_TARGET}" \
+	install-kernel "${RECOVERY_TARGET}" \
 		"$RECOVERY_COMMANDLINE" \
 		"root=${ROOTDEV}" \
 		"$ROOT_ARGS" \
@@ -1512,7 +1626,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign|sign-kernel|linux-sign|recovery-sign|reboot|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext|unlock|mount-all)
+	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign|unify-kernel|sign-kernel|install-kernel|linux-sign|recovery-sign|reboot|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext|unlock|mount-all)
 		$command "$@"
 		;;
 	*)

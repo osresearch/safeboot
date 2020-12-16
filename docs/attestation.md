@@ -33,7 +33,7 @@ seal a secret for a specific TPM, and unseal it with that TPM.
 
 ## tl;dr
 
-* Client: Get `$nonce` and `$pcrs` from server
+* Client: Get `$nonce` and `$pcrs` from server (or use a time based nonce)
 * Client: `tpm2-attest $nonce $pcrs > quote.tgz`
 * Client: Send `quote.tgz` to server
 * Server: `tpm2-attest verify-and-seal quote.tgz $nonce < secret.txt > cipher.bin`
@@ -205,6 +205,48 @@ Unfortunately not all TPMs store their EK certs in the NVRAM;
 some of them require an online query to the OEM to generate the certificate.
 There is the `tpm2_getmanufec` program that is supposed to help with this
 process, although it hasn't been integrated into this tool yet.
+An alternative is to sign the EK with a key under your own control
+with `tpm2-attest ek-sign`.  This will produce `ek.crt`, signed with
+the safeboot key.  The signing operation can be done out-of-band
+on a different machine.
+
+Usually the EK public components can be extracted from the TPM, signed,
+and the resulting signed `ek.crt` can be stored back into the TPM nvram.
+Note that this will erase an existing OEM cert if you have one!
+
+```
+tpm2 createek -c /dev/null -f PEM -u ek.pem
+tpm2-attest ek-sign < ek.pem > ek.crt /CN=device/OU=example.org/
+tpm2 nvdefine -s 1500 0x1c00002
+tpm2 nvwrite -i ek.crt 0x1c00002
+```
+
+Google Cloud's ShieldedVM service enables vTPM for the guests, although
+it does not provide an EK in the NVRAM either.
+The key can be retrieved out of band [with these instructions](https://cloud.google.com/security/shielded-cloud/retrieving-endorsement-key),
+or the public component can be read from the `tpm2 createek` command
+described above.
+
+### Remote attestation demo
+
+Since the quote does not contain any clear text information and the
+response is sealed specifically for the TPM that generated the quote,
+a simple http server can be used to perform the attestion verification.
+A demo in `sbin/attest-server` performs this, using a fixed set of PCRs
+and a table of public key to secret mappings for the listed endorsement
+keys.
+
+On the server run:
+```
+./sbin/attest-server secrets.yaml
+```
+
+And on the client:
+```
+tpm2-attest attest http://server-name/ \
+	> /tmp/secret.txt \
+	|| echo "failed!"
+```
 
 ---------------------
 

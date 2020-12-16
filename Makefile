@@ -93,6 +93,30 @@ tpm2-totp/Makefile:
 	git submodule update --init tpm2-totp
 	cd $(dir $@) ; ./bootstrap && ./configure
 
+#
+# swtpm and libtpms are used for simulating the qemu tpm2
+#
+SUBMODULES += libtpms
+libtpms/Makefile:
+	git submodule update --init --depth 1 $(dir $@)
+	cd $(dir $@) ; ./autogen.sh --with-openssl --with-tpm2
+libtpms/src/.libs/libtpm2.a: libtpms/Makefile
+	$(MAKE) -C $(dir $<)
+
+SUBMODULES += swtpm
+SWTPM=swtpm/src/swtpm/swtpm
+swtpm/Makefile: libtpms/src/.libs/libtpm2.a
+	git submodule update --init --depth 1 $(dir $@)
+	cd $(dir $@) ; \
+		LIBTPMS_LIBS="-L`pwd`/../libtpms/src/.libs -ltpms" \
+		LIBTPMS_CFLAGS="-I`pwd`/../libtpms/include" \
+		./autogen.sh \
+
+$(SWTPM): swtpm/Makefile
+	$(MAKE) -C $(dir $<)
+
+
+
 
 #
 # Extra package building requirements
@@ -124,6 +148,13 @@ requirements:
 		curl \
 		libjson-c-dev \
 		libcurl4-openssl-dev \
+		expect \
+		socat \
+		libseccomp-dev \
+		seccomp \
+		gnutls-bin \
+		libgnutls28-dev \
+		libtasn1-6-dev \
 
 
 # Remove the temporary files
@@ -176,3 +207,126 @@ fake-mount:
 	mount --bind `pwd`/initramfs/scripts/safeboot-bootmode /etc/initramfs-tools/scripts/init-top/safeboot-bootmode
 fake-unmount:
 	mount | awk '/safeboot/ { print $$3 }' | xargs umount
+
+
+#
+# Build a safeboot initrd.cpio
+#
+build/initrd/gitstatus: initramfs/files.txt
+	rm -rf "$(dir $@)"
+	mkdir -p "$(dir $@)"
+	./sbin/populate "$(dir $@)" "$<"
+	git status -s > "$@"
+
+build/initrd.cpio: build/initrd/gitstatus
+	( cd $(dir $<) ; \
+		find . -print0 \
+		| cpio \
+			-0 \
+			-o \
+			-H newc \
+	) \
+	| ./sbin/cpio-clean \
+		initramfs/dev.cpio \
+		- \
+	> $@
+	sha256sum $@
+
+build/initrd.cpio.xz: build/initrd.cpio
+	xz \
+		--check=crc32 \
+		--lzma2=dict=1MiB \
+		--threads 0 \
+		< "$<" \
+	| dd bs=512 conv=sync status=none > "$@.tmp"
+	@if ! cmp --quiet "$@.tmp" "$@" ; then \
+		mv "$@.tmp" "$@" ; \
+	else \
+		echo "$@: unchanged" ; \
+		rm "$@.tmp" ; \
+	fi
+	sha256sum $@
+
+
+BOOTX64=build/boot/EFI/BOOT/BOOTX64.EFI
+$(BOOTX64): build/initrd.cpio.xz build/vmlinuz initramfs/cmdline.txt
+	mkdir -p "$(dir $@)"
+	DIR=. \
+	./sbin/safeboot unify-kernel \
+		"/tmp/kernel.tmp" \
+		linux=build/vmlinuz \
+		initrd=build/initrd.cpio.xz \
+		cmdline=initramfs/cmdline.txt \
+
+	DIR=. \
+	./sbin/safeboot sign-kernel \
+		"/tmp/kernel.tmp" \
+		"$@"
+
+	sha256sum "$@"
+
+build/boot/PK.auth: signing.crt
+	-./sbin/safeboot uefi-sign-keys
+	cp signing.crt PK.auth KEK.auth db.auth "$(dir $@)"
+
+build/esp.bin: $(BOOTX64) build/boot/PK.auth
+	./sbin/mkfat "$@" build/boot
+
+build/hda.bin: build/esp.bin build/luks.bin
+	./sbin/mkgpt "$@" $^
+
+build/key.bin:
+	echo -n "abcd1234" > "$@"
+
+build/luks.bin: build/key.bin
+	fallocate -l 512M "$@.tmp"
+	cryptsetup \
+		-y luksFormat \
+		--pbkdf pbkdf2 \
+		"$@.tmp" \
+		"build/key.bin"
+	cryptsetup luksOpen \
+		--key-file "build/key.bin" \
+		"$@.tmp" \
+		test-luks
+	#mkfs.ext4 /dev/mapper/test-luks
+	cat root.squashfs > /dev/mapper/test-luks
+	cryptsetup luksClose test-luks
+	mv "$@.tmp" "$@"
+
+TPMSTATE=build/vtpm/tpm2-00.permall
+$(TPMSTATE): $(SWTPM)
+	mkdir -p build/vtpm
+	PATH=$(dir $(SWTPM)):$(PATH) \
+	echo swtpm/src/swtpm_setup/swtpm_setup \
+		--tpm2 \
+		--createek \
+		--tpmstate "$(dir $@)" \
+		--config /dev/null \
+
+# uefi firmware from https://packages.debian.org/buster-backports/all/ovmf/download
+qemu: build/hda.bin $(SWTPM) $(TPMSTATE)
+	$(SWTPM) socket \
+		--tpm2 \
+		--tpmstate dir="$(dir $(TPMSTATE))" \
+		--ctrl type=unixio,path="$(dir $(TPMSTATE))sock" &
+
+	#cp /usr/share/OVMF/OVMF_VARS.fd build
+
+	-qemu-system-x86_64 \
+		-M q35,accel=kvm \
+		-m 4G \
+		-drive if=pflash,format=raw,readonly,file=/usr/share/OVMF/OVMF_CODE.fd \
+		-drive if=pflash,format=raw,file=build/OVMF_VARS.fd \
+		-serial stdio \
+		-netdev user,id=eth0 \
+		-device e1000,netdev=eth0 \
+		-chardev socket,id=chrtpm,path="$(dir $(TPMSTATE))sock" \
+		-tpmdev emulator,id=tpm0,chardev=chrtpm \
+		-device tpm-tis,tpmdev=tpm0 \
+		-drive "file=$<,format=raw" \
+		-boot c \
+
+	stty sane
+
+

@@ -21,22 +21,51 @@ This will result in two output files, `quote.tgz` to be sent to
 the remote side, and `ak.ctx` that is to remain on this machine
 for decrypting the return result from the remote attestation server.
 
+## attest
+Usage:
+```
+tpm2-attest attest http://server/ [nonce [pcrs,...]] > secret.txt
+```
+This will generate a quote for the nonce (or the current time if
+none is specified) and for the PCRs listed in the `$QUOTE_PCRS`
+environment variable.  It will then send the quote to a simple
+attestation server, which will validate the quote and reply with
+a sealed message that can only be decrypted by this TPM on this
+boot.
+
+No validation of the attestation server is done.
+
 ## verify
 Usage:
 ```
-tpm2-attest verify quote.tgz [good-pcrs.txt [nonce [ca-path]]]
+tpm2-attest verify quote.tgz [nonce [ca-path]]
 ```
 
 This will validate that the quote was signed with the attestation key
 with the provided nonce, and verify that the endorsement key from a valid
-TPM.
+TPM.  It outputs, but does not validate the event log; use
+`tpm2-attest eventlog-verify` once the known PCRs are available, or use a more 
+complex validation scheme.
 
 If the `nonce` is not specified, the one in the quote file will be used,
-although this opens up the possibility of a replay attack.
+although this opens up the possibility of a replay attack.  The QUOTE_MAX_AGE
+can be used to ensure that the quote is fresh.
 
 If the `ca-path` is not specified, the system one will be used.
 
-* TODO: verify event log
+The output on stdout is yaml formatted with the sha256 hash of the DER format
+EK certificate, the validated quote PCRs, and the unvalidated eventlog PCRs.
+
+## eventlog
+Usage:
+```
+tpm2-attest eventlog [eventlog.bin]
+```
+
+This will read and parse the TPM2 eventlog. If no file is specified,
+the default Linux one will be parsed.  If `-` is specified, the eventlog
+will be read from stdin.
+
 
 ## eventlog-verify
 Usage:
@@ -66,7 +95,7 @@ has a fake key and decrypt the message in software.
 The `ca-path` should contain a file named `roots.pem` with the trusted
 root keys and have the hash symlinks created by `c_rehash`.
 
-* TODO: check parameters of attestation key.
+stdout is the sha256 hash of the DER format EK certificate.
 
 ## quote-verify
 Usage:
@@ -87,10 +116,13 @@ attack -- the remote attestation server should keep track of which
 nonce it used for this quote so that it can verify that the quote
 is actually live.
 
+stdout is the yaml formatted `tpm2 checkquote`, which can be used to
+validate the eventlog PCRs.
+
 ## seal
 Usage:
 ```
-echo secret | tpm2-attest seal quote.tgz [nonce] > cipher.bin
+echo secret | tpm2-attest seal quote.tgz > cipher.bin
 ```
 
 After a attested quote has been validated, an encrypted reply is sent to
@@ -145,9 +177,25 @@ and the resulting signed `ek.crt` can be stored back into the TPM nvram.
 Note that this will erase an existing OEM cert if you have one!
 
 ```
-tpm2 createek -c /dev/null -f PEM -u ek.pem
+# on the device
+tpm2-attest ek-crt > ek.pem
+# on the server
 tpm2-attest ek-sign < ek.pem > ek.crt /CN=device/OU=example.org/
-tpm2 nvdefine -s 1500 0x1c00002
-tpm2 nvwrite -i ek.crt 0x1c00002
+# on the device again
+tpm2-attest ek-crt ek.crt
 ```
+
+## ek-crt
+Usage:
+```
+tpm2-attest ek-crt > ek.pem  # Export the TPM EK in PEM format (not cert)
+```
+or
+```
+tpm2-attest ek-crt ek.crt  # Import a signed cert for the EK in DER format
+```
+
+Export the TPM RSA endorsement key for signing by a CA or import a signed
+endorsement key certificate into the TPM NVRAM at the well-known handle.
+See `tpm2-attest ek-sign` for more details.
 
