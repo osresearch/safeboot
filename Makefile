@@ -1,4 +1,4 @@
-VERSION ?= 0.7
+VERSION ?= 0.8
 
 BINS += bin/sbsign.safeboot
 BINS += bin/sign-efi-sig-list.safeboot
@@ -31,7 +31,7 @@ bin/sign-efi-sig-list.safeboot: efitools/Makefile
 	mkdir -p $(dir $@)
 	cp $(dir $<)sign-efi-sig-list $@
 efitools/Makefile:
-	git submodule update --init efitools
+	git submodule update --init --recursive --recommend-shallow efitools
 
 #
 # tpm2-tss is the library used by tpm2-tools
@@ -48,7 +48,7 @@ $(libtss2-esys): tpm2-tss/Makefile
 	$(MAKE) -C $(dir $<)
 	mkdir -p $(dir $@)
 tpm2-tss/Makefile:
-	git submodule update --init $(dir $@)
+	git submodule update --init --recursive --recommend-shallow $(dir $@)
 	cd $(dir $@) ; ./bootstrap && ./configure \
 		--disable-doxygen-doc \
 
@@ -64,7 +64,7 @@ bin/tpm2: tpm2-tools/tools/tpm2
 	cp $< $@
 
 tpm2-tools/Makefile: $(libtss2-esys)
-	git submodule update --init $(dir $@)
+	git submodule update --init --recursive --recommend-shallow $(dir $@)
 	cd $(dir $@) ; ./bootstrap \
 	&& ./configure \
 		TSS2_RC_CFLAGS=-I../tpm2-tss/include \
@@ -90,7 +90,7 @@ bin/tpm2-totp: tpm2-totp/Makefile
 	mkdir -p $(dir $@)
 	cp $(dir $<)/tpm2-totp $@
 tpm2-totp/Makefile:
-	git submodule update --init tpm2-totp
+	git submodule update --init --recursive --recommend-shallow tpm2-totp
 	cd $(dir $@) ; ./bootstrap && ./configure
 
 #
@@ -98,7 +98,7 @@ tpm2-totp/Makefile:
 #
 SUBMODULES += libtpms
 libtpms/Makefile:
-	git submodule update --init --depth 1 $(dir $@)
+	git submodule update --init --recursive --recommend-shallow $(dir $@)
 	cd $(dir $@) ; ./autogen.sh --with-openssl --with-tpm2
 libtpms/src/.libs/libtpm2.a: libtpms/Makefile
 	$(MAKE) -C $(dir $<)
@@ -106,7 +106,7 @@ libtpms/src/.libs/libtpm2.a: libtpms/Makefile
 SUBMODULES += swtpm
 SWTPM=swtpm/src/swtpm/swtpm
 swtpm/Makefile: libtpms/src/.libs/libtpm2.a
-	git submodule update --init --depth 1 $(dir $@)
+	git submodule update --init --recursive --recommend-shallow $(dir $@)
 	cd $(dir $@) ; \
 		LIBTPMS_LIBS="-L`pwd`/../libtpms/src/.libs -ltpms" \
 		LIBTPMS_CFLAGS="-I`pwd`/../libtpms/include" \
@@ -161,7 +161,7 @@ requirements:
 clean:
 	rm -rf bin $(SUBMODULES)
 	mkdir $(SUBMODULES)
-	git submodule update --init --recursive --recommend-shallow 
+	#git submodule update --init --recursive --recommend-shallow 
 
 # Regenerate the source file
 tar: clean

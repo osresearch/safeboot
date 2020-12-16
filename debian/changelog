@@ -1,3 +1,12 @@
+safeboot (0.8) unstable; urgency=medium
+
+  * `tpm2-attest` and `attest-server` to perform attestations
+  * TPM2 emulator `swtpm` built as part of emulation environment
+  * EK certificates are now optional in quotes
+  * More `safeboot` helper functions: `sign`, `unify`, `install-kernel`
+
+ -- Trammell Hudson <hudson@unicycle>  Sun, 23 Aug 2020 18:12:58 +0200
+
 safeboot (0.7) unstable; urgency=medium
 
   * Added signed PCRs
