@@ -71,7 +71,11 @@ fi
 # if the TPM2 resource manager is running, talk to it.
 # otherwise use a direct connection to the TPM
 if ! pidof tpm2-abrmd > /dev/null ; then
-	export TPM2TOOLS_TCTI="device:/dev/tpmrm0"
+	if [[ ! -v TPM2TOOLS_TCTI ]]; then
+		true
+	elif [[ -b /dev/tpmrm0 || -c /dev/tpmrm0 || -p /dev/tpmrm0 ]]; then
+		export TPM2TOOLS_TCTI="device:/dev/tpmrm0"
+	fi
 fi
 
 
