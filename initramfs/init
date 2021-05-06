@@ -1,5 +1,6 @@
-#!/bin/bash
+#!/bin/busybox sh
 echo "Hello, initrd"
+/bin/busybox --install /bin
 mkdir -p /proc /sys /tmp /dev /etc /root /run /boot
 mount -t proc none /proc
 mount -t devtmpfs none /dev
@@ -26,7 +27,9 @@ cat /sys/kernel/security/tpm0/binary_bios_measurements > /tmp/eventlog.bin
 # remotely attest and get a secret disk key
 SERVER="10.0.2.2"
 while true; do
-	ping -w 5 -c 1 "$SERVER" \
+	#ping -w 5 -c 1 "$SERVER" \
+	#
+	ping "$SERVER" \
 	|| break
 
 	echo "network is up"
@@ -54,4 +57,9 @@ done
 echo "FAILED!!!"
 export PS1='\h:\w# '
 
-exec setsid --ctty /bin/bash </dev/console >/dev/console 2>/dev/console
+if [ -x /bin/setsid ] && [ -x /bin/bash ]; then
+	exec setsid -c /bin/bash </dev/console >/dev/console 2>/dev/console
+fi
+
+echo "Fallback shell!"
+exec /bin/sh </dev/console >/dev/console 2>/dev/console
