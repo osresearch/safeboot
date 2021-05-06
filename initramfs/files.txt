@@ -58,13 +58,14 @@ symlink ../lib64 lib/x86_64-linux-gnu
 ./sbin/safeboot
 ./sbin/tpm2-attest
 ./bin/tpm2
-/lib/x86_64-linux-gnu/libtss2-tcti-device.so.0 lib
+#/lib/x86_64-linux-gnu/libtss2-tcti-device.so.0 lib
+./tpm2-tss/src/tss2-tcti/.libs/libtss2-tcti-device.so.0 lib
 ./functions.sh etc/safeboot
 ./safeboot.conf etc/safeboot
 /usr/bin/openssl
 /usr/bin/curl
 /usr/bin/ping
-/usr/bin/efibootmgr
+#/usr/bin/efibootmgr
 
 # cryptdisk setup
 /sbin/cryptsetup
@@ -74,12 +75,12 @@ symlink ../lib64 lib/x86_64-linux-gnu
 
 # hack for ahci modules
 /usr/sbin/insmod
-/lib/modules/5.4.0-48-generic/kernel/drivers/ata/ahci.ko lib/modules
-/lib/modules/5.4.0-48-generic/kernel/drivers/ata/libahci.ko lib/modules
-/lib/modules/5.4.0-48-generic/kernel/drivers/md/dm-crypt.ko lib/modules
-/lib/modules/5.4.0-48-generic/kernel/drivers/net/ethernet/intel/e1000/e1000.ko lib/modules
-/lib/modules/5.4.0-48-generic/kernel/fs/nls/nls_iso8859-1.ko lib/modules
+#/lib/modules/5.4.0-48-generic/kernel/drivers/ata/ahci.ko lib/modules
+#/lib/modules/5.4.0-48-generic/kernel/drivers/ata/libahci.ko lib/modules
+#/lib/modules/5.4.0-48-generic/kernel/drivers/md/dm-crypt.ko lib/modules
+/lib/modules/$UNAME/kernel/drivers/net/ethernet/intel/e1000/e1000.ko lib/modules
+#/lib/modules/5.4.0-48-generic/kernel/fs/nls/nls_iso8859-1.ko lib/modules
 
 
 # temporarily include vi
-/usr/bin/vi
+#/usr/bin/vi
