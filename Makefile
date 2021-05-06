@@ -73,8 +73,8 @@ tpm2-tools/Makefile: $(libtss2-esys)
 		TSS2_MU_LIBS="../$(libtss2-mu)" \
 		TSS2_SYS_CFLAGS=-I../tpm2-tss/include \
 		TSS2_SYS_LIBS="../$(libtss2-sys)" \
-		TSS2_TCTI_CFLAGS=-I../tpm2-tss/include \
-		TSS2_TCTI_LIBS="../$(libtss2-tcti)" \
+		TSS2_TCTILDR_CFLAGS=-I../tpm2-tss/include \
+		TSS2_TCTILDR_LIBS="../$(libtss2-tcti)" \
 		TSS2_ESYS_3_0_CFLAGS=-I../tpm2-tss/include \
 		TSS2_ESYS_3_0_LIBS="../$(libtss2-esys) -ldl" \
 
@@ -85,13 +85,21 @@ tpm2-tools/Makefile: $(libtss2-esys)
 # tpm2-totp is build from a branch with hostname support
 #
 SUBMODULES += tpm2-totp
-bin/tpm2-totp: tpm2-totp/Makefile
+bin/tpm2-totp: tpm2-totp/Makefile $(libtss2-esys)
 	$(MAKE) -C $(dir $<)
 	mkdir -p $(dir $@)
 	cp $(dir $<)/tpm2-totp $@
-tpm2-totp/Makefile:
+tpm2-totp/bootstrap:
 	git submodule update --init --recursive --recommend-shallow tpm2-totp
-	cd $(dir $@) ; ./bootstrap && ./configure
+tpm2-totp/Makefile: tpm2-totp/bootstrap
+	cd $(dir $@) ; ./bootstrap && ./configure \
+		TSS2_MU_CFLAGS=-I../tpm2-tss/include \
+		TSS2_MU_LIBS="../$(libtss2-mu)" \
+		TSS2_TCTILDR_CFLAGS=-I../tpm2-tss/include \
+		TSS2_TCTILDR_LIBS="../$(libtss2-tcti)" \
+		TSS2_TCTI_DEVICE_LIBDIR="$(dir ../$(libtss2-tcti))" \
+		TSS2_ESYS_CFLAGS=-I../tpm2-tss/include \
+		TSS2_ESYS_LIBS="../$(libtss2-esys) ../$(libtss2-sys) -lssl -lcrypto -ldl" \
 
 #
 # swtpm and libtpms are used for simulating the qemu tpm2
