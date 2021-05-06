@@ -60,7 +60,7 @@ while(<>)
 	cp($bin, "$top/$dest/" . basename($bin))
 		or die "cp $bin $top/$dest/: Unable to copy: $!\n";
 
-	my @deps = `ldd "$bin"`
+	my @deps = `ldd "$bin" 2>&1`
 		or next;
 
 	for (@deps)
