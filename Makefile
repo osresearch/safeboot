@@ -47,8 +47,9 @@ libtss2-tcti = tpm2-tss/src/tss2-tcti/.libs/libtss2-tctildr.a
 $(libtss2-esys): tpm2-tss/Makefile
 	$(MAKE) -C $(dir $<)
 	mkdir -p $(dir $@)
-tpm2-tss/Makefile:
+tpm2-tss/bootstrap:
 	git submodule update --init --recursive --recommend-shallow $(dir $@)
+tpm2-tss/Makefile: tpm2-tss/bootstrap
 	cd $(dir $@) ; ./bootstrap && ./configure \
 		--disable-doxygen-doc \
 
@@ -57,14 +58,9 @@ tpm2-tss/Makefile:
 #
 SUBMODULES += tpm2-tools
 
-tpm2-tools/tools/tpm2: tpm2-tools/Makefile
-	$(MAKE) -C $(dir $<)
-
-bin/tpm2: tpm2-tools/tools/tpm2
-	cp $< $@
-
-tpm2-tools/Makefile: $(libtss2-esys)
+tpm2-tools/bootstrap:
 	git submodule update --init --recursive --recommend-shallow $(dir $@)
+tpm2-tools/Makefile: tpm2-tools/bootstrap $(libtss2-esys)
 	cd $(dir $@) ; ./bootstrap \
 	&& ./configure \
 		TSS2_RC_CFLAGS=-I../tpm2-tss/include \
@@ -78,7 +74,11 @@ tpm2-tools/Makefile: $(libtss2-esys)
 		TSS2_ESYS_3_0_CFLAGS=-I../tpm2-tss/include \
 		TSS2_ESYS_3_0_LIBS="../$(libtss2-esys) -ldl" \
 
+tpm2-tools/tools/tpm2: tpm2-tools/Makefile
+	$(MAKE) -C $(dir $<)
 
+bin/tpm2: tpm2-tools/tools/tpm2
+	cp $< $@
 
 
 #
@@ -105,16 +105,19 @@ tpm2-totp/Makefile: tpm2-totp/bootstrap
 # swtpm and libtpms are used for simulating the qemu tpm2
 #
 SUBMODULES += libtpms
-libtpms/Makefile:
+LIBTPMS_OUTPUT := libtpms/src/.libs/libtpms_tpm2.a
+libtpms/autogen.sh:
 	git submodule update --init --recursive --recommend-shallow $(dir $@)
+libtpms/Makefile: libtpms/autogen.sh
 	cd $(dir $@) ; ./autogen.sh --with-openssl --with-tpm2
-libtpms/src/.libs/libtpm2.a: libtpms/Makefile
+$(LIBTPMS_OUTPUT): libtpms/Makefile
 	$(MAKE) -C $(dir $<)
 
 SUBMODULES += swtpm
 SWTPM=swtpm/src/swtpm/swtpm
-swtpm/Makefile: libtpms/src/.libs/libtpm2.a
+swtpm/autogen.sh:
 	git submodule update --init --recursive --recommend-shallow $(dir $@)
+swtpm/Makefile: swtpm/autogen.sh $(LIBTPMS_OUTPUT)
 	cd $(dir $@) ; \
 		LIBTPMS_LIBS="-L`pwd`/../libtpms/src/.libs -ltpms" \
 		LIBTPMS_CFLAGS="-I`pwd`/../libtpms/include" \
@@ -265,10 +268,11 @@ $(BOOTX64): build/initrd.cpio.xz build/vmlinuz initramfs/cmdline.txt
 		initrd=build/initrd.cpio.xz \
 		cmdline=initramfs/cmdline.txt \
 
-	DIR=. \
-	./sbin/safeboot sign-kernel \
-		"/tmp/kernel.tmp" \
-		"$@"
+	#DIR=. PATH=./bin:$(PATH) \
+	#./sbin/safeboot sign-kernel \
+	#	"/tmp/kernel.tmp" \
+	#	"$@"
+	mv "/tmp/kernel.tmp" "$@"
 
 	sha256sum "$@"
 
@@ -333,6 +337,34 @@ qemu: build/hda.bin $(SWTPM) $(TPMSTATE)
 		-device tpm-tis,tpmdev=tpm0 \
 		-drive "file=$<,format=raw" \
 		-boot c \
+
+	stty sane
+
+server-hda.bin:
+	qemu-img create -f qcow2 $@ 1G
+build/OVMF_VARS.fd:
+	cp /usr/share/OVMF/OVMF_VARS.fd $@
+
+qemu-server: server-hda.bin build/OVMF_VARS.fd $(BOOTX64) $(SWTPM) $(TPMSTATE)
+	$(SWTPM) socket \
+		--tpm2 \
+		--tpmstate dir="$(dir $(TPMSTATE))" \
+		--ctrl type=unixio,path="$(dir $(TPMSTATE))sock" &
+
+
+	-qemu-system-x86_64 \
+		-M q35,accel=kvm \
+		-m 1G \
+		-drive if=pflash,format=raw,readonly,file=/usr/share/OVMF/OVMF_CODE.fd \
+		-drive if=pflash,format=raw,file=build/OVMF_VARS.fd \
+		-serial stdio \
+		-netdev user,id=eth0,tftp=.,bootfile=$(BOOTX64) \
+		-device e1000,netdev=eth0 \
+		-chardev socket,id=chrtpm,path="$(dir $(TPMSTATE))sock" \
+		-tpmdev emulator,id=tpm0,chardev=chrtpm \
+		-device tpm-tis,tpmdev=tpm0 \
+		-drive "file=$<,format=raw" \
+		-boot n \
 
 	stty sane
 
