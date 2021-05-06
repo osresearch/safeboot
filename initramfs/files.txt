@@ -5,51 +5,53 @@ mkdir lib64
 symlink ../lib64 lib/x86_64-linux-gnu
 
 # normal coreutils
-/bin/ls
-/bin/bash
-/bin/cp
-/bin/mv
-/bin/echo
-/bin/mount
-/bin/umount
-/bin/ps
-/bin/grep
-/bin/mkdir
-/bin/mknod
-/usr/bin/sha256sum
-/usr/bin/sync
-/usr/bin/tee
-/usr/bin/xxd
-/usr/bin/gzip
-/usr/bin/tar
-/usr/bin/rm
-/usr/bin/lspci
-/usr/bin/head
-/usr/bin/tail
-/usr/bin/cut
-/usr/bin/setsid
-/usr/bin/stty
-/usr/bin/find
-/usr/bin/mktemp
-/usr/bin/[
-/usr/bin/awk
-/usr/bin/chmod
-/usr/bin/chattr
-/usr/bin/pidof
-/usr/bin/time
-/usr/bin/date
-/usr/bin/printf
-/usr/bin/wc
-/bin/dd
-/bin/sleep
-/bin/cat
-/bin/less
-/bin/dmesg
-/usr/sbin/chroot
-/usr/sbin/ifconfig
+bin/busybox
+symlink /bin/busybox /bin/sh
+#/bin/ls
+#/bin/bash
+#/bin/cp
+#/bin/mv
+#/bin/echo
+#/bin/mount
+#/bin/umount
+#/bin/ps
+#/bin/grep
+#/bin/mkdir
+#/bin/mknod
+#/usr/bin/sha256sum
+#/usr/bin/sync
+#/usr/bin/tee
+#/usr/bin/xxd
+#/usr/bin/gzip
+#/usr/bin/tar
+#/usr/bin/rm
+#/usr/bin/lspci
+#/usr/bin/head
+#/usr/bin/tail
+#/usr/bin/cut
+#/usr/bin/setsid
+#/usr/bin/stty
+#/usr/bin/find
+#/usr/bin/mktemp
+#/usr/bin/[
+#/usr/bin/awk
+#/usr/bin/chmod
+#/usr/bin/chattr
+#/usr/bin/pidof
+#/usr/bin/time
+#/usr/bin/date
+#/usr/bin/printf
+#/usr/bin/wc
+#/bin/dd
+#/bin/sleep
+#/bin/cat
+#/bin/less
+#/bin/dmesg
+#/usr/sbin/chroot
+#/usr/sbin/ifconfig
 
 # disk management
-/sbin/fdisk
+#/sbin/fdisk
 /sbin/mkfs.ext4
 /sbin/mkfs.vfat
 
@@ -64,7 +66,7 @@ symlink ../lib64 lib/x86_64-linux-gnu
 ./safeboot.conf etc/safeboot
 /usr/bin/openssl
 /usr/bin/curl
-/usr/bin/ping
+#/usr/bin/ping
 #/usr/bin/efibootmgr
 
 # cryptdisk setup
@@ -73,8 +75,8 @@ symlink ../lib64 lib/x86_64-linux-gnu
 /sbin/lvm
 #/sbin/kexec
 
-# hack for ahci modules
-/usr/sbin/insmod
+# 
+#/usr/sbin/insmod
 #/lib/modules/5.4.0-48-generic/kernel/drivers/ata/ahci.ko lib/modules
 #/lib/modules/5.4.0-48-generic/kernel/drivers/ata/libahci.ko lib/modules
 #/lib/modules/5.4.0-48-generic/kernel/drivers/md/dm-crypt.ko lib/modules
