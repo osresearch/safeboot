@@ -30,7 +30,7 @@ while true; do
 	|| break
 
 	echo "network is up"
-	bash -x /bin/tpm2-attest attest "http://$SERVER:8080/attest/" > /tmp/secret.bin \
+	/bin/tpm2-attest attest "http://$SERVER:8080/attest/" > /tmp/secret.bin \
 	|| break;
 
 	echo "attestation successful"
