@@ -20,3 +20,6 @@
 [submodule "libtpms"]
 	path = libtpms
 	url = https://github.com/stefanberger/libtpms/
+[submodule "busybox"]
+	path = busybox
+	url = git://busybox.net/busybox.git

@@ -127,7 +127,21 @@ $(SWTPM): swtpm/Makefile
 	$(MAKE) -C $(dir $<)
 
 
-
+#
+# busybox for command line utilities
+#
+SUBMODULES += busybox
+busybox/Makefile:
+	git submodule update --init --recursive --recommend-shallow $(dir $@)
+busybox/.configured: initramfs/busybox.config busybox/Makefile
+	cp $< $(dir $@).config
+	$(MAKE) -C $(dir $@) oldconfig
+	touch $@
+busybox/busybox: busybox/.configured
+	$(MAKE) -C $(dir $<)
+bin/busybox: busybox/busybox
+	mkdir -p $(dir $@)
+	cp $(dir $<)/busybox $@
 
 #
 # Extra package building requirements
@@ -165,6 +179,9 @@ requirements:
 		gnutls-bin \
 		libgnutls28-dev \
 		libtasn1-6-dev \
+		ncurses-dev \
+		qemu-utils \
+		qemu-system-x86 \
 
 
 # Remove the temporary files
@@ -222,7 +239,7 @@ fake-unmount:
 #
 # Build a safeboot initrd.cpio
 #
-build/initrd/gitstatus: initramfs/files.txt
+build/initrd/gitstatus: initramfs/files.txt bin/busybox bin/tpm2 initramfs/init
 	rm -rf "$(dir $@)"
 	mkdir -p "$(dir $@)"
 	./sbin/populate "$(dir $@)" "$<"
