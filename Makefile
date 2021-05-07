@@ -149,7 +149,7 @@ bin/busybox: busybox/busybox
 #
 # Linux kernel for the PXE boot image
 #
-LINUX		:= linux-5.7.2
+LINUX		:= linux-5.10.35
 LINUX_TAR	:= $(LINUX).tar.xz
 LINUX_SIG	:= $(LINUX).tar.sign
 LINUX_URL	:= https://cdn.kernel.org/pub/linux/kernel/v5.x/$(LINUX_TAR)
@@ -165,16 +165,16 @@ $(LINUX)/.patched: $(LINUX_TAR)
 	tar xf $(LINUX_TAR)
 	touch $@
 
-build/vmlinuz: build/linux/.config
+build/vmlinuz: build/$(LINUX)/.config build/initrd.cpio
 	$(MAKE) \
 		KBUILD_HOST=safeboot \
 		KBUILD_BUILD_USER=builder \
 		KBUILD_BUILD_TIMESTAMP="$(GIT_HASH)" \
 		KBUILD_BUILD_VERSION="$(GIT_DIRTY)" \
-		-C $(PWD)/$(dir $@)linux
-	cp $(dir $@)linux/arch/x86/boot/bzImage $@
+		-C $(dir $<)
+	cp $(dir $<)/arch/x86/boot/bzImage $@
 
-build/linux/.config: initramfs/linux.config | $(LINUX)
+build/$(LINUX)/.config: initramfs/linux.config | $(LINUX)
 	mkdir -p $(dir $@)
 	cp $< $@
 	$(MAKE) \
@@ -182,7 +182,7 @@ build/linux/.config: initramfs/linux.config | $(LINUX)
 		O=$(PWD)/$(dir $@) \
 		olddefconfig
 
-linux-menuconfig: build/linux/.config
+linux-menuconfig: build/$(LINUX)/.config
 	$(MAKE) -j1 -C $(dir $<) menuconfig savedefconfig
 	cp $(dir $<)defconfig initramfs/linux.config
 
@@ -228,6 +228,7 @@ requirements:
 		gnupg2 \
 		flex \
 		bison \
+		libelf-dev \
 
 
 # Remove the temporary files
@@ -335,20 +336,20 @@ build/signing.key:
 
 
 BOOTX64=build/boot/EFI/BOOT/BOOTX64.EFI
-$(BOOTX64): build/initrd.cpio.xz build/vmlinuz initramfs/cmdline.txt bin/sbsign.safeboot build/signing.key
+$(BOOTX64): build/vmlinuz initramfs/cmdline.txt bin/sbsign.safeboot build/signing.key
 	mkdir -p "$(dir $@)"
-	DIR=. \
-	./sbin/safeboot unify-kernel \
-		"/tmp/kernel.tmp" \
-		linux=build/vmlinuz \
-		initrd=build/initrd.cpio.xz \
-		cmdline=initramfs/cmdline.txt \
+#	DIR=. \
+#	./sbin/safeboot unify-kernel \
+#		"/tmp/kernel.tmp" \
+#		linux=build/vmlinuz \
+#		initrd=build/initrd.cpio.xz \
+#		cmdline=initramfs/cmdline.txt \
 
 	./bin/sbsign.safeboot \
 		--output "$@" \
 		--key build/signing.key \
 		--cert build/signing.crt \
-		"/tmp/kernel.tmp"
+		$<
 
 	sha256sum "$@"
 
@@ -384,7 +385,7 @@ build/luks.bin: build/key.bin
 TPMDIR=build/vtpm
 TPMSTATE=$(TPMDIR)/tpm2-00.permall
 TPMSOCK=$(TPMDIR)/sock
-$(TPMSTATE): $(SWTPM)
+$(TPMSTATE): | $(SWTPM)
 	mkdir -p build/vtpm
 	PATH=$(dir $(SWTPM)):$(PATH) \
 	swtpm/src/swtpm_setup/swtpm_setup \
@@ -396,14 +397,14 @@ $(TPMSTATE): $(SWTPM)
 
 # Extract the EK from a tpm state; wish swtpm_setup had a way
 # to do this instead of requiring this many hoops
-$(TPMDIR)/ek.pub: $(TPMSTATE) bin/tpm2
+$(TPMDIR)/ek.pub: $(TPMSTATE) | bin/tpm2
 	$(SWTPM) socket \
 		--tpm2 \
 		--flags startup-clear \
 		--tpmstate dir="$(TPMDIR)" \
 		--server type=tcp,port=9998 \
 		--ctrl type=tcp,port=9999 \
-		--pid file="$(TPMDIR)/swtpm.pid" &
+		--pid file="$(TPMDIR)/swtpm-ek.pid" &
 	sleep 1
 	
 	TPM2TOOLS_TCTI=swtpm:host=localhost,port=9998 \
@@ -413,8 +414,8 @@ $(TPMDIR)/ek.pub: $(TPMSTATE) bin/tpm2
 		-c $(TPMDIR)/ek.ctx \
 		-u $@
 
-	kill `cat "$(TPMDIR)/swtpm.pid"`
-	@-$(RM) "$(TPMDIR)/swtpm.pid"
+	kill `cat "$(TPMDIR)/swtpm-ek.pid"`
+	@-$(RM) "$(TPMDIR)/swtpm-ek.pid"
 
 # Convert an EK PEM formatted public key into the hash of the modulus,
 # which is used by the quote and attestation server to identify the machine
