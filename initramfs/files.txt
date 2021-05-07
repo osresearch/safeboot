@@ -6,6 +6,7 @@ symlink ../lib64 lib/x86_64-linux-gnu
 
 # normal coreutils
 bin/busybox
+symlink busybox bin/sh
 /bin/bash
 #/bin/ls
 #/bin/cp

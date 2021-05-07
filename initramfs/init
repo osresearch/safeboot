@@ -60,6 +60,12 @@ done
 
 
 echo "FAILED!!!"
+
+if [ $$ != 1 ]; then
+	exit 1
+fi
+
+# try to spawn a rescue shell
 export PS1='\h:\w# '
 
 if [ -x /bin/setsid ] && [ -x /bin/bash ]; then
