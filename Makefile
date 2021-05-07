@@ -335,22 +335,83 @@ build/luks.bin: build/key.bin
 	cryptsetup luksClose test-luks
 	mv "$@.tmp" "$@"
 
-TPMSTATE=build/vtpm/tpm2-00.permall
+TPMDIR=build/vtpm
+TPMSTATE=$(TPMDIR)/tpm2-00.permall
+TPMSOCK=$(TPMDIR)/sock
 $(TPMSTATE): $(SWTPM)
 	mkdir -p build/vtpm
 	PATH=$(dir $(SWTPM)):$(PATH) \
-	echo swtpm/src/swtpm_setup/swtpm_setup \
+	swtpm/src/swtpm_setup/swtpm_setup \
 		--tpm2 \
 		--createek \
+		--display \
 		--tpmstate "$(dir $@)" \
 		--config /dev/null \
+
+# Extract the EK from a tpm state; wish swtpm_setup had a way
+# to do this instead of requiring this many hoops
+$(TPMDIR)/ek.pub: $(TPMSTATE) bin/tpm2
+	$(SWTPM) socket \
+		--tpm2 \
+		--flags startup-clear \
+		--tpmstate dir="$(TPMDIR)" \
+		--server type=tcp,port=9998 \
+		--ctrl type=tcp,port=9999 \
+		--pid file="$(TPMDIR)/swtpm.pid" &
+	sleep 1
+	
+	TPM2TOOLS_TCTI=swtpm:host=localhost,port=9998 \
+	LD_LIBRARY_PATH=./tpm2-tss/src/tss2-tcti/.libs/ \
+	./bin/tpm2 \
+		createek \
+		-c $(TPMDIR)/ek.ctx \
+		-u $@
+
+	kill `cat "$(TPMDIR)/swtpm.pid"`
+	@-$(RM) "$(TPMDIR)/swtpm.pid"
+
+# Convert an EK PEM formatted public key into the hash of the modulus,
+# which is used by the quote and attestation server to identify the machine
+# none of the tools output this easily, so do lots of text manipulation to make it
+$(TPMDIR)/ek.hash: $(TPMDIR)/ek.pub
+	sha256sum $< \
+	| cut -d\  -f1 \
+	> $@
+
+# Register the virtual TPM in the attestation server logs with the
+# expected value for the kernel that will be booted
+# QEMU runs a few programs along the way before finally jumping to
+# the actual kernel that has been received with pxe
+PCR_CALL_BOOT:=3d6772b4f84ed47595d72a2c4c5ffd15f5bb72c7507fe26f2aaee2c69d5633ba
+PCR_SEPARATOR:=df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119
+PCR_RETURNING:=7044f06303e54fa96c3fcd1a0f11047c03d209074470b1fd60460c9f007e28a6
+$(TPMDIR)/secrets.yaml: $(TPMDIR)/ek.hash $(BOOTX64)
+	echo >  $@.tmp "`cat $<`:"
+	echo >> $@.tmp "  device: 'qemu-server'"
+	echo >> $@.tmp "  secret: 'magicwords'"
+	echo >> $@.tmp "  pcrs:"
+	echo >> $@.tmp -n "    4: "
+	./sbin/predictpcr >> $@.tmp \
+		$(PCR_CALL_BOOT) \
+		$(PCR_SEPARATOR) \
+		$(PCR_RETURNING) \
+		$(PCR_CALL_BOOT) \
+		$(PCR_RETURNING) \
+		$(PCR_CALL_BOOT) \
+		`./bin/sbsign.safeboot --hash-only $(BOOTX64)`
+	mv $@.tmp $@
+
 
 # uefi firmware from https://packages.debian.org/buster-backports/all/ovmf/download
 qemu: build/hda.bin $(SWTPM) $(TPMSTATE)
 	$(SWTPM) socket \
+		--daemon \
+		--terminate \
 		--tpm2 \
-		--tpmstate dir="$(dir $(TPMSTATE))" \
-		--ctrl type=unixio,path="$(dir $(TPMSTATE))sock" &
+		--tpmstate dir="$(TPMDIR)" \
+		--pid file="$(TPMDIR)/swtpm.pid" \
+		--ctrl type=unixio,path="$(TPMSOCK)" \
+
 
 	#cp /usr/share/OVMF/OVMF_VARS.fd build
 
@@ -362,25 +423,40 @@ qemu: build/hda.bin $(SWTPM) $(TPMSTATE)
 		-serial stdio \
 		-netdev user,id=eth0 \
 		-device e1000,netdev=eth0 \
-		-chardev socket,id=chrtpm,path="$(dir $(TPMSTATE))sock" \
+		-chardev socket,id=chrtpm,path="$(TPMSOCK)" \
 		-tpmdev emulator,id=tpm0,chardev=chrtpm \
 		-device tpm-tis,tpmdev=tpm0 \
 		-drive "file=$<,format=raw" \
 		-boot c \
 
 	stty sane
+	-kill `cat $(TPMDIR)/swtpm.pid`
+	@-$(RM) "$(TPMDIR)/swtpm.pid"
 
 server-hda.bin:
 	qemu-img create -f qcow2 $@ 1G
 build/OVMF_VARS.fd:
 	cp /usr/share/OVMF/OVMF_VARS.fd $@
 
-qemu-server: server-hda.bin build/OVMF_VARS.fd $(BOOTX64) $(SWTPM) $(TPMSTATE)
-	$(SWTPM) socket \
-		--tpm2 \
-		--tpmstate dir="$(dir $(TPMSTATE))" \
-		--ctrl type=unixio,path="$(dir $(TPMSTATE))sock" &
+qemu-server: \
+		server-hda.bin \
+		build/OVMF_VARS.fd \
+		$(BOOTX64) \
+		$(SWTPM) \
+		$(TPMSTATE) \
+		$(TPMDIR)/secrets.yaml \
 
+	# start the TPM simulator
+	$(SWTPM) socket \
+		--daemon \
+		--tpm2 \
+		--tpmstate dir="$(TPMDIR)" \
+		--pid file="$(TPMDIR)/swtpm.pid" \
+		--ctrl type=unixio,path="$(TPMSOCK)" \
+
+	# start the attestation server on the new secrets files
+	PATH=./bin:./sbin:$(PATH) DIR=. \
+	./sbin/attest-server $(TPMDIR)/secrets.yaml 8080 $(TPMDIR)/attest.pid &
 
 	-qemu-system-x86_64 \
 		-M q35,accel=kvm \
@@ -397,5 +473,7 @@ qemu-server: server-hda.bin build/OVMF_VARS.fd $(BOOTX64) $(SWTPM) $(TPMSTATE)
 		-boot n \
 
 	stty sane
+	-kill `cat $(TPMDIR)/swtpm.pid $(TPMDIR)/attest.pid`
+	@-$(RM) "$(TPMDIR)/swtpm.pid"
 
 
