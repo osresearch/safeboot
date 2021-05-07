@@ -1,5 +1,7 @@
 #!/bin/bash
-echo "Hello, initrd"
+echo "Hello, initrd" > /dev/console
+#exec </dev/console >/dev/console 2>/dev/console
+
 /bin/busybox --install /bin
 mkdir -p /proc /sys /tmp /dev /etc /root /run /boot
 mount -t proc none /proc
@@ -14,10 +16,10 @@ mount -t securityfs none /sys/kernel/security
 # qemu hack!
 # load modules that are not built into the kernel
 # and bring up the network
-insmod /lib/modules/libahci.ko
-insmod /lib/modules/ahci.ko
-insmod /lib/modules/dm-crypt.ko
-insmod /lib/modules/e1000.ko
+#insmod /lib/modules/libahci.ko
+#insmod /lib/modules/ahci.ko
+#insmod /lib/modules/dm-crypt.ko
+#insmod /lib/modules/e1000.ko
 ifconfig eth0 10.0.2.15
 
 # check the hash of the kernel/initrd/cmdline that was booted
@@ -33,7 +35,10 @@ while true; do
 	|| break
 
 	echo "network is up"
-	/bin/tpm2-attest attest "http://$SERVER:8080/attest/" > /tmp/secret.bin \
+	/bin/tpm2-attest \
+		attest "http://$SERVER:8080/attest/" \
+		> /tmp/secret.bin \
+		2> /tmp/attest.log \
 	|| break;
 
 	echo "attestation successful"
