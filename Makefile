@@ -1,5 +1,8 @@
 VERSION ?= 0.8
 
+GIT_DIRTY := $(shell if git status -s >/dev/null ; then echo dirty ; else echo clean ; fi)
+GIT_HASH  := $(shell git rev-parse HEAD)
+
 BINS += bin/sbsign.safeboot
 BINS += bin/sign-efi-sig-list.safeboot
 BINS += bin/tpm2-totp
@@ -144,6 +147,46 @@ bin/busybox: busybox/busybox
 	cp $(dir $<)/busybox $@
 
 #
+# Linux kernel for the PXE boot image
+#
+LINUX		:= linux-5.7.2
+LINUX_TAR	:= $(LINUX).tar.xz
+LINUX_SIG	:= $(LINUX).tar.sign
+LINUX_URL	:= https://cdn.kernel.org/pub/linux/kernel/v5.x/$(LINUX_TAR)
+
+$(LINUX_TAR):
+	[ -r $@.tmp ] || wget -O $@.tmp $(LINUX_URL)
+	[ -r $(LINUX_SIG) ] || wget -nc $(dir $(LINUX_URL))/$(LINUX_SIG)
+	#unxz -cd < $@.tmp | gpg2 --verify $(LINUX_SIG) -
+	mv $@.tmp $@
+
+$(LINUX): $(LINUX)/.patched
+$(LINUX)/.patched: $(LINUX_TAR)
+	tar xf $(LINUX_TAR)
+	touch $@
+
+build/vmlinuz: build/linux/.config
+	$(MAKE) \
+		KBUILD_HOST=safeboot \
+		KBUILD_BUILD_USER=builder \
+		KBUILD_BUILD_TIMESTAMP="$(GIT_HASH)" \
+		KBUILD_BUILD_VERSION="$(GIT_DIRTY)" \
+		-C $(PWD)/$(dir $@)linux
+	cp $(dir $@)linux/arch/x86/boot/bzImage $@
+
+build/linux/.config: initramfs/linux.config | $(LINUX)
+	mkdir -p $(dir $@)
+	cp $< $@
+	$(MAKE) \
+		-C $(LINUX) \
+		O=$(PWD)/$(dir $@) \
+		olddefconfig
+
+linux-menuconfig: build/linux/.config
+	$(MAKE) -j1 -C $(dir $<) menuconfig savedefconfig
+	cp $(dir $<)defconfig initramfs/linux.config
+
+#
 # Extra package building requirements
 #
 requirements:
@@ -182,6 +225,9 @@ requirements:
 		ncurses-dev \
 		qemu-utils \
 		qemu-system-x86 \
+		gnupg2 \
+		flex \
+		bison \
 
 
 # Remove the temporary files
@@ -447,12 +493,15 @@ qemu-server: \
 		$(TPMDIR)/secrets.yaml \
 
 	# start the TPM simulator
+	-$(RM) "$(TPMSOCK)"
 	$(SWTPM) socket \
-		--daemon \
 		--tpm2 \
 		--tpmstate dir="$(TPMDIR)" \
 		--pid file="$(TPMDIR)/swtpm.pid" \
 		--ctrl type=unixio,path="$(TPMSOCK)" \
+		&
+
+	sleep 1
 
 	# start the attestation server on the new secrets files
 	PATH=./bin:./sbin:$(PATH) DIR=. \
@@ -474,6 +523,6 @@ qemu-server: \
 
 	stty sane
 	-kill `cat $(TPMDIR)/swtpm.pid $(TPMDIR)/attest.pid`
-	@-$(RM) "$(TPMDIR)/swtpm.pid"
+	@-$(RM) "$(TPMDIR)/swtpm.pid" "$(TPMSOCK)" "$(TPMDIR)/attest.pid"
 
 
