@@ -149,7 +149,7 @@ bin/busybox: busybox/busybox
 #
 # Linux kernel for the PXE boot image
 #
-LINUX		:= linux-5.10.35
+LINUX		:= linux-5.4.117
 LINUX_TAR	:= $(LINUX).tar.xz
 LINUX_SIG	:= $(LINUX).tar.sign
 LINUX_URL	:= https://cdn.kernel.org/pub/linux/kernel/v5.x/$(LINUX_TAR)
