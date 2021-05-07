@@ -4,6 +4,7 @@ Simple server example for receiving attestation quotes,
 validating them, and sending back sealed data.
 """
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import os
 import logging
 import tempfile
 import sys
@@ -25,12 +26,12 @@ def pcr_validate(golden, quote):
 	valid = True
 
 	for pcr in golden:
-		good_pcr = golden[pcr]
+		good_pcr = int(golden[pcr], 16)
 		if not pcr in quote:
 			print("PCR%d missing" % (pcr), file=sys.stderr)
 			valid = False
 		elif good_pcr != quote[pcr]:
-			print("PCR%d mismatch %x" % (pcr, quote[pcr]), file=sys.stderr)
+			print("PCR%d mismatch %x != expected %x" % (pcr, quote[pcr], good_pcr), file=sys.stderr)
 			valid = False
 
 	return valid
@@ -110,13 +111,17 @@ def run(port=8080):
 if __name__ == '__main__':
 	from sys import argv
 
-	if len(argv) <= 1 or len(argv) > 3:
-		print("Usage: attest-server secrets.yaml [port]", file=sys.stderr)
+	if len(argv) <= 1 or len(argv) > 4:
+		print("Usage: attest-server secrets.yaml [port] [pid-file]", file=sys.stderr)
 		exit(1)
 
 	with open(argv[1]) as secret_file:
 		secrets = yaml.safe_load(secret_file)
 	print(secrets)
+
+	if len(argv) == 4:
+		with open(argv[3], "w") as pidfile:
+			print(str(os.getpid()), file=pidfile)
 
 	if len(argv) == 3:
 		run(secrets=secrets, port=int(argv[2]))
