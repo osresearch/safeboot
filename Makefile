@@ -274,9 +274,22 @@ build/initrd.cpio.xz: build/initrd.cpio
 	fi
 	sha256sum $@
 
+build/signing.key:
+	openssl req \
+		-new \
+		-x509 \
+		-newkey "rsa:2048" \
+		-nodes \
+		-subj "/CN=safeboot.dev/" \
+		-outform "PEM" \
+		-keyout "$@" \
+		-out "$(basename $@).crt" \
+		-days "3650" \
+		-sha256 \
+
 
 BOOTX64=build/boot/EFI/BOOT/BOOTX64.EFI
-$(BOOTX64): build/initrd.cpio.xz build/vmlinuz initramfs/cmdline.txt
+$(BOOTX64): build/initrd.cpio.xz build/vmlinuz initramfs/cmdline.txt bin/sbsign.safeboot build/signing.key
 	mkdir -p "$(dir $@)"
 	DIR=. \
 	./sbin/safeboot unify-kernel \
@@ -285,11 +298,11 @@ $(BOOTX64): build/initrd.cpio.xz build/vmlinuz initramfs/cmdline.txt
 		initrd=build/initrd.cpio.xz \
 		cmdline=initramfs/cmdline.txt \
 
-	#DIR=. PATH=./bin:$(PATH) \
-	#./sbin/safeboot sign-kernel \
-	#	"/tmp/kernel.tmp" \
-	#	"$@"
-	mv "/tmp/kernel.tmp" "$@"
+	./bin/sbsign.safeboot \
+		--output "$@" \
+		--key build/signing.key \
+		--cert build/signing.crt \
+		"/tmp/kernel.tmp"
 
 	sha256sum "$@"
 
