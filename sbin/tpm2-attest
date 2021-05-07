@@ -131,22 +131,16 @@ quote()
 		die "Unexpected arguments.$quote_usage"
 	fi
 
-	QUOTE_TIME="$(date '+%s')"
-	QUOTE_NONCE="${1:-$(printf '%08x' "$QUOTE_TIME")}"
 	QUOTE_PCRS="${2:-$PCRS}"
 	QUOTE_FILES=()
 
 	tpm2_flushall ""
 
-	echo -n "$QUOTE_NONCE" > "$TMP/nonce" \
-	|| die "$TMP/nonce: unable to create"
-	QUOTE_FILES+=("nonce")
-
 	# the cert is fixed at manufacturing time
 	# and of course there is a random number that identifies it
 	# because why would you want useful names with tpm2-tools?
 	warn "tpm2: reading endorsement certificate"
-	if tpm2 nvread -o "$TMP/ek.crt" 0x01c00002 ; then
+	if false ; then # tpm2 nvread -o "$TMP/ek.crt" 0x01c00002 ; then
 		sha256sum "$TMP/ek.crt" >&2
 		openssl x509 >&2 \
 			-inform "DER"  \
@@ -222,6 +216,12 @@ quote()
 	QUOTE_FILES+=("ak.pub")
 
 	tpm2 flushcontext --transient-object
+
+	QUOTE_TIME="$(date '+%s')"
+	QUOTE_NONCE="${1:-$(printf '%08x' "$QUOTE_TIME")}"
+	echo -n "$QUOTE_NONCE" > "$TMP/nonce" \
+	|| die "$TMP/nonce: unable to create"
+	QUOTE_FILES+=("nonce")
 
 	# get a quote using this attestation key
 	tpm2_flushall ""
@@ -360,9 +360,6 @@ verify()
 
 	unpack-quote "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: unable to unpack"
-
-	#eventlog-verify "$QUOTE_TAR" "$GOOD_PCRS" \
-	#|| die "$QUOTE_TAR: unable to verify TPM event log"
 
 	if [ -r "$TMP/ek.crt" ]; then
 		ek-verify "$QUOTE_TAR" "$CA_ROOT" \
