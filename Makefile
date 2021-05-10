@@ -147,9 +147,25 @@ bin/busybox: busybox/busybox
 	cp $(dir $<)/busybox $@
 
 #
+# kexec for starting the new kernel
+#
+SUBMODULES += kexec-tools
+kexec-tools/bootstrap:
+	git submodule update --init --recursive --recommend-shallow $(dir $@)
+kexec-tools/Makefile: kexec-tools/bootstrap
+	cd $(dir $@) ; ./bootstrap && ./configure
+kexec-tools/build/sbin/kexec: kexec-tools/Makefile
+	$(MAKE) -C $(dir $<)
+bin/kexec: kexec-tools/build/sbin/kexec
+	mkdir -p $(dir $@)
+	cp $< $@
+
+#
 # Linux kernel for the PXE boot image
 #
 LINUX		:= linux-5.4.117
+#LINUX		:= linux-5.10.35
+#LINUX		:= linux-5.7.2
 LINUX_TAR	:= $(LINUX).tar.xz
 LINUX_SIG	:= $(LINUX).tar.sign
 LINUX_URL	:= https://cdn.kernel.org/pub/linux/kernel/v5.x/$(LINUX_TAR)
@@ -165,7 +181,7 @@ $(LINUX)/.patched: $(LINUX_TAR)
 	tar xf $(LINUX_TAR)
 	touch $@
 
-build/vmlinuz: build/$(LINUX)/.config build/initrd.cpio
+build/vmlinuz: build/$(LINUX)/.config
 	$(MAKE) \
 		KBUILD_HOST=safeboot \
 		KBUILD_BUILD_USER=builder \
@@ -292,6 +308,8 @@ build/initrd/gitstatus: initramfs/files.txt bin/busybox bin/tpm2 initramfs/init
 	./sbin/populate "$(dir $@)" "$<"
 	git status -s > "$@"
 
+-include build/initrd.deps
+
 build/initrd.cpio: build/initrd/gitstatus
 	( cd $(dir $<) ; \
 		find . -print0 \
@@ -312,6 +330,19 @@ build/initrd.cpio.xz: build/initrd.cpio
 		--lzma2=dict=1MiB \
 		--threads 0 \
 		< "$<" \
+		> "$@.tmp"
+	#| dd bs=512 conv=sync status=none > "$@.tmp"
+	@if ! cmp --quiet "$@.tmp" "$@" ; then \
+		mv "$@.tmp" "$@" ; \
+	else \
+		echo "$@: unchanged" ; \
+		rm "$@.tmp" ; \
+	fi
+	sha256sum $@
+
+build/initrd.cpio.bz: build/initrd.cpio
+	bzip2 -z \
+		< "$<" \
 	| dd bs=512 conv=sync status=none > "$@.tmp"
 	@if ! cmp --quiet "$@.tmp" "$@" ; then \
 		mv "$@.tmp" "$@" ; \
@@ -320,6 +351,7 @@ build/initrd.cpio.xz: build/initrd.cpio
 		rm "$@.tmp" ; \
 	fi
 	sha256sum $@
+
 
 build/signing.key:
 	openssl req \
@@ -336,21 +368,22 @@ build/signing.key:
 
 
 BOOTX64=build/boot/EFI/BOOT/BOOTX64.EFI
-$(BOOTX64): build/vmlinuz initramfs/cmdline.txt bin/sbsign.safeboot build/signing.key
+$(BOOTX64): build/vmlinuz initramfs/cmdline.txt bin/sbsign.safeboot build/signing.key build/initrd.cpio.xz
 	mkdir -p "$(dir $@)"
-#	DIR=. \
-#	./sbin/safeboot unify-kernel \
-#		"/tmp/kernel.tmp" \
-#		linux=build/vmlinuz \
-#		initrd=build/initrd.cpio.xz \
-#		cmdline=initramfs/cmdline.txt \
+	DIR=. \
+	bash -x ./sbin/safeboot unify-kernel \
+		$@.tmp \
+		linux=build/vmlinuz \
+		initrd=build/initrd.cpio.xz \
+		cmdline=initramfs/cmdline.txt \
 
 	./bin/sbsign.safeboot \
 		--output "$@" \
 		--key build/signing.key \
 		--cert build/signing.crt \
-		$<
+		"$@.tmp" # build/vmlinuz
 
+	@-$(RM) $@.tmp
 	sha256sum "$@"
 
 build/boot/PK.auth: signing.crt
@@ -385,19 +418,20 @@ build/luks.bin: build/key.bin
 TPMDIR=build/vtpm
 TPMSTATE=$(TPMDIR)/tpm2-00.permall
 TPMSOCK=$(TPMDIR)/sock
-$(TPMSTATE): | $(SWTPM)
-	mkdir -p build/vtpm
+
+# Setup a new TPM and
+# Extract the EK from a tpm state; wish swtpm_setup had a way
+# to do this instead of requiring this many hoops
+$(TPMDIR)/ek.pub: | $(SWTPM) bin/tpm2
+	mkdir -p "$(TPMDIR)"
 	PATH=$(dir $(SWTPM)):$(PATH) \
 	swtpm/src/swtpm_setup/swtpm_setup \
 		--tpm2 \
 		--createek \
 		--display \
-		--tpmstate "$(dir $@)" \
-		--config /dev/null \
+		--tpmstate "$(TPMDIR)" \
+		--config /dev/null
 
-# Extract the EK from a tpm state; wish swtpm_setup had a way
-# to do this instead of requiring this many hoops
-$(TPMDIR)/ek.pub: $(TPMSTATE) | bin/tpm2
 	$(SWTPM) socket \
 		--tpm2 \
 		--flags startup-clear \
@@ -481,7 +515,7 @@ qemu: build/hda.bin $(SWTPM) $(TPMSTATE)
 	@-$(RM) "$(TPMDIR)/swtpm.pid"
 
 server-hda.bin:
-	qemu-img create -f qcow2 $@ 1G
+	qemu-img create -f qcow2 $@ 4G
 build/OVMF_VARS.fd:
 	cp /usr/share/OVMF/OVMF_VARS.fd $@
 
@@ -489,9 +523,9 @@ qemu-server: \
 		server-hda.bin \
 		build/OVMF_VARS.fd \
 		$(BOOTX64) \
-		$(SWTPM) \
-		$(TPMSTATE) \
+		$(TPMDIR)/ek.pub \
 		$(TPMDIR)/secrets.yaml \
+		| $(SWTPM)
 
 	# start the TPM simulator
 	-$(RM) "$(TPMSOCK)"
@@ -516,10 +550,10 @@ qemu-server: \
 		-serial stdio \
 		-netdev user,id=eth0,tftp=.,bootfile=$(BOOTX64) \
 		-device e1000,netdev=eth0 \
-		-chardev socket,id=chrtpm,path="$(dir $(TPMSTATE))sock" \
+		-chardev socket,id=chrtpm,path="$(TPMSOCK)" \
 		-tpmdev emulator,id=tpm0,chardev=chrtpm \
 		-device tpm-tis,tpmdev=tpm0 \
-		-drive "file=$<,format=raw" \
+		-drive "file=$<,format=qcow2" \
 		-boot n \
 
 	stty sane
