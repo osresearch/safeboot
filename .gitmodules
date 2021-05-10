@@ -23,3 +23,6 @@
 [submodule "busybox"]
 	path = busybox
 	url = git://busybox.net/busybox.git
+[submodule "kexec-tools"]
+	path = kexec-tools
+	url = https://github.com/horms/kexec-tools
