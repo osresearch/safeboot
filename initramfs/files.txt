@@ -57,6 +57,8 @@ symlink busybox bin/sh
 
 # safeboot tools
 ./initramfs/init .
+./initramfs/install-img
+./initramfs/boot-img
 ./sbin/safeboot
 ./sbin/tpm2-attest
 ./bin/tpm2
@@ -73,14 +75,14 @@ symlink busybox bin/sh
 /sbin/cryptsetup
 /sbin/dmsetup
 /sbin/lvm
-#/sbin/kexec
+bin/kexec
 
 # 
 #/usr/sbin/insmod
 #/lib/modules/5.4.0-48-generic/kernel/drivers/ata/ahci.ko lib/modules
 #/lib/modules/5.4.0-48-generic/kernel/drivers/ata/libahci.ko lib/modules
 #/lib/modules/5.4.0-48-generic/kernel/drivers/md/dm-crypt.ko lib/modules
-/lib/modules/$UNAME/kernel/drivers/net/ethernet/intel/e1000/e1000.ko lib/modules
+#/lib/modules/$UNAME/kernel/drivers/net/ethernet/intel/e1000/e1000.ko lib/modules
 #/lib/modules/5.4.0-48-generic/kernel/fs/nls/nls_iso8859-1.ko lib/modules
 
 

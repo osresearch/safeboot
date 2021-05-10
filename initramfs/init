@@ -1,7 +1,4 @@
 #!/bin/bash
-echo "Hello, initrd" > /dev/console
-#exec </dev/console >/dev/console 2>/dev/console
-
 /bin/busybox --install /bin
 mkdir -p /proc /sys /tmp /dev /etc /root /run /boot
 mount -t proc none /proc
@@ -10,8 +7,12 @@ mount -t sysfs none /sys
 mount -t efivarfs none /sys/firmware/efi/efivars
 mount -t securityfs none /sys/kernel/security
 
+echo "Hello, initrd" > /dev/console
+echo "Hello, initrd (ttyprintk)" > /dev/ttyprintk
+exec < /dev/console >/dev/console 2>/dev/console
+
 #echo "Hello, ttyprintk" > /dev/ttyprintk
-#echo "hello console" > /dev/console
+echo "hello console" > /dev/console
 
 # qemu hack!
 # load modules that are not built into the kernel
@@ -20,14 +21,18 @@ mount -t securityfs none /sys/kernel/security
 #insmod /lib/modules/ahci.ko
 #insmod /lib/modules/dm-crypt.ko
 #insmod /lib/modules/e1000.ko
+
 ifconfig eth0 10.0.2.15
 
 # check the hash of the kernel/initrd/cmdline that was booted
 tpm2 pcrread sha256:4
 cat /sys/kernel/security/tpm0/binary_bios_measurements > /tmp/eventlog.bin
 
+# try to unlock the TPM, since swtpm tends to not shutdown cleanly
+tpm2 dictionarylockout --clear-lockout
+
 # remotely attest and get a secret disk key
-SERVER="10.0.2.2"
+export SERVER="10.0.2.2"
 while true; do
 	#ping -w 5 -c 1 "$SERVER" \
 	#
@@ -35,27 +40,60 @@ while true; do
 	|| break
 
 	echo "network is up"
-	/bin/tpm2-attest \
+	tpm2-attest \
 		attest "http://$SERVER:8080/attest/" \
 		> /tmp/secret.bin \
-		2> /tmp/attest.log \
 	|| break;
 
-	echo "attestation successful"
+	cat <<EOF
+  ----------------------------
+    ┏━┓╺┳╸╺┳╸┏━╸┏━┓╺┳╸┏━╸╺┳┓
+    ┣━┫ ┃  ┃ ┣╸ ┗━┓ ┃ ┣╸  ┃┃
+    ╹ ╹ ╹  ╹ ┗━╸┗━┛ ╹ ┗━╸╺┻┛
+  ----------------------------
+EOF
 
-	cryptsetup luksOpen \
+	# ensure that we don't accidentally touch the root device
+	blockdev --setro /dev/sda
+
+	# attempt to decrypt the disk; if this fails, reinstall an image
+	if ! cryptsetup luksOpen \
 		--key-file /tmp/secret.bin \
-		/dev/sda2 cryptroot \
-	|| break
+		/dev/sda \
+		cryptroot \
+	; then
+		echo >&2 "-------------------"
+		echo >&2 "Unable to unlock disk"
+		echo >&2 "-------------------"
 
-	echo "cryptsetup successful"
-	mount /dev/mapper/cryptroot /root \
-	|| break
+		read -t 10 -p "Press any key to stop reinstall..." -n 1 response
+		if [ -n "$response" ]; then
+			break
+		fi
 
-	echo "mount successful"
+		echo >&2 "No init in root filesystem, reinstalling"
+		install-img /tmp/secret.bin
+	else
+		echo "cryptsetup successful"
+		mount -o ro /dev/mapper/cryptroot /root \
+		|| break
 
-	echo "booting into root filesystem...."
-	exec chroot /root /sbin/init
+		echo "mount successful"
+	fi
+
+	if [ ! -e "/root/boot/vmlinuz" ]; then
+		echo >&2 "No kernel?"
+		break
+	fi
+
+	read -t 3 -p "Press any key to stop autoboot..." -n 1 response
+	if [ -n "$response" ]; then
+		break
+	fi
+
+	boot-img /tmp/secret.bin
+	echo >&2 "kexec failed!"
+	break
 done
 
 
