@@ -27,6 +27,6 @@ cp "$KEY" /tmp/initrd/rootfs.key
 kexec \
 	--load /root/boot/vmlinuz \
 	--initrd /tmp/initrd.img \
-	--command-line "console=ttyS0 root=LABEL=cloudimg-rootfs ro cryptopts=target=rootfs,source=/dev/sda,key=/rootfs.key,luks,discard"
+	--command-line "console=ttyS0 root=LABEL=cloudimg-rootfs ro cryptopts=target=rootfs,source=/dev/sda,key=/rootfs.key,luks,discard ds=nocloud-net;s=http://10.0.2.2:8000/cloud-init/"
 
 kexec -e
