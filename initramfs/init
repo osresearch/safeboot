@@ -54,7 +54,8 @@ while true; do
 EOF
 
 	# ensure that we don't accidentally touch the root device
-	blockdev --setro /dev/sda
+	# this breaks fsck, which is a problem
+	#blockdev --setro /dev/sda
 
 	# attempt to decrypt the disk; if this fails, reinstall an image
 	if ! cryptsetup luksOpen \
