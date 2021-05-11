@@ -53,48 +53,12 @@ while true; do
   ----------------------------
 EOF
 
-	# ensure that we don't accidentally touch the root device
-	# this breaks fsck, which is a problem
-	#blockdev --setro /dev/sda
-
-	# attempt to decrypt the disk; if this fails, reinstall an image
-	if ! cryptsetup luksOpen \
-		--key-file /tmp/secret.bin \
-		/dev/sda \
-		cryptroot \
-	; then
-		echo >&2 "-------------------"
-		echo >&2 "Unable to unlock disk"
-		echo >&2 "-------------------"
-
-		read -t 10 -p "Press any key to stop reinstall..." -n 1 response
-		if [ -n "$response" ]; then
-			break
-		fi
-
-		echo >&2 "No init in root filesystem, reinstalling"
-		install-img /tmp/secret.bin
-	else
-		echo "cryptsetup successful"
-		mount -o ro /dev/mapper/cryptroot /root \
-		|| break
-
-		echo "mount successful"
+	# Invoke the boot script with the new secret
+	if [ -x "/bin/bootscript" ]; then
+		/bin/bootscript /tmp/secret.bin
 	fi
 
-	if [ ! -e "/root/boot/vmlinuz" ]; then
-		echo >&2 "No kernel?"
-		break
-	fi
-
-	read -t 3 -p "Press any key to stop autoboot..." -n 1 response
-	if [ -n "$response" ]; then
-		break
-	fi
-
-	boot-img /tmp/secret.bin
-	echo >&2 "kexec failed!"
-	break
+	break;
 done
 
 
