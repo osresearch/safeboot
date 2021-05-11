@@ -2,4 +2,4 @@
 
 source /my_common.sh
 
-find $TARGETDIR -exec chown -h $CHOWNER {} \;
+find $TARGETDIR -mindepth 1 -exec chown -h $CHOWNER {} \;
