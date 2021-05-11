@@ -201,12 +201,13 @@ define mkout_rule
 	$(foreach i,$(mr3),
 		$(eval $(call trace,-> $i=$($i)))
 		$(file >>$(MKOUT),	$($i)))
-	$(if $(shell echo "$(mr1)" | egrep "^\\/" > /dev/null 2>&1 && echo yes),,\
+	$(if $(filter /%,$(mr1)),,\
 		$(eval $(call trace,-> making it .PHONY too))
-		$(if $(shell egrep "^\\.PHONY: $(mr1)" $(MKOUT) > /dev/null 2>&1 && echo yes),\
+		$(if $(MYPHONY_$(mr1)),\
 			$(eval $(call trace,-> but we've already marked it .PHONY, skip))\
 		,\
-			$(file >>$(MKOUT),.PHONY: $(mr1))))
+			$(file >>$(MKOUT),.PHONY: $(mr1))\
+			$(eval MYPHONY_$(mr1) := 1)))
 	$(eval $(call trace,end mkout_rule($1,$2,$3)))
 endef
 
