@@ -41,7 +41,7 @@
 
 $(eval TOPDIR ?= $(shell pwd))
 $(eval DEFAULT_CRUD ?= $(TOPDIR)/workflow/crud)
-$(eval DSPACE := $(shell basename `pwd`))
+$(eval DSPACE ?= $(shell basename `pwd`))
 #$(eval TRACE := 1)
 $(eval MKOUT ?= $(DEFAULT_CRUD)/Makefile.out)
 #$(eval V := 1)
