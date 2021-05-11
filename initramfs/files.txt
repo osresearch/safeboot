@@ -57,8 +57,7 @@ symlink busybox bin/sh
 
 # safeboot tools
 ./initramfs/init .
-./initramfs/install-img
-./initramfs/boot-img
+./initramfs/bootscript
 ./sbin/safeboot
 ./sbin/tpm2-attest
 ./bin/tpm2
