@@ -10,10 +10,14 @@ import tempfile
 import sys
 import subprocess
 import yaml
+import sqlite3
+import hashlib
 
 # hard code the hashing algorithm used
 alg = 'sha256'
-secrets = {}
+
+# sqlite database of hosts and pcrs, indexed by ekhash
+db = None
 
 # Check that all of the required PCRs are present and match the golden values.
 # It is ok if the quote or event log have more, but none must be missing.
@@ -74,15 +78,25 @@ class AttestServer(BaseHTTPRequestHandler):
 		# The output contains YAML formatted hash of the EK and the PCRs
 		quote = yaml.safe_load(sub.stdout)
 		ekhash = quote['ekhash']
-		if ekhash not in secrets:
+		cur = db.cursor()
+		cur.execute("SELECT secret,device FROM hosts WHERE ekhash = ?", (ekhash,))
+		row = cur.fetchone()
+		
+		if row is None:
 			return self.fail("UNKNOWN TPM EK " + ekhash)
-		secret = secrets[ekhash]
+		secret = row[0]
+		device = row[1]
 
-		logging.info("%s: EK %s" % (secret['device'], ekhash))
+		logging.info("%s: EK %s" % (device, ekhash))
 
-		if not pcr_validate(secret['pcrs'], quote['pcrs']):
+		cur.execute("SELECT pcr,value FROM pcrs WHERE ekhash = ?", (ekhash,))
+		valid_pcrs = {}
+		for row in cur.fetchall():
+			valid_pcrs[row[0]] = row[1]
+
+		if not pcr_validate(valid_pcrs, quote['pcrs']):
 			return self.fail("QUOTE-PCR FAILED")
-		if not pcr_validate(secret['pcrs'], quote['eventlog-pcrs']):
+		if not pcr_validate(valid_pcrs, quote['eventlog-pcrs']):
 			return self.fail("EVENTLOG-PCR FAILED")
 
 		# the quote, eventlog and PCRS are valid, so seal some data and return it as binary
@@ -91,7 +105,7 @@ class AttestServer(BaseHTTPRequestHandler):
 		self.end_headers()
 
 		subprocess.run(["./sbin/tpm2-attest", "seal", quote_file, ],
-			input=secret['secret'].encode(),
+			input=secret.encode(),
 			stdout=self.wfile,
 			stderr=sys.stderr,
 		)
@@ -111,19 +125,74 @@ def run(port=8080):
 if __name__ == '__main__':
 	from sys import argv
 
-	if len(argv) <= 1 or len(argv) > 4:
-		print("Usage: attest-server secrets.yaml [port] [pid-file]", file=sys.stderr)
+	if len(argv) <= 2:
+		print("Usage: attest-server database.db cmd...", file=sys.stderr)
 		exit(1)
 
-	with open(argv[1]) as secret_file:
-		secrets = yaml.safe_load(secret_file)
-	print(secrets)
+	db = sqlite3.connect(argv[1])
+	db.execute("""
+		CREATE TABLE IF NOT EXISTS hosts (
+			ekhash CHAR(64) PRIMARY KEY,
+			device TEXT,
+			secret BLOB
+		)
+	""")
+	db.execute("""
+		CREATE TABLE IF NOT EXISTS pcrs (
+			ekhash CHAR(64) PRIMARY KEY,
+			pcr INTEGER,
+			value CHAR(64),
+			FOREIGN KEY (ekhash) REFERENCES hosts (ekhash)
+		)
+	""")
 
-	if len(argv) == 4:
-		with open(argv[3], "w") as pidfile:
-			print(str(os.getpid()), file=pidfile)
+	if argv[2] == "register":
+		# register ek.pub name < secret.bin
+		with open(argv[3],"rb") as ekpub:
+			# compute the "name" of the ekpub
+			ekhash = hashlib.sha256(ekpub.read()).hexdigest()
+		host = argv[4]
+		secret = sys.stdin.read()
+		print(ekhash + ": " + host)
+		cur = db.cursor()
+		cur.execute("INSERT OR REPLACE INTO hosts(ekhash, device, secret) VALUES(?,?,?)",
+			(ekhash, host, secret))
+		db.commit()
+		cur.execute("SELECT * FROM hosts WHERE ekhash = ?", (ekhash,))
+		print(cur.fetchall())
+		db.close()
+		exit(0)
 
-	if len(argv) == 3:
-		run(secrets=secrets, port=int(argv[2]))
-	else:
-		run()
+	if argv[2] == "predictpcr":
+		# predictpcr ek.pub index digest ....
+		# this is predicts the eventual PCR value based on the hashes
+		# that are extended into the PCR. it does not take the final PCR value
+		with open(argv[3],"rb") as ekpub:
+			# compute the "name" of the ekpub
+			ekhash = hashlib.sha256(ekpub.read()).hexdigest()
+		pcrindex = argv[4]
+
+		# extend operation is NewPCR = SHA256(PCR || SHA256(newdata))
+		# this takes in the hash of the values, so the second SHA256 is not used
+		pcr = bytearray(32)
+		for newhash in argv[5:]:
+			pcr = hashlib.sha256(pcr + bytes.fromhex(newhash)).digest()
+		pcr = pcr.hex()
+		cur = db.cursor()
+		cur.execute("INSERT OR REPLACE INTO pcrs(ekhash, pcr, value) VALUES(?,?,?)",
+			(ekhash, pcrindex, pcr))
+		db.commit()
+		db.close()
+
+		print(ekhash + ": " + pcrindex + "=" + pcr)
+		exit(0)
+
+	if argv[2] == "run":
+		if len(argv) == 4:
+			run(port=int(argv[3]))
+		else:
+			run()
+		exit(0)
+
+	print("Unknown command: '" + argv[2] + "'", file=sys.stderr)
+	exit(1)
