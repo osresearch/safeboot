@@ -9,13 +9,14 @@ For more information see: <https://safeboot.dev/attestation/>
 ## quote
 Usage:
 ```
-tpm2-attest quote [nonce [pcrs,...]] > quote.tgz
+tpm2-attest quote [nonce] > quote.tgz
 scp quote.tgz ...
 ```
 After contacting the remote attestation server to receive the
 nonce, the machine will generate the endorsement key,
 endorsement cert, a one-time attestation key, and a signed quote
-for the PCRs using that nonce.
+for the all PCRs using that nonce (or the time of day, if no nonce
+is supplied).
 
 The output `quote.tgz` should be sent to the remote side for validation.
 There is nothing sensitive in the file, so it can be sent in clear text
