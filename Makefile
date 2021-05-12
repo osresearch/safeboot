@@ -466,13 +466,20 @@ $(TPMDIR)/ek.hash: $(TPMDIR)/ek.pub
 PCR_CALL_BOOT:=3d6772b4f84ed47595d72a2c4c5ffd15f5bb72c7507fe26f2aaee2c69d5633ba
 PCR_SEPARATOR:=df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119
 PCR_RETURNING:=7044f06303e54fa96c3fcd1a0f11047c03d209074470b1fd60460c9f007e28a6
-$(TPMDIR)/secrets.yaml: $(TPMDIR)/ek.hash $(BOOTX64)
-	echo >  $@.tmp "`cat $<`:"
-	echo >> $@.tmp "  device: 'qemu-server'"
-	echo >> $@.tmp "  secret: 'magicwords'"
-	echo >> $@.tmp "  pcrs:"
-	echo >> $@.tmp -n "    4: "
-	./sbin/predictpcr >> $@.tmp \
+$(TPMDIR)/.ekpub.registered: $(TPMDIR)/ek.pub
+	echo -n 'magicwords' | ./sbin/attest-server \
+		"./build/secrets.db" \
+		register \
+		$(TPMDIR)/ek.pub \
+		'qemu-server'
+	@touch $@
+
+$(TPMDIR)/.bootx64.registered: $(BOOTX64) $(TPMDIR)/.ekpub.registered | ./bin/sbsign.safeboot
+	./sbin/attest-server \
+		"./build/secrets.db" \
+		predictpcr \
+		$(TPMDIR)/ek.pub \
+		4 \
 		$(PCR_CALL_BOOT) \
 		$(PCR_SEPARATOR) \
 		$(PCR_RETURNING) \
@@ -480,7 +487,7 @@ $(TPMDIR)/secrets.yaml: $(TPMDIR)/ek.hash $(BOOTX64)
 		$(PCR_RETURNING) \
 		$(PCR_CALL_BOOT) \
 		`./bin/sbsign.safeboot --hash-only $(BOOTX64)`
-	mv $@.tmp $@
+	@touch $@
 
 
 # uefi firmware from https://packages.debian.org/buster-backports/all/ovmf/download
@@ -519,12 +526,20 @@ server-hda.bin:
 build/OVMF_VARS.fd:
 	cp /usr/share/OVMF/OVMF_VARS.fd $@
 
+attest-server:
+	# start the attestation server on the new secrets files
+	PATH=./bin:./sbin:$(PATH) DIR=. \
+	./sbin/attest-server build/secrets.db run 8080
+
+register: $(TPMDIR)/.ekpub.registered $(TPMDIR)/.bootx64.registered
+
 qemu-server: \
 		server-hda.bin \
 		build/OVMF_VARS.fd \
 		$(BOOTX64) \
 		$(TPMDIR)/ek.pub \
-		$(TPMDIR)/secrets.yaml \
+		$(TPMDIR)/.ekpub.registered \
+		$(TPMDIR)/.bootx64.registered \
 		| $(SWTPM)
 
 	# start the TPM simulator
@@ -537,10 +552,6 @@ qemu-server: \
 		&
 
 	sleep 1
-
-	# start the attestation server on the new secrets files
-	PATH=./bin:./sbin:$(PATH) DIR=. \
-	./sbin/attest-server $(TPMDIR)/secrets.yaml 8080 $(TPMDIR)/attest.pid &
 
 	-qemu-system-x86_64 \
 		-M q35,accel=kvm \
@@ -557,7 +568,7 @@ qemu-server: \
 		-boot n \
 
 	stty sane
-	-kill `cat $(TPMDIR)/swtpm.pid $(TPMDIR)/attest.pid`
-	@-$(RM) "$(TPMDIR)/swtpm.pid" "$(TPMSOCK)" "$(TPMDIR)/attest.pid"
+	-kill `cat $(TPMDIR)/swtpm.pid`
+	@-$(RM) "$(TPMDIR)/swtpm.pid" "$(TPMSOCK)"
 
 
