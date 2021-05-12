@@ -1,4 +1,9 @@
 #!/bin/bash
+# demo server init:
+# this is PXE booted, performs a remote attestation, and then
+# hands off control to the the real OS stored on a fully encrypted disk.
+# if there are any problems, drops to a serial console shell
+
 /bin/busybox --install /bin
 mkdir -p /proc /sys /tmp /dev /etc /root /run /boot
 mount -t proc none /proc
@@ -11,10 +16,6 @@ echo "Hello, initrd" > /dev/console
 echo "Hello, initrd (ttyprintk)" > /dev/ttyprintk
 exec < /dev/console >/dev/console 2>/dev/console
 
-#echo "Hello, ttyprintk" > /dev/ttyprintk
-echo "hello console" > /dev/console
-
-# qemu hack!
 # load modules that are not built into the kernel
 # and bring up the network
 #insmod /lib/modules/libahci.ko
@@ -22,10 +23,13 @@ echo "hello console" > /dev/console
 #insmod /lib/modules/dm-crypt.ko
 #insmod /lib/modules/e1000.ko
 
+# should do dhcp?
 ifconfig eth0 10.0.2.15
 
 # check the hash of the kernel/initrd/cmdline that was booted
 tpm2 pcrread sha256:4
+
+# cache the eventlog for easy analysis
 cat /sys/kernel/security/tpm0/binary_bios_measurements > /tmp/eventlog.bin
 
 # try to unlock the TPM, since swtpm tends to not shutdown cleanly
