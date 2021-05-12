@@ -117,9 +117,13 @@ nonce, the machine will generate the endorsement key,
 endorsement cert, a one-time attestation key, and a signed quote
 for the PCRs using that nonce.
 
-This will result in two output files, `quote.tgz` to be sent to
-the remote side, and `ak.ctx` that is to remain on this machine
-for decrypting the return result from the remote attestation server.
+The output `quote.tgz` should be sent to the remote side for validation.
+There is nothing sensitive in the file, so it can be sent in clear text
+to the server.
+
+TODO: the quote should be integrity protected, although while it does
+not weaken the protocol, it does allow an adversary to create spurious
+attestation failures.
 '
 usage+="$quote_usage"
 commands+="|quote"
@@ -201,7 +205,7 @@ quote()
 	tpm2 load >&2 \
 		--parent-context "$TMP/ek.ctx" \
 		--auth "session:$TMP/session.ctx" \
-		--key-context "ak.ctx" \
+		--key-context "$TMP/ak.ctx" \
 		--public "$TMP/ak-pub.key" \
 		--private "$TMP/ak-priv.key" \
 	|| die "tpm2_load: unable to load attestation key"
@@ -209,11 +213,11 @@ quote()
 	# read the public component so that the name can be
 	# computed with sha256
 	tpm2 readpublic >&2 \
-		--object-context "ak.ctx" \
+		--object-context "$TMP/ak.ctx" \
 		--output "$TMP/ak.pub" \
 		--format "tpmt" \
 	|| die "tpm2_readpublic: unable to display info"
-	QUOTE_FILES+=("ak.pub")
+	QUOTE_FILES+=("ak.pub" "ak.ctx")
 
 	tpm2 flushcontext --transient-object
 
@@ -227,7 +231,7 @@ quote()
 	tpm2_flushall ""
 	warn "tpm2: generating quote"
 	tpm2 quote >&2 \
-		--key-context "ak.ctx" \
+		--key-context "$TMP/ak.ctx" \
 		--pcr-list "sha256:$QUOTE_PCRS" \
 		--qualification "$QUOTE_NONCE" \
 		--message "$TMP/quote.out" \
@@ -277,7 +281,7 @@ attest_usage='
 ## attest
 Usage:
 ```
-tpm2-attest attest http://server/ [nonce [pcrs,...]] > secret.txt
+tpm2-attest attest http://server/attest [nonce [pcrs,...]] > secret.txt
 ```
 This will generate a quote for the nonce (or the current time if
 none is specified) and for the PCRs listed in the `$QUOTE_PCRS`
@@ -303,20 +307,19 @@ attest()
 	quote "$@" > "$TMP/quote-out.tgz" \
 	|| die "Unable to create quote"
 
+	warn "$SERVER: sending attestation"
+
 	curl \
 		-X POST \
 		--fail \
 		--silent \
 		--data-binary @"$TMP/quote-out.tgz" \
-		--output "$TMP/secret-reply.bin" \
+		--output "$TMP/cipher.tgz" \
 		"$SERVER" \
 	|| die "attestation failed"
 
-	unseal "ak.ctx" < "$TMP/secret-reply.bin" \
+	unseal < "$TMP/cipher.tgz" \
 	|| die "unsealing failed"
-
-	# cleanup the quote attestation key context
-	rm "ak.ctx"
 }
 
 
@@ -674,14 +677,15 @@ echo secret | tpm2-attest seal quote.tgz > cipher.bin
 ```
 
 After a attested quote has been validated, an encrypted reply is sent to
-the machine with a sealed secret, encrypted with that machines
-endorsment key (`ek.crt`), with the name of the attestation key
-used to sign the quote.  The TPM will not decrypt the sealed
-message unless the attestation key was one that it generated.
+the machine with a sealed secret, which can be of arbitrary length,
+that is encrypted with a random key. This random key is encrypted
+with that machines endorsment key (`ek.crt`), along with the name
+of the attestation key used to sign the quote.  The TPM will not decrypt
+the message key unless the attestation key was one that it generated.
 
-The `cipher.bin` file should be sent back to the device being attested;
-it can then run `tpm2-attest unseal ak.ctx < cipher.bin > secret.txt`
-to extract the sealed secret.
+The `sealed.tgz` file should be sent back to the device being attested;
+it can then run `tpm2-attest unseal < sealed.tgz > secret.txt`
+to extract the sealed secret (which may be of arbitrary length).
 '
 usage+="$seal_usage"
 commands+="|seal"
@@ -698,8 +702,18 @@ seal()
 	unpack-quote "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: unable to unpack"
 
-	cat > "$TMP/secret" \
-	|| die "Unable to read secret data from stdin"
+	# create a random key and encrypt stdin with it
+	openssl rand \
+		-out "$TMP/secret.key" \
+		64 \
+	|| die "$TMP/secret.key: unable to get 64 bytes of randomness"
+
+	openssl enc \
+		-aes-256-cbc \
+		-pbkdf2 \
+		-out "$TMP/cipher.bin" \
+		-pass file:"$TMP/secret.key" \
+	|| die "$TMP/cipher.bin: unable to read secret data from stdin"
 
 	# convert the attestation key into a "name"
 	# so that the TPM will only decrypt if it matches an
@@ -710,16 +724,16 @@ seal()
 	tpm2 makecredential \
 		--tcti "none" \
 		--encryption-key "$TMP/ek.pub" \
-		--secret "$TMP/secret" \
+		--secret "$TMP/secret.key" \
 		--name "$AK_NAME" \
-		--credential-blob "$TMP/cipher.bin" \
-	|| die "tpm2_makecredential: unable to seal secret"
+		--credential-blob "$TMP/credential.bin" \
+	|| die "tpm2_makecredential: unable to seal secret key"
 
 	# remove the secret so that it doesn't live on disk for longer
-	rm -f "$TMP/secret"
+	rm -f "$TMP/secret.key"
 
-	# and output the decrypted message
-	cat "$TMP/cipher.bin"
+	# and output the sealed secret, plus the data that has been encrypted with it
+	tar -C "$TMP" -zcf - credential.bin cipher.bin ak.ctx
 }
 
 ########################################
@@ -728,7 +742,7 @@ unseal_usage='
 ## unseal
 Usage:
 ```
-cat cipher.bin | tpm2-attest unseal ak.ctx  > secret.txt
+cat sealed.tgz | tpm2-attest unseal > secret.txt
 ```
 
 When the remote attestation has been successful, the remote machine will
@@ -741,11 +755,9 @@ commands+="|unseal"
 unseal()
 {
 	show_help "$1" "$unseal_usage"
-	if [ "$#" -ne 1 ]; then
-		die "Insufficent arguments.$unseal_usage"
+	if [ "$#" -ne 0 ]; then
+		die "No arguments expected.$unseal_usage"
 	fi
-
-	AK_CTX="$1"
 
 	# recreate the endorsement key context since it doesn't change per call
 	tpm2_flushall ""
@@ -754,22 +766,29 @@ unseal()
 		--key-algorithm "rsa" \
 	|| die "tpm2_createek: unable to create EK context"
 
-	cat > "$TMP/cipher.bin" \
-	|| die "$TMP/cipher.bin: unable to create cipher text"
+	tar -C "$TMP" -zxf - \
+	|| die "Unable to extract sealed secret tar file"
 
 	tpm2_secret_session "$TMP/session.ctx"
 
 	tpm2 activatecredential \
-		--credentialedkey-context "$AK_CTX" \
+		--credentialedkey-context "$TMP/ak.ctx" \
 		--credentialkey-context "$TMP/ek.ctx" \
 		--credentialkey-auth "session:$TMP/session.ctx" \
-		--credential-blob "$TMP/cipher.bin" \
-		--certinfo-data "$TMP/secret.txt" \
+		--credential-blob "$TMP/credential.bin" \
+		--certinfo-data "$TMP/secret.key" \
 		1>&2 \
-	|| die "tpm2_activatecredential: unable to decrypt cipher text"
+	|| die "tpm2_activatecredential: unable to unseal key"
 
-	cat "$TMP/secret.txt"
-	rm -f "$TMP/secret.txt"
+	openssl enc \
+		-d \
+		-aes-256-cbc \
+		-pbkdf2 \
+		-pass file:"$TMP/secret.key" \
+		-in "$TMP/cipher.bin" \
+	|| die "$TMP/cipher.bin: unable to decrypt with secret key"
+
+	rm -f "$TMP/secret.key"
 }
 
 
@@ -779,7 +798,7 @@ verify_and_seal_usage='
 ## verify-and-seal
 Usage:
 ```
-tpm2-attest verify-and-seal quote.tgz [nonce [pcrs]] < secret.txt > cipher.bin
+tpm2-attest verify-and-seal quote.tgz [nonce [pcrs]] < secret.txt > sealed.tgz
 ```
 
 If the `nonce` is not specified on the command line, the one in the
