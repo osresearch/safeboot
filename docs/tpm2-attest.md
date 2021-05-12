@@ -17,14 +17,18 @@ nonce, the machine will generate the endorsement key,
 endorsement cert, a one-time attestation key, and a signed quote
 for the PCRs using that nonce.
 
-This will result in two output files, `quote.tgz` to be sent to
-the remote side, and `ak.ctx` that is to remain on this machine
-for decrypting the return result from the remote attestation server.
+The output `quote.tgz` should be sent to the remote side for validation.
+There is nothing sensitive in the file, so it can be sent in clear text
+to the server.
+
+TODO: the quote should be integrity protected, although while it does
+not weaken the protocol, it does allow an adversary to create spurious
+attestation failures.
 
 ## attest
 Usage:
 ```
-tpm2-attest attest http://server/ [nonce [pcrs,...]] > secret.txt
+tpm2-attest attest http://server/attest [nonce [pcrs,...]] > secret.txt
 ```
 This will generate a quote for the nonce (or the current time if
 none is specified) and for the PCRs listed in the `$QUOTE_PCRS`
@@ -126,19 +130,20 @@ echo secret | tpm2-attest seal quote.tgz > cipher.bin
 ```
 
 After a attested quote has been validated, an encrypted reply is sent to
-the machine with a sealed secret, encrypted with that machines
-endorsment key (`ek.crt`), with the name of the attestation key
-used to sign the quote.  The TPM will not decrypt the sealed
-message unless the attestation key was one that it generated.
+the machine with a sealed secret, which can be of arbitrary length,
+that is encrypted with a random key. This random key is encrypted
+with that machines endorsment key (`ek.crt`), along with the name
+of the attestation key used to sign the quote.  The TPM will not decrypt
+the message key unless the attestation key was one that it generated.
 
-The `cipher.bin` file should be sent back to the device being attested;
-it can then run `tpm2-attest unseal ak.ctx < cipher.bin > secret.txt`
-to extract the sealed secret.
+The `sealed.tgz` file should be sent back to the device being attested;
+it can then run `tpm2-attest unseal < sealed.tgz > secret.txt`
+to extract the sealed secret (which may be of arbitrary length).
 
 ## unseal
 Usage:
 ```
-cat cipher.bin | tpm2-attest unseal ak.ctx  > secret.txt
+cat sealed.tgz | tpm2-attest unseal > secret.txt
 ```
 
 When the remote attestation has been successful, the remote machine will
@@ -148,7 +153,7 @@ if and only if the EK matches and the AK is one that it generated.
 ## verify-and-seal
 Usage:
 ```
-tpm2-attest verify-and-seal quote.tgz [nonce [pcrs]] < secret.txt > cipher.bin
+tpm2-attest verify-and-seal quote.tgz [nonce [pcrs]] < secret.txt > sealed.tgz
 ```
 
 If the `nonce` is not specified on the command line, the one in the
