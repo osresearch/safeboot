@@ -1,0 +1,145 @@
+#!/usr/bin/python3
+"""
+Eventlog verifier, which only checks golden PCR values against a database.
+"""
+import sys
+import yaml
+import sqlite3
+import hashlib
+import logging
+
+# hard code the hashing algorithm used
+alg = 'sha256'
+
+# sqlite database of hosts and pcrs, indexed by ekhash
+db = None
+
+# Check that all of the required PCRs are present and match the golden values.
+# It is ok if the quote or event log have more, but none must be missing.
+def pcr_validate(golden, quote):
+	if alg not in quote:
+		print("Quote does not have PCR algorithm '%s'" % (alg))
+		return false
+
+	quote = quote[alg]
+	valid = True
+
+	for pcr in golden:
+		good_pcr = int(golden[pcr], 16)
+		if not pcr in quote:
+			print("PCR%d missing" % (pcr), file=sys.stderr)
+			valid = False
+		elif good_pcr != quote[pcr]:
+			print("PCR%d mismatch %x != expected %x" % (pcr, quote[pcr], good_pcr), file=sys.stderr)
+			valid = False
+
+	return valid
+
+
+def verify(quote, quote_valid):
+	ekhash = quote['ekhash']
+
+	# default policy is to reject any invalid quotes
+	if quote_valid != "True":
+		logging.warning(f"{ekhash=}: rejecting invalid quote")
+		return -1
+
+	cur = db.cursor()
+	cur.execute("SELECT secret,device FROM hosts WHERE ekhash = ?", (ekhash,))
+	row = cur.fetchone()
+	
+	if row is None:
+		logging.warning(f"{ekhash=}: rejecting unknown machine")
+		return -1
+
+	secret = row[0]
+	device = row[1]
+
+	cur.execute("SELECT pcr,value FROM pcrs WHERE ekhash = ?", (ekhash,))
+	valid_pcrs = {}
+	for row in cur.fetchall():
+		valid_pcrs[row[0]] = row[1]
+
+	if not pcr_validate(valid_pcrs, quote['pcrs']):
+		logging.warning(f"{device}: {ekhash=}: rejecting bad PCRs")
+		return -1
+
+	# the eventlog meets the policy requirements
+	# so output the secret for encoding by the attestation server
+	logging.info(f"{device}: {ekhash=}: sending secrets")
+	sys.stdout.write(secret)
+	return 0
+
+if __name__ == '__main__':
+	from sys import argv
+	logging.basicConfig(level=logging.INFO)
+
+	if len(argv) <= 2:
+		print("Usage: attest-verify cmd...", file=sys.stderr)
+		exit(1)
+
+	db = sqlite3.connect("build/secrets.db")
+	db.execute("""
+		CREATE TABLE IF NOT EXISTS hosts (
+			ekhash CHAR(64) PRIMARY KEY,
+			device TEXT,
+			secret BLOB
+		)
+	""")
+	db.execute("""
+		CREATE TABLE IF NOT EXISTS pcrs (
+			ekhash CHAR(64) PRIMARY KEY,
+			pcr INTEGER,
+			value CHAR(64),
+			FOREIGN KEY (ekhash) REFERENCES hosts (ekhash)
+		)
+	""")
+
+	if argv[1] == "register":
+		# register ek.pub name < secret.bin
+		with open(argv[2],"rb") as ekpub:
+			# compute the "name" of the ekpub
+			ekhash = hashlib.sha256(ekpub.read()).hexdigest()
+		host = argv[3]
+		secret = sys.stdin.read()
+		print(ekhash + ": " + host)
+		cur = db.cursor()
+		cur.execute("INSERT OR REPLACE INTO hosts(ekhash, device, secret) VALUES(?,?,?)",
+			(ekhash, host, secret))
+		db.commit()
+		cur.execute("SELECT * FROM hosts WHERE ekhash = ?", (ekhash,))
+		print(cur.fetchall())
+		db.close()
+		exit(0)
+
+	if argv[1] == "predictpcr":
+		# predictpcr ek.pub index digest ....
+		# this is predicts the eventual PCR value based on the hashes
+		# that are extended into the PCR. it does not take the final PCR value
+		with open(argv[2],"rb") as ekpub:
+			# compute the "name" of the ekpub
+			ekhash = hashlib.sha256(ekpub.read()).hexdigest()
+		pcrindex = argv[3]
+
+		# extend operation is NewPCR = SHA256(PCR || SHA256(newdata))
+		# this takes in the hash of the values, so the second SHA256 is not used
+		pcr = bytearray(32)
+		for newhash in argv[4:]:
+			pcr = hashlib.sha256(pcr + bytes.fromhex(newhash)).digest()
+		pcr = pcr.hex()
+		cur = db.cursor()
+		cur.execute("INSERT OR REPLACE INTO pcrs(ekhash, pcr, value) VALUES(?,?,?)",
+			(ekhash, pcrindex, pcr))
+		db.commit()
+		db.close()
+
+		print(ekhash + ": " + pcrindex + "=" + pcr)
+		exit(0)
+
+	if argv[1] == "verify":
+		quote_valid = argv[2]
+		eventlog = yaml.safe_load(sys.stdin)
+		exit(verify(eventlog, quote_valid))
+
+	print("Unknown command: '%s'"  % (argv[1]), file=sys.stderr)
+	exit(1)
