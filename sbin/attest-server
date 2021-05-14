@@ -1,7 +1,18 @@
 #!/usr/bin/python3
 """
-Simple server example for receiving attestation quotes,
-validating them, and sending back sealed data.
+Quote and Eventlog validating Attestation Server.
+
+This server accepts incoming HTTP POST requests from an attesting machine
+that contain a tar file of a TPM Endorsement Key, Attestation Key, Quote,
+PCR list, Eventlog and other details. It performs three actions:
+
+* Validates that the Quote is signed by the AK
+* Validates that the EK certificate has a good trust chain
+* Validaets that the PCR extensions in the Eventlog produce the PCRs in the quote
+
+It then invokes an external handler to verify that the eventlog
+meets the policy requirements, and will return any output from this
+handler to the attesting machine.
 """
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import os
@@ -10,35 +21,10 @@ import tempfile
 import sys
 import subprocess
 import yaml
-import sqlite3
 import hashlib
 
 # hard code the hashing algorithm used
 alg = 'sha256'
-
-# sqlite database of hosts and pcrs, indexed by ekhash
-db = None
-
-# Check that all of the required PCRs are present and match the golden values.
-# It is ok if the quote or event log have more, but none must be missing.
-def pcr_validate(golden, quote):
-	if alg not in quote:
-		print("Quote does not have PCR algorithm '%s'" % (alg))
-		return false
-
-	quote = quote[alg]
-	valid = True
-
-	for pcr in golden:
-		good_pcr = int(golden[pcr], 16)
-		if not pcr in quote:
-			print("PCR%d missing" % (pcr), file=sys.stderr)
-			valid = False
-		elif good_pcr != quote[pcr]:
-			print("PCR%d mismatch %x != expected %x" % (pcr, quote[pcr], good_pcr), file=sys.stderr)
-			valid = False
-
-	return valid
 
 
 class AttestServer(BaseHTTPRequestHandler):
@@ -72,40 +58,66 @@ class AttestServer(BaseHTTPRequestHandler):
 			stdout=subprocess.PIPE,
 			stderr=sys.stderr,
 		)
-		if sub.returncode != 0:
-			return self.fail("QUOTE-VERIFY FAILED")
+
+		quote_valid = sub.returncode == 0
 
 		# The output contains YAML formatted hash of the EK and the PCRs
 		quote = yaml.safe_load(sub.stdout)
-		ekhash = quote['ekhash']
-		cur = db.cursor()
-		cur.execute("SELECT secret,device FROM hosts WHERE ekhash = ?", (ekhash,))
-		row = cur.fetchone()
-		
-		if row is None:
-			return self.fail("UNKNOWN TPM EK " + ekhash)
-		secret = row[0]
-		device = row[1]
+		if 'ekhash' in quote:
+			ekhash = quote['ekhash']
+		else:
+			quote_valid = False
+			ekhash = "UNKNOWN"
 
-		logging.info("%s: EK %s" % (device, ekhash))
+		with open("/tmp/quote.yaml", "w") as y:
+			y.write(str(quote))
 
-		cur.execute("SELECT pcr,value FROM pcrs WHERE ekhash = ?", (ekhash,))
-		valid_pcrs = {}
-		for row in cur.fetchall():
-			valid_pcrs[row[0]] = row[1]
+		# Verify that the every quoted PCR matches the computed
+		# eventlog PCRs.  A zero quoted PCR means that no extensions
+		# were made, so it should not exist in the eventlog
+		if alg not in quote['pcrs']:
+			logging.warning(f"{ekhash=}: quote does not have hash {alg}")
+		quote_pcrs = quote['pcrs'][alg]
+		eventlog_pcrs = quote['eventlog-pcrs'][alg]
 
-		if not pcr_validate(valid_pcrs, quote['pcrs']):
-			return self.fail("QUOTE-PCR FAILED")
-		if not pcr_validate(valid_pcrs, quote['eventlog-pcrs']):
-			return self.fail("EVENTLOG-PCR FAILED")
+		for pcr_index in quote_pcrs:
+			quote_pcr = quote_pcrs[pcr_index]
 
-		# the quote, eventlog and PCRS are valid, so seal some data and return it as binary
+			if pcr_index in eventlog_pcrs:
+				eventlog_pcr = eventlog_pcrs[pcr_index]
+				if quote_pcr != eventlog_pcr:
+					logging.warning(f"{ekhash=}: {pcr_index=} {quote_pcr=} != {eventlog_pcr=}")
+					quote_valid = False
+			elif quote_pcr != 0:
+				logging.warning(f"{ekhash=}: {pcr_index=} not in eventlog")
+				quote_valid = False
+
+		if quote_valid:
+			logging.info(f"{ekhash=}: so far so good")
+		else:
+			logging.warning(f"{ekhash=}: not good at all")
+
+		# the quote, eventlog and PCRS are consistent, so ask the verifier to
+		# process the eventlog and decide if the eventlog meets policy for
+		# this ekhash.
+		sub = subprocess.run(["./sbin/attest-verify", "verify", str(quote_valid)],
+			input=bytes(str(quote), encoding="utf-8"),
+			stdout=subprocess.PIPE,
+			stderr=sys.stderr,
+		)
+
+		if sub.returncode != 0:
+			return self.fail("ATTEST_VERIFY FAILED")
+	
+		# attest-verify returned "success", meaning that it has data
+		# to send to the attesting machine.  Seal this for the remote
+		# machine based on its AK
 		self.send_response(200)
 		self.send_header('Content-type', 'application/octet-stream')
 		self.end_headers()
 
 		subprocess.run(["./sbin/tpm2-attest", "seal", quote_file, ],
-			input=secret.encode(),
+			input=sub.stdout,
 			stdout=self.wfile,
 			stderr=sys.stderr,
 		)
@@ -125,74 +137,12 @@ def run(port=8080):
 if __name__ == '__main__':
 	from sys import argv
 
-	if len(argv) <= 2:
-		print("Usage: attest-server database.db cmd...", file=sys.stderr)
+	if len(argv) > 2:
+		print("Usage: attest-server [port]", file=sys.stderr)
 		exit(1)
 
-	db = sqlite3.connect(argv[1])
-	db.execute("""
-		CREATE TABLE IF NOT EXISTS hosts (
-			ekhash CHAR(64) PRIMARY KEY,
-			device TEXT,
-			secret BLOB
-		)
-	""")
-	db.execute("""
-		CREATE TABLE IF NOT EXISTS pcrs (
-			ekhash CHAR(64) PRIMARY KEY,
-			pcr INTEGER,
-			value CHAR(64),
-			FOREIGN KEY (ekhash) REFERENCES hosts (ekhash)
-		)
-	""")
-
-	if argv[2] == "register":
-		# register ek.pub name < secret.bin
-		with open(argv[3],"rb") as ekpub:
-			# compute the "name" of the ekpub
-			ekhash = hashlib.sha256(ekpub.read()).hexdigest()
-		host = argv[4]
-		secret = sys.stdin.read()
-		print(ekhash + ": " + host)
-		cur = db.cursor()
-		cur.execute("INSERT OR REPLACE INTO hosts(ekhash, device, secret) VALUES(?,?,?)",
-			(ekhash, host, secret))
-		db.commit()
-		cur.execute("SELECT * FROM hosts WHERE ekhash = ?", (ekhash,))
-		print(cur.fetchall())
-		db.close()
-		exit(0)
-
-	if argv[2] == "predictpcr":
-		# predictpcr ek.pub index digest ....
-		# this is predicts the eventual PCR value based on the hashes
-		# that are extended into the PCR. it does not take the final PCR value
-		with open(argv[3],"rb") as ekpub:
-			# compute the "name" of the ekpub
-			ekhash = hashlib.sha256(ekpub.read()).hexdigest()
-		pcrindex = argv[4]
-
-		# extend operation is NewPCR = SHA256(PCR || SHA256(newdata))
-		# this takes in the hash of the values, so the second SHA256 is not used
-		pcr = bytearray(32)
-		for newhash in argv[5:]:
-			pcr = hashlib.sha256(pcr + bytes.fromhex(newhash)).digest()
-		pcr = pcr.hex()
-		cur = db.cursor()
-		cur.execute("INSERT OR REPLACE INTO pcrs(ekhash, pcr, value) VALUES(?,?,?)",
-			(ekhash, pcrindex, pcr))
-		db.commit()
-		db.close()
-
-		print(ekhash + ": " + pcrindex + "=" + pcr)
-		exit(0)
-
-	if argv[2] == "run":
-		if len(argv) == 4:
-			run(port=int(argv[3]))
-		else:
-			run()
-		exit(0)
-
-	print("Unknown command: '" + argv[2] + "'", file=sys.stderr)
-	exit(1)
+	if len(argv) == 2:
+		run(port=int(argv[1]))
+	else:
+		run()
+	exit(0)
