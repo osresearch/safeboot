@@ -632,7 +632,7 @@ quote-verify()
 		VERIFY_TIME="$(date '+%s')"
 		QUOTE_TIME="$(printf "%d" "0x$QUOTE_NONCE")"
 		DELTA_TIME="$(( VERIFY_TIME - QUOTE_TIME ))"
-		if [ "$DELTA_TIME" -gt "$QUOTE_MAX_AGE" ]; then
+		if [ "$QUOTE_MAX_AGE" != "0" ] && [ "$DELTA_TIME" -gt "$QUOTE_MAX_AGE" ]; then
 			die "Old nonce: $QUOTE_TIME > $VERIFY_TIME + $QUOTE_MAX_AGE"
 		fi
 	fi
