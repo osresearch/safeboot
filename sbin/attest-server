@@ -108,6 +108,9 @@ class AttestServer(BaseHTTPRequestHandler):
 
 		if sub.returncode != 0:
 			return self.fail("ATTEST_VERIFY FAILED")
+
+		# read the (binary) response from the sub process stdout
+		response = sub.stdout
 	
 		# attest-verify returned "success", meaning that it has data
 		# to send to the attesting machine.  Seal this for the remote
@@ -117,7 +120,7 @@ class AttestServer(BaseHTTPRequestHandler):
 		self.end_headers()
 
 		subprocess.run(["./sbin/tpm2-attest", "seal", quote_file, ],
-			input=sub.stdout,
+			input=response,
 			stdout=self.wfile,
 			stderr=sys.stderr,
 		)
