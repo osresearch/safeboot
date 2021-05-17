@@ -1401,11 +1401,13 @@ define gen_rule_image_command_profile
 	$(eval gricpA := $(strip $($(gricp2)_ARGS_DOCKER_RUN)))
 	$(eval gricpBI := $(strip $($(gricp2)_B_IMAGE)))
 	$(eval gricpBC := $(strip $($(gricp2)_B_COMMAND)))
+	$(if $(filter $(gricpP),batch),
+		$(eval TMP1 := $$Qecho nada > /dev/null),
 	$(if $($(gricic)_DNAME),
 		$(eval TMP1 := \
 $$Qecho "Launching $(gricpP) container '$($(gricp2)_DNAME)'"),
 		$(eval TMP1 := \
-$$Qecho "Launching a '$(gricpBI)' $(gricpP) container running command ('$(gricpBC)')"))
+$$Qecho "Launching a '$(gricpBI)' $(gricpP) container running command ('$(gricpBC)')")))
 	$(eval TMP2 := $$Q$(if $(gricpM),mkdir -p $(gricpM),echo nada > /dev/null))
 	$(eval TMP3 := $$Qdocker run $(DEFAULT_RUNARGS_$(gricpP)) \)
 	$(eval TMP4 := $(gricpA) \)
