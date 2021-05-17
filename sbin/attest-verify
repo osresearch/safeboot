@@ -67,7 +67,7 @@ def verify(quote, quote_valid):
 	# the eventlog meets the policy requirements
 	# so output the secret for encoding by the attestation server
 	logging.info(f"{device}: {ekhash=}: sending secrets")
-	sys.stdout.write(secret)
+	sys.stdout.buffer.write(secret)
 	return 0
 
 if __name__ == '__main__':
@@ -101,13 +101,13 @@ if __name__ == '__main__':
 			# compute the "name" of the ekpub
 			ekhash = hashlib.sha256(ekpub.read()).hexdigest()
 		host = argv[3]
-		secret = sys.stdin.read()
+		secret = sys.stdin.buffer.read() # bytes
 		print(ekhash + ": " + host)
 		cur = db.cursor()
 		cur.execute("INSERT OR REPLACE INTO hosts(ekhash, device, secret) VALUES(?,?,?)",
 			(ekhash, host, secret))
 		db.commit()
-		cur.execute("SELECT * FROM hosts WHERE ekhash = ?", (ekhash,))
+		cur.execute("SELECT device FROM hosts WHERE ekhash = ?", (ekhash,))
 		print(cur.fetchall())
 		db.close()
 		exit(0)
