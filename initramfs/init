@@ -59,7 +59,7 @@ EOF
 
 	# Invoke the boot script with the new secret
 	if [ -x "/bin/bootscript" ]; then
-		/bin/bootscript /tmp/secret.bin
+		/bin/bootscript < /tmp/secret.bin
 	fi
 
 	break;
