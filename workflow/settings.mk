@@ -20,3 +20,7 @@ SAFEBOOT_WORKFLOW_BASE?=debian:buster-slim
 # Dockerfile for details.
 #SAFEBOOT_WORKFLOW_3ADD_CACERTS_ENABLE:=1
 #SAFEBOOT_WORKFLOW_3ADD_CACERTS_PATH:=/opt/my-company-ca-certificates
+
+# If defined, builds the iutil-uml image for running plantuml, and the
+# corresponding "make uml" target for iterating over workflow/uml/*.uml files.
+SAFEBOOT_WORKFLOW_UML:=1

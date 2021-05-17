@@ -95,6 +95,11 @@ CHOWNER_LINE := --env CHOWNER="$(shell id -u):$(shell id -g)"
 # variable to the name of the top-most "base" layer.
 include workflow/base/base.mk
 
+# Also suctioned out are utility containers, such as a 'plantuml' appliance for
+# producing flowcharts from source.
+# We include this file twice, the second time later on with POST_MARINER=1
+include workflow/uml/uml.mk
+
 # ibuild-* images
 # - first, based on $(ibase-RESULT) is a "0common" layer to install toolchains
 # - all the others inherit from 0common
