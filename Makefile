@@ -461,17 +461,23 @@ $(TPMDIR)/ek.hash: $(TPMDIR)/ek.pub
 
 # Register the virtual TPM in the attestation server logs with the
 # expected value for the kernel that will be booted
-# QEMU runs a few programs along the way before finally jumping to
-# the actual kernel that has been received with pxe
-PCR_CALL_BOOT:=3d6772b4f84ed47595d72a2c4c5ffd15f5bb72c7507fe26f2aaee2c69d5633ba
-PCR_SEPARATOR:=df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119
-PCR_RETURNING:=7044f06303e54fa96c3fcd1a0f11047c03d209074470b1fd60460c9f007e28a6
-$(TPMDIR)/.ekpub.registered: $(TPMDIR)/ek.pub
-	echo -n 'magicwords' | ./sbin/attest-verify \
+$(TPMDIR)/.ekpub.registered: $(TPMDIR)/ek.pub initramfs/response/*
+	tar \
+		-zcf - \
+		-C initramfs/response \
+		. \
+	| ./sbin/attest-verify \
 		register \
 		$(TPMDIR)/ek.pub \
 		'qemu-server'
 	@touch $@
+
+# QEMU tries to boot from the DVD and HD before finally booting from the
+# network, so there are attempts to call different boot options and then
+# returns from them when they fail.
+PCR_CALL_BOOT:=3d6772b4f84ed47595d72a2c4c5ffd15f5bb72c7507fe26f2aaee2c69d5633ba
+PCR_SEPARATOR:=df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119
+PCR_RETURNING:=7044f06303e54fa96c3fcd1a0f11047c03d209074470b1fd60460c9f007e28a6
 
 $(TPMDIR)/.bootx64.registered: $(BOOTX64) $(TPMDIR)/.ekpub.registered | ./bin/sbsign.safeboot
 	./sbin/attest-verify \

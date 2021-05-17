@@ -13,24 +13,29 @@ MAPPER="/dev/mapper/$VOLUME"
 KERNEL="/root/boot/vmlinuz"
 INITRD="/root/boot/initrd.img"
 KEXEC_EXTRA=""
+URL=""
 
-KEY="$1"
-URL="$2"
+# Unpack the attestation server's response
+TMPDIR=$(mktemp -d)
+tar -xvf - -C "$TMPDIR" \
+|| die "attestation response is not a valid tar file?"
 
-if [ -z "$KEY" ]; then
-	KEY="/tmp/secret.bin"
+STARTUP="$TMPDIR/startup.sh"
+KEY="$TMPDIR/rootfs.key"
+
+if [ -x "$STARTUP" ]; then
+	# measure the startup script before doing anything else
+	warn "$STARTUP: measuring"
+	tpm2 pcrevent 14 "$STARTUP"
+	warn "$STARTUP: executing"
+	. "$STARTUP" || die "startup failed"
 fi
-
-if [ -z "$URL" ]; then
-	URL="http://10.0.2.2:8000/focal-server-cloudimg-amd64.img"
-fi
-
 
 kexec_img() {
 	# add the decryption key to initrd by creating a temporary copy
 	# the source initrd must be padded to 512 bytes or else the kernel
 	# won't look for additional cpio files appended after it.
-	TMP_INITRD="/tmp/initrd.img"
+	TMP_INITRD="$TMPDIR/initrd.img"
 
 	warn "$INITRD: adding secret key"
 
@@ -39,16 +44,31 @@ kexec_img() {
 		of="$TMP_INITRD" \
 		bs=512 \
 		conv=sync \
-	|| die "$INITRD: unable to copy to /tmp"
+	|| die "$INITRD: unable to copy to $TMPDIR"
 
-	# Append a cpio file with a single rootfs.key file that contains the
-	# secret to decrypt the root filesystem.
-	mkdir -p /tmp/initrd
-	cp "$KEY" /tmp/initrd/rootfs.key \
-	|| die "$KEY: unable to copy secret key"
+	# todo: these are causing swtpm to timeout?
+	#warn "$KERNEL: measuring"
+	#tpm2 pcrevent 14 < "$KERNEL"
+	#warn "$TMP_INITRD: measuring"
+	#tpm2 pcrevent 14 < "$TMP_INITRD"
 
-	( cd /tmp/initrd ; echo rootfs.key | cpio -H newc -o ) >> "$TMP_INITRD" \
-	|| die "$TMP_INITRD: unable to add $KEY to initrd"
+	if [ -r "$KEY" ]; then
+		# Append a cpio file with a single rootfs.key file that contains the
+		# secret to decrypt the root filesystem.
+		mkdir -p "$TMPDIR/initrd"
+		cp "$KEY" "$TMPDIR/initrd/rootfs.key" \
+		|| die "$KEY: unable to copy secret key"
+
+		( cd "$TMPDIR/initrd" ; echo rootfs.key | cpio -H newc -o ) >> "$TMP_INITRD" \
+		|| die "$TMP_INITRD: unable to add $KEY to initrd"
+
+		KEXEC_EXTRA="$KEXEC_EXTRA \
+cryptopts=target=rootfs,source=/dev/sda,key=/rootfs.key,luks,discard \
+"
+
+	else
+		warn "response did not include encrypted rootfs.key"
+	fi
 
 	# Load the official kernel and the modified initrd
 	# passing in the command line arguments to decrypt the
@@ -58,7 +78,6 @@ kexec_img() {
 console=ttyS0 \
 root=LABEL=cloudimg-rootfs \
 ro \
-cryptopts=target=rootfs,source=/dev/sda,key=/rootfs.key,luks,discard \
 $KEXEC_EXTRA \
 "
 	warn "$KERNEL: $KEXEC_CMDLINE"
@@ -86,6 +105,10 @@ mount_img() {
 }
 
 install_img() {
+	if [ -z "$URL" ]; then
+		die "No disk image, no image URL to fetch. Nothing to do!"
+	fi
+
 	if [ -e "$MAPPER" ]; then
 		cryptsetup luksClose "$VOLUME"
 	fi
@@ -105,8 +128,17 @@ install_img() {
 	|| die "$DEV: luksOpen failed"
 
 	warn "$MAPPER: fetching disk image"
-	curl "$URL" > "$MAPPER" \
+	curl "$URL" | tee "$MAPPER" | sha256sum - | tee "$TMPDIR/url.hash" \
 	|| die "$DEV: unable to fetch $URL"
+
+	if [ -n "$URL_HASH" ]; then
+		echo "$URL_HASH  -" > "$TMPDIR/url.hash.golden"
+		if ! cmp "$TMPDIR/url.hash" "$TMPDIR/url.hash.golden" ; then
+			die "$URL: hash failed. Expected $URL_HASH"
+		fi
+
+		warn "$URL: verified $URL_HASH"
+	fi
 
 	#blockdev --rereadpt "$MAPPER"
 
@@ -116,23 +148,19 @@ install_img() {
 	|| die "$MAPPER: unable to mount?"
 
 	# stash the server configuration in the encrypted /boot
-	# TODO: deliver this as part of the attestation secret?
-	warn "cloud-init: creating user-data"
-	KEXEC_EXTRA="$KEXEC_EXTRA ds=nocloud;s=file:///boot/cloud-init/"
-	mkdir -p /root/boot/cloud-init
-	cat > /root/boot/cloud-init/user-data <<EOF
-#cloud-config
-hostname: safeboot-demo
-chpasswd:
-  expire: False
-  list: |
-    root:password
-    ubuntu:password
-EOF
+	# if it was provided in the response
+	if [ -r "$TMPDIR/user-data" ]; then
+		warn "cloud-init: creating user-data"
+		KEXEC_EXTRA="$KEXEC_EXTRA ds=nocloud;s=file:///boot/cloud-init/"
+		mkdir -p /root/boot/cloud-init
+		cp "$TMPDIR/user-data" /root/boot/cloud-init \
+		|| die "user-data: unable to install"
 
-	cat > /root/boot/cloud-init/meta-data <<EOF
-{"instance-id": "iid-local01"}
-EOF
+		if [ -r "$TMPDIR/meta-data" ]; then
+			cp "$TMPDIR/meta-data" /root/boot/cloud-init \
+			|| die "meta-data: unable to install"
+		fi
+	fi
 
 	# remove our write permissions
 	mount -o ro,remount /root
