@@ -39,3 +39,8 @@ local.conf
 *.squashfs
 *.img
 *.pid
+*.xz
+*.sign
+*.gz
+build
+linux-*
