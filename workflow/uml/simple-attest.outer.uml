@@ -1,0 +1,97 @@
+@startuml
+
+note top of simpleAttest
+The test-case is implemented as a dependency graph in GNU make, where the
+nodes of the graph are "Makefile rules". The downward-facing arrows depict
+dependencies, so the test-case executes in the opposite order, bottom-up.
+
+For each rule/node;
+
+<code>
+    target: dependencies...
+            recipe shell commands...
+</code>
+
+* the **""target""** (that other nodes can depend on) is usually a
+  //touchfile// that gets set once when the node is reached and its
+  corresponding action (**recipe**) is complete. (In fact, the last step
+  of the recipe is usually to create/update the touchfile.)
+* the **""dependencies...""** are the touchfiles of actions/rules that are
+  prerequisite,
+* the **""recipe shell commands...""** implement the desired action
+  before then (usually) setting the target touchfile.
+end note
+
+state "simple-attest" as simpleAttest
+state ClientWait
+state ServerWait
+state Underway
+state ClientLaunch
+state ServerLaunch
+
+ClientWait -up-> simpleAttest
+ServerWait -up-> simpleAttest
+ClientWait -[hidden]r> ServerWait
+Underway -up-> ClientWait
+Underway -up-> ServerWait
+ClientLaunch -up-> Underway
+ServerLaunch -up-> Underway
+ClientLaunch -[hidden]r> ServerLaunch
+
+simpleAttest : This node represents the test-case as whole, by dependency.
+simpleAttest : It does not set a touchfile of its own, and its (final) action
+simpleAttest : is to clear the SUnderway and SMsgbus touchfiles. As such, "make
+simpleAttest : simple-attest" will always run the full test-case, and never
+simpleAttest : report that there's "nothing to do".
+simpleAttest : 
+simpleAttest : **target**: ""simple-attest"" (no touchfile)
+simpleAttest : **action**: Remove SUnderway and SMsgbus touchfiles.
+
+ClientWait : Waits for the client container to finish/exit if it's still
+ClientWait : running, and uses container's exit code as its own.
+ClientWait : Mariner already generates a touchfile dependency
+ClientWait : for this.
+ClientWait : 
+ClientWait : **target**: ""<crud>/jdonefile_simple-attest-client_run""
+ClientWait : **action**: Mariner recipe to wait for container exit
+
+ServerWait : Waits for the server container to finish/exit if it's still
+ServerWait : running, and uses container's exit code as its own.
+ServerWait : Mariner already generates a touchfile dependency
+ServerWait : for this.
+ServerWait : 
+ServerWait : **target**: ""<crud>/jdonefile_simple-attest-server_run""
+ServerWait : **action**: Mariner recipe to wait for container exit
+
+Underway : A synchronisation point to ensure both (client and server)
+Underway : containers have started. This ensures that a non-parallel
+Underway : invocation of make doesn't choose to wait for a running
+Underway : container to exit if there are any containers that haven't 
+Underway : been started.
+Underway :
+Underway : **target**: ""<crud>/ztouch-simple-attest-underway""
+Underway : **action**: none
+
+note left of Underway
+Synchronisation between the client and
+server //while the test is running// is
+explained in the subsequent diagram.
+end note
+
+ClientLaunch : Starts up the "host"/client container, running the
+ClientLaunch : run_client.sh test script. The behavior of the test is
+ClientLaunch : shown in the state diagram embedded in "Underway".
+ClientLaunch : Mariner already generates a touchfile dependency
+ClientLaunch : for this.
+ClientLaunch :
+ClientLaunch : Touchfile: <crud>/jjoinfile_simple-attest-client_run
+
+ServerLaunch : Starts up the "host"/server container, running the
+ServerLaunch : run_server.sh test script. The behavior of the test is
+ServerLaunch : shown in the state diagram embedded in "Underway".
+ServerLaunch : Mariner already generates a touchfile dependency
+ServerLaunch : for this.
+ServerLaunch :
+ServerLaunch : Touchfile: <crud>/jjoinfile_simple-attest-server_run
+
+@enduml

@@ -1,0 +1,74 @@
+@startuml
+
+state run_client.sh
+state run_server.sh
+
+run_client.sh -[hidden]r> run_server.sh
+
+state run_client.sh {
+	state tpmCreate
+	state tpmStart
+	state waitServerAdvertise
+	state pingServer
+	state tpm2_pcrread
+	state tpmStop
+	state ctrlServerStop
+
+	tpmCreate --> tpmStart
+	tpmStart --> waitServerAdvertise
+	waitServerAdvertise --> pingServer
+	pingServer --> tpm2_pcrread
+	tpm2_pcrread --> tpmStop
+	tpmStop --> ctrlServerStop
+}
+
+state run_server.sh {
+	state serverStart
+	state ctrlServerAdvertise
+	state waitServerStop
+	state serverStop
+
+	serverStart --> ctrlServerAdvertise
+	ctrlServerAdvertise --> waitServerStop
+	waitServerStop --> serverStop
+}
+
+run_client.sh : This container emulates a TPM-enabled host
+run_client.sh : that needs to attest itself during boot.
+
+run_server.sh : This container emulates an attestation
+run_server.sh : service.
+
+ctrlServerAdvertise --> waitServerAdvertise
+ctrlServerStop --> waitServerStop
+
+tpmCreate : Creates a new software TPM, with EK,
+tpmCreate : non-volatile state, etc.
+
+tpmStart : Launch and background the TPM server.
+
+waitServerAdvertise : poll run_server.sh's log waiting for
+waitServerAdvertise : "simple-attest-server: starting"
+
+pingServer : single-packet ping the server
+
+tpm2_pcrread : dummy operation, so that we're doing
+tpm2_pcrread : //something//.
+
+tpmStop : kill the TPM server process
+
+ctrlServerStop : write "ctrl: stop server" to
+ctrlServerStop : run_client.sh's log.
+
+serverStart : Launch and background the attestation
+serverStart : server.
+
+ctrlServerAdvertise : write "simple-attest-server: starting"
+ctrlServerAdvertise : to run_server.sh's log.
+
+waitServerStop : poll run_client.sh's log waiting for
+waitServerStop : "ctrl: stop server".
+
+serverStop : kill the attestation server.
+
+@enduml
