@@ -25,10 +25,10 @@ Table of contents:
   once something breaks), dive in head first.
 * [**Details**](#details) - what's under the hood, how the docker container
   images, volumes, dependencies [etc] get defined, etc.
-* [**Use cases**](#use-cases) - how to (understand and) define and run demos,
-  tests, and other use-cases.
 * [**Enterprise usage**](#enterprise-usage) - how to use this system within
   corporate networks and other environments that require tweaking.
+* [**Use cases**](#use-cases) - how to (understand and) define and run demos,
+  tests, and other use-cases.
 
 -----
 
@@ -185,10 +185,6 @@ including;
 
 > UNFINISHED, TO BE CONTINUED!!!
 
-## Use cases
-
-> UNFINISHED, TO BE CONTINUED!!!
-
 ## Enterprise usage
 
 As previously noted, a _base platform_ is constructed, by successive derivation
@@ -235,3 +231,25 @@ fact be necessary in some environments;
      certificates ("trust roots"). The corresponding
      `SAFEBOOT_WORKFLOW_3ADD_CACERTS_PATH` setting specifies a path on the host
      to a directory where such certificate files can be found.
+
+## Use cases
+
+### 'simple-attest'
+
+The following diagram shows the flow of the 'simple-attest' use-case, as seen from
+the perspective of the host, leveraging the Mariner-generated container images, verbs,
+and makefile rules, by adding new rules and dependencies to control execution flow.
+Note that the upward-facing arrows depict the order of execution for each of the
+component steps of the use-case. _The makefile dependencies to implement this are
+precisely the opposite of these arrows_, no more no less.
+![simple-attest-outer](/workflow/uml/simple-attest.outer.png?raw=true "simple-attest Outer state diagram")
+
+Between the client and server containers being launched and ending, the use-case is
+considered to be an "Underway" state. Though it need not be the case, the host side
+of this use-case does not provide synchronisation for any of the activities going on
+within the client (run_client.sh) and server (run_server.sh) routines. Instead, they
+synchronise with each other using 'tail_wait' on each other's output log. The
+previous diagram was the "outer" state diagram of the use-case, seen from the host
+side, so the next diagram is the "inner" state diagram, seen from within the client
+and server containers.
+![simple-attest-inner](/workflow/uml/simple-attest.inner.png?raw=true "simple-attest Inner state diagram")
