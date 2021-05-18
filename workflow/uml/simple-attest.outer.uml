@@ -7,10 +7,8 @@ dependencies, so the test-case executes in the opposite order, bottom-up.
 
 For each rule/node;
 
-<code>
-    target: dependencies...
-            recipe shell commands...
-</code>
+""    target: dependencies...""
+""            recipe shell commands...""
 
 * the **""target""** (that other nodes can depend on) is usually a
   //touchfile// that gets set once when the node is reached and its
