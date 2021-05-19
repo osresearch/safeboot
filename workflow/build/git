@@ -13,5 +13,5 @@
 set -e
 
 [[ $1 == "describe" ]] && echo "safeboot-unknown" && exit 0
-[[ $1 == "log" ]] && echo "safeboot stub output" && exit 1
+[[ $1 == "log" ]] && echo "safeboot stub output" && exit 0
 exit 1
