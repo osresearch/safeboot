@@ -31,6 +31,57 @@ if [ -x "$STARTUP" ]; then
 	. "$STARTUP" || die "startup failed"
 fi
 
+tpm2_ek_session() {
+	tpm2 flushcontext -t
+	tpm2 flushcontext -s
+	tpm2 startauthsession \
+		--session session.ctx \
+		--policy-session \
+	|| die "tpm2: unable to start policy session"
+	tpm2 policysecret \
+		--session session.ctx \
+		--object-context endorsement \
+	|| die "tpm2: unable to set policysecret for endorsement hierarchy"
+}
+
+if [ -r "$TMPDIR/wrapper.seed" ]; then
+	# attempt to load the secret wrapping key into our TPM
+	# as a transient object
+	tpm2 createek \
+		--ek-context ek.ctx \
+	|| die "tpm2: unable to create ek object"
+
+	warn "tpm2: Importing duplicate wrapper key"
+	tpm2_ek_session
+	tpm2 import \
+		--parent-context ek.ctx \
+		--parent-auth session:session.ctx \
+		--key-algorithm rsa \
+		--input "$TMPDIR/wrapper.dpriv" \
+		--seed "$TMPDIR/wrapper.seed" \
+		--public "$TMPDIR/wrapper.pub" \
+		--private "$TMPDIR/wrapper.priv" \
+	|| die "tpm2: unable to import duplicate wrapper key object"
+
+	warn "tpm2: Loading duplicate wrapper key"
+	tpm2_ek_session
+	tpm2 load \
+		--parent-context ek.ctx \
+		--auth session:session.ctx \
+		--key-context "$TMPDIR/wrapper.ctx" \
+		--public "$TMPDIR/wrapper.pub" \
+		--private "$TMPDIR/wrapper.priv" \
+	|| die "tpm2: unable to load duplicate wrapper key object"
+
+	# attempt to decrypt the rootfs key with the wrapper key
+	warn "tpm2: Decrypting rootfs key"
+	tpm2 rsadecrypt \
+		--key-context "$TMPDIR/wrapper.ctx" \
+		< "$TMPDIR/rootfs.enc.key" \
+		> "$TMPDIR/rootfs.key" \
+	|| die "tpm2: unable to decrypt the rootfs key with wrapper key"
+fi
+
 kexec_img() {
 	# add the decryption key to initrd by creating a temporary copy
 	# the source initrd must be padded to 512 bytes or else the kernel
