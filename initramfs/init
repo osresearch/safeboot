@@ -16,18 +16,21 @@ echo "Hello, initrd" > /dev/console
 echo "Hello, initrd (ttyprintk)" > /dev/ttyprintk
 exec < /dev/console >/dev/console 2>/dev/console
 
-# load modules that are not built into the kernel
-# and bring up the network
-#insmod /lib/modules/libahci.ko
-#insmod /lib/modules/ahci.ko
-#insmod /lib/modules/dm-crypt.ko
-#insmod /lib/modules/e1000.ko
-
-# should do dhcp?
-ifconfig eth0 10.0.2.15
-
 # check the hash of the kernel/initrd/cmdline that was booted
 tpm2 pcrread sha256:4
+
+# If the firmware includes a separate configuration file,
+# source it to set environment variables that will be passed to
+# the other scripts.
+if [ -x "/etc/config.sh" ]; then
+	. "/etc/config.sh"
+fi
+
+# Bring up the ethernet to be able to send a remote attestation request
+if [ -n "$ETH_DEV" ]; then
+	ifconfig "$ETH_DEV" up
+	udhcpc -i "$ETH_DEV" -v -q -s /etc/udhcpc.sh
+fi
 
 # cache the eventlog for easy analysis
 cat /sys/kernel/security/tpm0/binary_bios_measurements > /tmp/eventlog.bin
@@ -36,16 +39,13 @@ cat /sys/kernel/security/tpm0/binary_bios_measurements > /tmp/eventlog.bin
 tpm2 dictionarylockout --clear-lockout
 
 # remotely attest and get a secret disk key
-export SERVER="10.0.2.2"
-while true; do
-	#ping -w 5 -c 1 "$SERVER" \
-	#
-	ping "$SERVER" \
+while [ -n "$ATTEST_SERVER" ]; do
+	ping "$ATTEST_SERVER" \
 	|| break
 
 	echo "network is up"
 	tpm2-attest \
-		attest "http://$SERVER:8080/attest/" \
+		attest "$ATTEST_URL" \
 		> /tmp/secret.bin \
 	|| break;
 
@@ -57,7 +57,8 @@ while true; do
   ----------------------------
 EOF
 
-	# Invoke the boot script with the new secret
+	# Invoke the boot script with the secret that has been sent
+	# in the attestation server reply.
 	if [ -x "/bin/bootscript" ]; then
 		/bin/bootscript < /tmp/secret.bin
 	fi
@@ -66,7 +67,7 @@ EOF
 done
 
 
-echo "FAILED!!!"
+echo "ATTESTATION FAILED!!!" > /dev/ttyprintk
 
 if [ $$ != 1 ]; then
 	exit 1
