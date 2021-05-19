@@ -461,7 +461,7 @@ $(TPMDIR)/ek.hash: $(TPMDIR)/ek.pub
 
 # Register the virtual TPM in the attestation server logs with the
 # expected value for the kernel that will be booted
-$(TPMDIR)/.ekpub.registered: $(TPMDIR)/ek.pub initramfs/response/*
+$(TPMDIR)/.ekpub.registered: $(TPMDIR)/ek.pub initramfs/response/* initramfs/response/rootfs.enc.key
 	tar \
 		-zcf - \
 		-C initramfs/response \
@@ -471,6 +471,28 @@ $(TPMDIR)/.ekpub.registered: $(TPMDIR)/ek.pub initramfs/response/*
 		$(TPMDIR)/ek.pub \
 		'qemu-server'
 	@touch $@
+
+# Generate a device specific RSA key and create a TPM2 duplicate structure
+# so that only the destination device can use it with their TPM
+initramfs/response/wrapper.seed: $(TPMDIR)/ek.pub
+	openssl genrsa -out build/wrapper-priv.pem
+	openssl rsa -in build/wrapper-priv.pem -pubout -out build/wrapper-pub.pem
+	tpm2 duplicate \
+		-U $< \
+		-G rsa \
+		-k build/wrapper-priv.pem \
+		-u $(dir $@)wrapper.pub \
+		-r $(dir $@)wrapper.dpriv \
+		-s $(@)
+
+# encrypt the disk encryption key with the seed key so that only the destination
+# machine can decrypt it using a TPM duplicate key
+initramfs/response/rootfs.enc.key: initramfs/response/wrapper.seed
+	echo magicwords | openssl rsautl \
+		-encrypt \
+		-pubin \
+		-inkey build/wrapper-pub.pem \
+		-out $@
 
 # QEMU tries to boot from the DVD and HD before finally booting from the
 # network, so there are attempts to call different boot options and then

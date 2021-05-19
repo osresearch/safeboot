@@ -44,3 +44,4 @@ local.conf
 *.gz
 build
 linux-*
+initramfs/response/wrapper.*
