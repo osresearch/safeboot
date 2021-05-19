@@ -1,10 +1,6 @@
 @startuml
 
 note top of simpleAttest
-The test-case is implemented as a dependency graph in GNU make, where the
-nodes of the graph are "Makefile rules". The downward-facing arrows depict
-dependencies, so the test-case executes in the opposite order, bottom-up.
-
 For each rule/node;
 
 ""    target: dependencies...""
