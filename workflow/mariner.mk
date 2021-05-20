@@ -169,8 +169,23 @@ define mkout_init
 	$(eval $(call trace,end mkout_init))
 endef
 
+# As part of finalizing - we sweep the new makefile looking for targets that
+# should PHONY, and add a final .PHONY dependency on them. We regexp for
+# to-be-phony targets using; /^[a-zA-Z][a-zA-Z0-9_-]*: /
+# This means the target must;
+#  - start with a letter (eliminates paths, which all begin with '/'),
+#  - consist only of letters, numbers, hyphens, and underscores,
+#  - be followed immediately by a colon (eliminates multi-target dependencies),
+#  - has a space after the colon (eliminates assignments using ":=")
 define mkout_finish
 	$(eval $(call trace,start mkout_finish))
+	$(eval P := $(shell (cat "$(MKOUT)" | \
+		egrep "^[a-zA-Z][a-zA-Z0-9_-]*: " | \
+		sed -e "s/:.*$$//" | \
+		sort | uniq) 2> /dev/null || echo FAIL))
+	$(if $(filter $P,FAIL),$(error Failed to obtain PHONY targets))
+	$(eval $(call mkout_header,PHONY TARGETS))
+	$(eval $(call mkout_rule,.PHONY,$P))
 	$(eval $(call trace,Compare $(MKOUT) and $(MKOUT_TMP)))
 	$(if $(shell cmp "$(MKOUT)" "$(MKOUT_TMP)" > /dev/null 2>&1 && echo YES),
 		$(eval $(call trace,No change, don't modify $(MKOUT_TMP)))
@@ -187,9 +202,6 @@ endef
 
 # $1 is the target, $2 is the dependency, $3 is a list of variables, each of which
 # represents a distinct line of the recipe (mkout_rule will indent these).
-# Note, the rule will be marked as .PHONY if and only if it is not a
-# fully-qualified path. (And if multiple rules for the same target are
-# produced, we'll try to avoid re-declaring its PHONYness.)
 # uniquePrefix: mr
 define mkout_rule
 	$(eval $(call trace,start mkout_rule($1,$2,$3)))
@@ -201,13 +213,6 @@ define mkout_rule
 	$(foreach i,$(mr3),
 		$(eval $(call trace,-> $i=$($i)))
 		$(file >>$(MKOUT),	$($i)))
-	$(if $(filter /%,$(mr1)),,\
-		$(eval $(call trace,-> making it .PHONY too))
-		$(if $(MYPHONY_$(mr1)),\
-			$(eval $(call trace,-> but we've already marked it .PHONY, skip))\
-		,\
-			$(file >>$(MKOUT),.PHONY: $(mr1))\
-			$(eval MYPHONY_$(mr1) := 1)))
 	$(eval $(call trace,end mkout_rule($1,$2,$3)))
 endef
 
