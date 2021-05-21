@@ -19,6 +19,10 @@
 #         - installs a common, base-line set of system tools that should show up
 #           in all other container images.
 
+# Alias various utilities we use to simplify the workflow
+CP_IF_CMP=$(TOPDIR)/workflow/cp_if_cmp.sh
+SYNC_CERTS=$(TOPDIR)/workflow/sync_certs.sh
+
 # Start by assuming that all optional layers are disabled
 IMAGES += ibase-0import
 ibase-0import_TERMINATES := $(SAFEBOOT_WORKFLOW_BASE)
@@ -48,3 +52,5 @@ ibase-3add-cacerts_PATH := $(TOPDIR)/workflow/base/3add-cacerts
 ibase-4platform_EXTENDS := ibase-3add-cacerts
 $(shell $(SYNC_CERTS) $(SAFEBOOT_WORKFLOW_3ADD_CACERTS_PATH) $(TOPDIR)/workflow/base/3add-cacerts/CA-certs)
 endif
+
+$(eval $(call do_mariner))

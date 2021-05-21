@@ -16,4 +16,6 @@ iutil-uml_ARGS_DOCKER_RUN := \
 	--env=TARGETDIR="$(vuml_DEST)" \
 	$(CHOWNER_LINE)
 
+$(eval $(call do_mariner))
+
 endif
