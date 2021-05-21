@@ -204,8 +204,6 @@ define mkout_init
 	$(eval MKOUT := $(MKOUT).tmp)
 	$(eval $(call trace,MKOUT_TMP <- MKOUT==$(MKOUT_TMP)))
 	$(eval $(call trace,MKOUT <- $(MKOUT)))
-	$(file >$(MKOUT),# Auto-generated makefile rules)
-	$(file >>$(MKOUT),)
 	$(eval $(call trace,end mkout_init))
 endef
 
@@ -220,13 +218,14 @@ endef
 # Also, prepare MARINER_MKOUT_SUFFIX for the next mkout_init.
 define mkout_finish
 	$(eval $(call trace,start mkout_finish))
-	$(eval P := $(shell (cat "$(MKOUT)" | \
+	$(eval P := $(strip $(shell (cat "$(MKOUT)" | \
 		egrep "^[a-zA-Z][a-zA-Z0-9_-]*: " | \
 		sed -e "s/:.*$$//" | \
-		sort | uniq) 2> /dev/null || echo FAIL))
+		sort | uniq) 2> /dev/null || echo FAIL)))
 	$(if $(filter $P,FAIL),$(error Failed to obtain PHONY targets))
-	$(eval $(call mkout_header,PHONY TARGETS))
-	$(eval $(call mkout_rule,.PHONY,$P))
+	$(if $P,
+		$(eval $(call mkout_header,PHONY TARGETS))
+		$(eval $(call mkout_rule,.PHONY,$P)))
 	$(eval $(call trace,Compare $(MKOUT) and $(MKOUT_TMP)))
 	$(if $(shell cmp "$(MKOUT)" "$(MKOUT_TMP)" > /dev/null 2>&1 && echo YES),
 		$(eval $(call trace,No change, don't modify $(MKOUT_TMP)))
