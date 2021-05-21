@@ -68,6 +68,10 @@ $(eval DEFAULT_IMAGE_DNAME_MAP ?= mariner_default_image_dname_map)
 # function for later expansion.
 trace = $(file >>$(TRACEFILE),$(strip $1))
 
+###########################
+# Mariner main processing #
+###########################
+
 define do_mariner_prep
 	$(if $(shell stat $(DEFAULT_CRUD) > /dev/null 2>&1 && echo YES),,
 		$(shell mkdir $(DEFAULT_CRUD)))
@@ -80,6 +84,8 @@ define do_mariner_prep
 	,
 		$(eval trace := ))
 	$(eval $(call trace,start do_mariner_prep))
+	$(eval MARINER_MKOUT_ORIGIN := $(MKOUT))
+	$(eval MARINER_MKOUT_SUFFIX :=)
 	$(eval $(call mkout_init))
 	$(if $(strip $V),$(eval Q:=),$(eval Q:=@))
 	$(eval $(call do_sanity_checks))
@@ -87,13 +93,24 @@ define do_mariner_prep
 	$(eval $(call trace,end do_mariner_prep))
 endef
 
-###########################
-# Mariner main processing #
-###########################
-
-define do_mariner
+# We use MARINER_IMAGES, MARINER_VOLUMES, MARINER_COMMANDS, MARINER_NETWORKS to
+# provide a cumulative record over multiple calls to do_mariner. We also use
+# MARINER_MKOUT_ORIGIN and MARINER_MKOUT_SUFFIX, to allow building multiple
+# output Makefiles using the initial MKOUT value as the common prefix. While
+# do_mariner runs, <x> contains the new definitions and MARINER_<x> contains
+# all the previous definitions, and COMBINED_<x> contains the concatenation of
+# both. Code has to be careful about which of the two it should work with.
+# COMBINED_<x> is not updated if <x> gets modified. However at the conclusion
+# of processing, MARINER_<x> has <x> added to it (including any additions
+# during processing), <x> is reset to empty, and COMBINED_<x> is ignored (it
+# gets reinitialized on the next call). Rinse and repeat.
+define do_mariner_base
 	$(if $(MARINER_PREP_RUN),,$(error do_mariner_prep must be called before do_mariner))
-	$(eval $(call trace,start do_mariner()))
+	$(eval $(call trace,start do_mariner_base()))
+	$(eval COMBINED_IMAGES := $(MARINER_IMAGES) $(IMAGES))
+	$(eval COMBINED_VOLUMES := $(MARINER_VOLUMES) $(VOLUMES))
+	$(eval COMBINED_COMMANDS := $(MARINER_COMMANDS) $(COMMANDS))
+	$(eval COMBINED_NETWORKS := $(MARINER_NETWORKS) $(NETWORKS))
 	$(eval $(call process_networks))
 	$(eval $(call process_volumes))
 	$(eval $(call process_commands))
@@ -106,8 +123,28 @@ define do_mariner
 	$(eval $(call gen_rules_images))
 	$(eval $(call gen_rules_image_commands))
 	$(eval $(call mkout_mdirs))
-	$(eval $(call trace,end do_mariner()))
 	$(eval $(call mkout_finish))
+	$(eval MARINER_IMAGES += $(IMAGES))
+	$(eval MARINER_VOLUMES += $(VOLUMES))
+	$(eval MARINER_COMMANDS += $(COMMANDS))
+	$(eval MARINER_NETWORKS += $(NETWORKS))
+	$(eval IMAGES :=)
+	$(eval VOLUMES :=)
+	$(eval COMMANDS :=)
+	$(eval NETWORKS :=)
+	$(eval MDIRS :=)
+	$(eval $(call trace,end do_mariner_base()))
+endef
+define do_mariner
+	$(eval $(call trace,start do_mariner()))
+	$(eval $(call do_mariner_base))
+	$(eval $(call mkout_init))
+	$(eval $(call trace,end do_mariner()))
+endef
+define do_mariner_final
+	$(eval $(call trace,start do_mariner()))
+	$(eval $(call do_mariner_base))
+	$(eval $(call trace,end do_mariner()))
 endef
 
 ########################
@@ -160,6 +197,9 @@ endef
 # into place, _if and only if an exact matching file doesn't already exist_!
 define mkout_init
 	$(eval $(call trace,start mkout_init))
+	$(eval MKOUT := $(MARINER_MKOUT_ORIGIN))
+	$(if $(MARINER_MKOUT_SUFFIX),
+		$(eval MKOUT := $(MKOUT).$(MARINER_MKOUT_SUFFIX)))
 	$(eval MKOUT_TMP := $(MKOUT))
 	$(eval MKOUT := $(MKOUT).tmp)
 	$(eval $(call trace,MKOUT_TMP <- MKOUT==$(MKOUT_TMP)))
@@ -177,6 +217,7 @@ endef
 #  - consist only of letters, numbers, hyphens, and underscores,
 #  - be followed immediately by a colon (eliminates multi-target dependencies),
 #  - has a space after the colon (eliminates assignments using ":=")
+# Also, prepare MARINER_MKOUT_SUFFIX for the next mkout_init.
 define mkout_finish
 	$(eval $(call trace,start mkout_finish))
 	$(eval P := $(shell (cat "$(MKOUT)" | \
@@ -197,6 +238,10 @@ define mkout_finish
 	$(eval $(call trace,MKOUT <- MKOUT_TMP==$(MKOUT)))
 	$(eval $(call trace,sourcing $(MKOUT)))
 	include $(MKOUT)
+	$(if $(MARINER_MKOUT_SUFFIX),
+		$(eval MARINER_MKOUT_SUFFIX := $(strip
+			$(shell echo $$(($(MARINER_MKOUT_SUFFIX) + 1))))),
+		$(eval MARINER_MKOUT_SUFFIX := 1))
 	$(eval $(call trace,end mkout_finish))
 endef
 
@@ -258,11 +303,13 @@ endef
 
 define mkout_mdirs
 	$(eval $(call trace,start mkout_mdirs))
-	$(eval $(call mkout_long_var,MDIRS))
-	$(file >>$(MKOUT),)
-	$(file >>$(MKOUT),$$(MDIRS):)
-	$(file >>$(MKOUT),	$$Qecho "Creating empty directory '$$@'")
-	$(file >>$(MKOUT),	$$Qmkdir -p $$@ && chmod 00755 $$@)
+	$(if $(strip $(MDIRS)),
+		$(eval $(call mkout_header,MDIR AUTOCREATION))
+		$(eval $(call mkout_long_var,MDIRS))
+		$(file >>$(MKOUT),)
+		$(file >>$(MKOUT),$$(MDIRS):)
+		$(file >>$(MKOUT),	$$Qecho "Creating empty directory '$$@'")
+		$(file >>$(MKOUT),	$$Qmkdir -p $$@ && chmod 00755 $$@))
 	$(eval $(call trace,end mkout_mdirs))
 endef
 
@@ -497,7 +544,7 @@ endef
 
 define process_networks
 	$(eval $(call trace,start process_networks()))
-	$(eval $(call verify_no_duplicates,NETWORKS))
+	$(eval $(call verify_no_duplicates,COMBINED_NETWORKS))
 	$(eval $(call trace,about to loop over NETWORKS=$(NETWORKS)))
 	$(foreach i,$(NETWORKS),$(eval $(call process_network,$i)))
 	$(eval $(call trace,end process_networks()))
@@ -550,7 +597,7 @@ endef
 
 define process_volumes
 	$(eval $(call trace,start process_volumes()))
-	$(eval $(call verify_no_duplicates,VOLUMES))
+	$(eval $(call verify_no_duplicates,COMBINED_VOLUMES))
 	$(eval $(call trace,about to loop over VOLUMES=$(VOLUMES)))
 	$(foreach i,$(VOLUMES),$(eval $(call process_volume,$i)))
 	$(eval $(call trace,end process_volumes()))
@@ -614,14 +661,15 @@ endef
 
 define process_commands
 	$(eval $(call trace,start process_commands()))
-	$(eval $(call verify_no_duplicates,COMMANDS))
+	$(eval $(call verify_no_duplicates,COMBINED_COMMANDS))
 	$(if $(filter $(COMMANDS),create),
 		$(error "Bad: attempt to user-define 'create' COMMAND"))
 	$(if $(filter $(COMMANDS),delete),
 		$(error "Bad: attempt to user-define 'delete' COMMAND"))
-	$(if $(filter-out $(COMMANDS),shell),
+	$(if $(filter-out $(COMBINED_COMMANDS),shell),
 		$(eval $(call trace,adding _shell generic))
 		$(eval COMMANDS += shell)
+		$(eval COMBINED_COMMANDS += shell)
 		$(eval $(call trace,-> COMMANDS=$(COMMANDS)))
 		$(eval shell_COMMAND ?= $(DEFAULT_SHELL))
 		$(eval shell_DESCRIPTION ?= start $(shell_COMMAND) in a container)
@@ -663,7 +711,7 @@ endef
 
 define process_images
 	$(eval $(call trace,start process_images()))
-	$(eval $(call verify_no_duplicates,IMAGES))
+	$(eval $(call verify_no_duplicates,COMBINED_IMAGES))
 	$(eval $(call trace,about to loop over IMAGES=$(IMAGES)))
 	$(foreach i,$(IMAGES),$(eval $(call process_image,$i,)))
 	$(eval $(call trace,end process_images()))
@@ -723,14 +771,14 @@ define process_image
 	$(eval $(call trace_image, $($(pip)v)))
 	# Exactly one of <vol>_TERMINATES or <vol>_EXTENDS should be non-empty
 	$(eval $(call trace,examine _TERMINATES and _EXTENDS))
-	$(eval $($(pip)v)_tmp := $($($(pip)v)_TERMINATES) $($($(pip)v)_EXTENDS))
-	$(eval $(call trace,set $($(pip)v)_tmp to _TERMINATES + _EXTENDS))
-	$(eval $(call verify_list_of_one,$($(pip)v)_tmp))
+	$(eval $($(pip)v)_EXorTERM := $($($(pip)v)_TERMINATES) $($($(pip)v)_EXTENDS))
+	$(eval $(call trace,set $($(pip)v)_EXorTERM to _TERMINATES + _EXTENDS))
+	$(eval $(call verify_list_of_one,$($(pip)v)_EXorTERM))
 	# Now, if _EXTENDS, we want to recurse into the image we depend on, so
 	# it can sort out its attributes, rinse and repeat.
 	$(if $($($(pip)v)_EXTENDS),
 		$(eval $(call trace,verify $($(pip)v)_EXTENDS is known))
-		$(eval $(call verify_in_list,$($(pip)v)_EXTENDS,IMAGES))
+		$(eval $(call verify_in_list,$($(pip)v)_EXTENDS,COMBINED_IMAGES))
 		$(eval $(call trace,grow _EXTENDED_BY, detect circular deps))
 		$(eval $(call mark_extended_by,$($(pip)v)))
 		$(eval $(call trace,recurse into $($(pip)v)_EXTENDS))
@@ -842,11 +890,11 @@ define process_image
 	$(eval $($(pip)v)_DIN := $($($(pip)v)_DOCKERFILE))
 	$(eval $($(pip)v)_TOUCHFILE := $(DEFAULT_CRUD)/touch_$($(pip)v))
 	$(eval $(call trace,check _NETWORKS for legit values))
-	$(eval $(call verify_all_in_list,$($(pip)v)_NETWORKS,NETWORKS))
+	$(eval $(call verify_all_in_list,$($(pip)v)_NETWORKS,COMBINED_NETWORKS))
 	$(eval $(call trace,check _VOLUMES for legit values))
-	$(eval $(call verify_all_in_list,$($(pip)v)_VOLUMES,VOLUMES))
+	$(eval $(call verify_all_in_list,$($(pip)v)_VOLUMES,COMBINED_VOLUMES))
 	$(eval $(call trace,check _COMMANDS for legit values))
-	$(eval $(call verify_all_in_list,$($(pip)v)_COMMANDS,COMMANDS))
+	$(eval $(call verify_all_in_list,$($(pip)v)_COMMANDS,COMBINED_COMMANDS))
 	$(eval $(call trace_image, $($(pip)v)))
 	$(eval $(call trace,end process_image($1,$2)))
 endef
@@ -1082,7 +1130,7 @@ endef
 # delete_NETWORKS :depends: on $(foreach NETWORKS)_delete
 define gen_rules_networks
 	$(eval $(call trace,start gen_rules_networks()))
-	$(eval $(call verify_no_duplicates,NETWORKS))
+	$(eval $(call verify_no_duplicates,COMBINED_NETWORKS))
 	$(eval $(call mkout_header,NETWORKS))
 	$(eval $(call mkout_comment,Aggregate rules for NETWORKS))
 	$(eval $(call mkout_long_var,NETWORKS))
@@ -1149,7 +1197,7 @@ endef
 # delete_VOLUMES :depends: on $(foreach VOLUMES)_delete
 define gen_rules_volumes
 	$(eval $(call trace,start gen_rules_volumes()))
-	$(eval $(call verify_no_duplicates,VOLUMES))
+	$(eval $(call verify_no_duplicates,COMBINED_VOLUMES))
 	$(eval $(call mkout_header,VOLUMES))
 	$(eval $(call mkout_comment,Aggregate rules for VOLUMES))
 	$(eval $(call mkout_long_var,VOLUMES))
@@ -1216,7 +1264,7 @@ endef
 # delete_IMAGES :depends: on $(foreach IMAGES)_delete
 define gen_rules_images
 	$(eval $(call trace,start gen_rules_images()))
-	$(eval $(call verify_no_duplicates,IMAGES))
+	$(eval $(call verify_no_duplicates,COMBINED_IMAGES))
 	$(eval $(call mkout_header,IMAGES))
 	$(eval $(call mkout_comment,Aggregate rules for IMAGES))
 	$(eval $(call mkout_long_var,IMAGES))
