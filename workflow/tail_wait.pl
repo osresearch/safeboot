@@ -2,7 +2,9 @@
 
 die("usage") if (@ARGV != 2);
 ($file, $expr) = @ARGV;
-die("open: $file") if (!open($fh, "<", $file));
+while (!open($fh, "<", $file)) {
+	sleep(1);
+}
 while (seek($fh, 0, 1)) {
 	while (defined($line = <$fh>)) {
 		exit(0) if ($line =~ $expr);
