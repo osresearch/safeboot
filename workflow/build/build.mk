@@ -13,37 +13,24 @@ SUBMODULES := \
 # VOLUMES #
 ###########
 
-# vinstall-client and vinstall-server are managed volumes to be mounted in the
-# relevant containers at /install. (As implied by the common mount point, a
-# container can only mount one of them.) NB: here, "managed" means it is
-# created/destroyed by the workflow system. This mount is the prefix for
-# installing libs and tools into. When building other, dependent libs and
-# tools, or when simply being used by use-cases, this mount location also feeds
-# into settings for PATH, LD_LIBRARY_PATH, PKG_CONFIG_PATH, etc.
-VOLUMES += vinstall-client vinstall-server
-vinstall-client_MANAGED := true
-vinstall-server_MANAGED := true
-vinstall-client_SOURCE := $(DEFAULT_CRUD)/install-client
-vinstall-server_SOURCE := $(DEFAULT_CRUD)/install-server
-vinstall-client_DEST := /usr-install
-vinstall-server_DEST := /usr-install
+# For the container that is building (or hacking/debugging) submodule "foo",
+# the source will be wrapped by an unmanaged volume called "vsfoo" and mounted
+# at /foo. A corresponding managed volume called "vifoo" that mounts at /i/foo
+# exists as an installation path for the same submodule. ("v"=="volume",
+# "s"=="source", "i"=="install".)
 
-# Define unmanaged volumes for bind-mounting the submodules into their
-# respective containers. Here, "unmanaged" means that the workflow system
-# doesn't create or destroy these volumes, they're simply representations of
-# the submodule directories to facilitate mounting them into the relevant
-# containers. E.g the submodule "./tpm2-tools" is represented by the VOLUME
-# "vtpm2-tools", which, if added to the _VOLUMES attribute of an IMAGE, causes
-# it to be mounted in containers of that image type at /tpm2-tools (i.e. at the
-# top level of the container's VFS).
 define gen_volume_submodule
 	$(eval sname := $(strip $1))
-	$(eval vname := v$(sname))
-	$(eval VOLUMES += $(vname))
-	$(eval $(vname)_MANAGED := false)
-	$(eval $(vname)_SOURCE := $(TOPDIR)/$(sname))
-	$(eval $(vname)_DEST := /$(sname))
+	$(eval vsname := vs$(sname))
+	$(eval viname := vi$(sname))
+	$(eval VOLUMES += $(vsname) $(viname))
+	$(eval $(vsname)_MANAGED := false)
+	$(eval $(vsname)_SOURCE := $(TOPDIR)/$(sname))
+	$(eval $(vsname)_DEST := /$(sname))
+	$(eval $(viname)_MANAGED := true)
+	$(eval $(viname)_DEST := /i/$(sname))
 endef
+
 $(foreach s,$(SUBMODULES),$(eval $(call gen_volume_submodule,$s)))
 
 ############
@@ -83,7 +70,8 @@ ibuild-0common_COMMANDS := shell $(MYVERBS)
 #   $1 = name of submodule
 #
 # Control is achieved by setting these before calling this API;
-#   $1_INSTALL_CHOICE = "client" (default) or "server"
+#   $1_SUBMODULE_DEPS = submodules whose install volumes are needed (headers,
+#                       libs, etc)
 #   $1_CONFIGURE_PROFILE = "bootstrap" or something else recognised by
 #                          my_configure.sh
 #   $1_CONFIGURE_ARGS = anything extra to pass to the
@@ -109,23 +97,21 @@ ibuild-0common_COMMANDS := shell $(MYVERBS)
 define gen_image_submodule
 	$(eval sname := $(strip $1))
 	$(eval iname := ibuild-$(sname))
-	$(eval vname := v$(sname))
-	$(eval $(sname)_INSTALL_CHOICE ?= client)
-	$(eval vinstall := vinstall-$(strip $($(sname)_INSTALL_CHOICE)))
+	$(eval vsname := vs$(sname))
+	$(eval viname := vi$(sname))
 	$(eval IMAGES += $(iname))
 	$(eval $(iname)_EXTENDS := ibuild-0common)
 	$(eval $(iname)_NOPATH := true)
 	$(eval $(iname)_DOCKERFILE := /dev/null)
-	$(eval $(iname)_VOLUMES := $(vname) $(vinstall))
+	$(eval $(iname)_VOLUMES := $(vsname) $(viname) $(foreach i,$($(sname)_SUBMODULE_DEPS),vi$i))
 	$(eval $(sname)_CONFIGURE_PROFILE ?= fail-need-to-define-profile)
 	$(eval $(iname)_ARGS_DOCKER_RUN := \
 		--env SELFNAME="$(sname)" \
-		--env SOURCEDIR="$($(vname)_DEST)" \
-		--env PREFIX="$($(vinstall)_DEST)" \
+		--env SOURCEDIR="$($(vsname)_DEST)" \
+		--env PREFIX="$($(viname)_DEST)" \
+		--env DEP_PREFIX="$(foreach i,$($(sname)_SUBMODULE_DEPS),$(vi$i_DEST))" \
 		$(CHOWNER_LINE) \
-		--env PKG_CONFIG_PATH="$($(vinstall)_DEST)/lib/pkgconfig" \
-		--env EXTRA_PATH="$($(vinstall)_DEST)/bin" \
-		--env TARGETDIR="$($(vname)_DEST)" \
+		--env TARGETDIR="$($(vsname)_DEST)" \
 		--env CONFIGURE_PROFILE="$(strip $($(sname)_CONFIGURE_PROFILE))" \
 		--env CONFIGURE_ARGS="$(strip $($(sname)_CONFIGURE_ARGS))" \
 		--env CONFIGURE_ENVS="$(strip $($(sname)_CONFIGURE_ENVS))" \
@@ -141,47 +127,31 @@ endef
 # Define per-submodule, non-default settings before calling gen_image_submodule
 libtpms_CONFIGURE_PROFILE := autogen
 libtpms_CONFIGURE_ARGS := --with-openssl --with-tpm2
+swtpm_SUBMODULE_DEPS := libtpms
 swtpm_CONFIGURE_PROFILE := autogen
-swtpm_CONFIGURE_ENVS := LIBTPMS_LIBS LIBTPMS_CFLAGS
-swtpm_CONFIGURE_ENVS_LIBTPMS_LIBS := -L$(vinstall-client_DEST)/lib -ltpms
-swtpm_CONFIGURE_ENVS_LIBTPMS_CFLAGS := -I$(vinstall-client_DEST)/include
+swtpm_CONFIGURE_ENVS := LIBTPMS_LIBS LIBTPMS_CFLAGS INSTALL_EXTRA_TARGETS UNINSTALL_EXTRA_TARGETS
+swtpm_CONFIGURE_ENVS_LIBTPMS_LIBS := -L$(vilibtpms_DEST)/lib -ltpms
+swtpm_CONFIGURE_ENVS_LIBTPMS_CFLAGS := -I$(vilibtpms_DEST)/include
+swtpm_CONFIGURE_ENVS_INSTALL_EXTRA_TARGETS := python-install
+swtpm_CONFIGURE_ENVS_UNINSTALL_EXTRA_TARGETS := python-uninstall
 tpm2-tss_CONFIGURE_PROFILE := bootstrap
 tpm2-tss_CONFIGURE_ARGS := --disable-doxygen-doc
+tpm2-tools_SUBMODULE_DEPS := tpm2-tss
 tpm2-tools_CONFIGURE_PROFILE := bootstrap
+tpm2-totp_SUBMODULE_DEPS := tpm2-tss
 tpm2-totp_CONFIGURE_PROFILE := bootstrap
 sbsigntools_CONFIGURE_PROFILE := autogen-configure
 sbsigntools_CONFIGURE_ENVS := DISABLE_COMPILE_CHECK
 sbsigntools_CONFIGURE_ENVS_DISABLE_COMPILE_CHECK := 1
+efitools_SUBMODULE_DEPS := sbsigntools
 efitools_CONFIGURE_ENVS := DESTDIR
 efitools_CONFIGURE_PROFILE := none
-efitools_CONFIGURE_ENVS_DESTDIR := $(vinstall-client_DEST)
+efitools_CONFIGURE_ENVS_DESTDIR := $(viefitools_DEST)
 #efitools_CONFIGURE_ENVS := DISABLE_COMPILE_CHECK
 #efitools_CONFIGURE_ENVS_DISABLE_COMPILE_CHECK := 1
 
 # Now define container images for building submodules, using the above settings
 $(foreach s,$(SUBMODULES),$(eval $(call gen_image_submodule,$s)))
-
-# Generate two more images, to allow "chown" on the two install directories (the
-# per-submodule images direct their chown verb to their submodule directories).
-IMAGES += ichown-client ichown-server
-ichown-client_EXTENDS := ibuild-0common
-ichown-server_EXTENDS := ibuild-0common
-ichown-client_NOPATH := true
-ichown-server_NOPATH := true
-ichown-client_DOCKERFILE := /dev/null
-ichown-server_DOCKERFILE := /dev/null
-ichown-client_VOLUMES := vinstall-client
-ichown-server_VOLUMES := vinstall-server
-ichown-client_COMMANDS := shell chown
-ichown-server_COMMANDS := shell chown
-ichown-client_ARGS_DOCKER_RUN := $(CHOWNER_LINE) \
-		--env TARGETDIR="$(vinstall-client_DEST)" \
-		--env SOURCEDIR=/
-ichown-server_ARGS_DOCKER_RUN := $(CHOWNER_LINE) \
-		--env TARGETDIR="$(vinstall-server_DEST)" \
-		--env SOURCEDIR=/
-ichown-client_chown_COMMAND := /my_chown.sh
-ichown-server_chown_COMMAND := /my_chown.sh
 
 #############################
 # User-visible make targets #
@@ -240,7 +210,7 @@ $(eval $(call mkout_comment_nogap,("uninstall" only applies to modules that have
 $(eval $(call mkout_rule,configure_all,$(foreach s,$(SUBMODULES),configure_$s),))
 $(eval $(call mkout_rule,compile_all,$(foreach s,$(SUBMODULES),compile_$s),))
 $(eval $(call mkout_rule,install_all,$(foreach s,$(SUBMODULES),install_$s),))
-$(eval $(call mkout_rule,reset_all,$(foreach s,$(SUBMODULES) client server,reset_$s)))
+$(eval $(call mkout_rule,reset_all,$(foreach s,$(SUBMODULES),reset_$s)))
 $(eval $(call mkout_rule,clean_all,$(foreach s,$(SUBMODULES),\
 	$(if $(shell stat $(ibuild-$s_configure_TOUCHFILE) > /dev/null 2>&1 && echo YES),clean_$s,))))
 $(eval $(call mkout_rule,uninstall_all,$(foreach s,$(SUBMODULES),\
@@ -259,21 +229,12 @@ $(eval $(call mkout_rule,uninstall_all,$(foreach s,$(SUBMODULES),\
 $(eval $(call mkout_comment,human interface - special "reset" 2-tuples))
 $(foreach s,$(SUBMODULES),\
 	$(eval TMP1 := $$Qecho "Running 'git clean -f -d -x' for '$s'")\
-	$(eval TMP2 := $$Qcd $(v$s_SOURCE) && git clean -f -d -x)\
+	$(eval TMP2 := $$Qcd $(vs$s_SOURCE) && git clean -f -d -x)\
 	$(eval TMP3 := $$Qrm -f $(ibuild-$s_configure_TOUCHFILE))\
 	$(eval TMP4 := $$Qrm -f $(ibuild-$s_compile_TOUCHFILE))\
 	$(eval $(call mkout_rule,$(ibuild-$s_reset_TOUCHFILE),\
 		$(ibuild-$s_chown_TOUCHFILE),\
 		TMP1 TMP2 TMP3 TMP4)))
-
-# D.b. reset_<client|server>. As with D.a., the "reset" target is made
-# dependent on the corresponding "chown" target.
-$(foreach s,client server,\
-	$(eval vinstall := vinstall-$s)\
-	$(eval TMP1 := $$Qecho "Removing contents of '$(vinstall)'")\
-	$(if $($(vinstall)_SOURCE),,$(error aborting to avoid 'rm -rf /'))\
-	$(eval TMP2 := $$Qrm -rf $($(vinstall)_SOURCE)/*)\
-	$(eval $(call mkout_rule,reset_$s,ichown-$s_chown,TMP1 TMP2)))
 
 ################
 # Dependencies #
@@ -318,9 +279,8 @@ $(foreach s,$(SUBMODULES),\
 # against a usable libtpms, which means that you can't "configure-swtpm" unless
 # you have already run "install-libtpms".
 $(eval $(call mkout_comment,verb dependencies: inter-module))
-$(eval $(call safeboot_module_verb_dep,swtpm,configure,libtpms,install))
-$(eval $(call safeboot_module_verb_dep,tpm2-tools,configure,tpm2-tss,install))
-$(eval $(call safeboot_module_verb_dep,tpm2-totp,configure,tpm2-tss,install))
-$(eval $(call safeboot_module_verb_dep,efitools,configure,sbsigntools,install))
+$(foreach s,$(SUBMODULES),\
+	$(foreach d,$($s_SUBMODULE_DEPS),\
+		$(eval $(call safeboot_module_verb_dep,$s,configure,$d,install))))
 
 $(eval $(call do_mariner))

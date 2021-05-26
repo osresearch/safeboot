@@ -22,28 +22,32 @@ IMAGES += simple-attest-client
 simple-attest-client_EXTENDS := $(ibase-RESULT)
 simple-attest-client_PATH := $(TOPDIR)/workflow/simple-attest-client
 simple-attest-client_COMMANDS := shell run
-simple-attest-client_VOLUMES := vsbin vfunctionssh vsafebootconf vtailwait vinstall-client
+simple-attest-client_SUBMODULES := libtpms swtpm tpm2-tss tpm2-tools
+simple-attest-client_VOLUMES := vsbin vfunctionssh vsafebootconf vtailwait \
+	$(foreach i,$(simple-attest-client_SUBMODULES),vi$i)
 simple-attest-client_NETWORKS := n-attest
 simple-attest-client_run_COMMAND := /run_client.sh
 simple-attest-client_run_PROFILES := detach_join
 simple-attest-client_run_MSGBUS := $(MSGBUS)
 simple-attest-client_run_HIDE := 1
 simple-attest-client_ARGS_DOCKER_BUILD := \
-	--build-arg PATH_INSTALL="$(vinstall-client_DEST)" \
+	--build-arg SUBMODULES="$(simple-attest-client_SUBMODULES)" \
 	--build-arg DIR="/safeboot"
 
 IMAGES += simple-attest-server
 simple-attest-server_EXTENDS := $(ibase-RESULT)
 simple-attest-server_PATH := $(TOPDIR)/workflow/simple-attest-server
+simple-attest-server_SUBMODULES :=
 simple-attest-server_COMMANDS := shell run
-simple-attest-server_VOLUMES := vsbin vfunctionssh vsafebootconf vtailwait vinstall-server
+simple-attest-server_VOLUMES := vsbin vfunctionssh vsafebootconf vtailwait \
+	$(foreach i,$(simple-attest-server_SUBMODULES),vi$i)
 simple-attest-server_NETWORKS := n-attest
 simple-attest-server_run_COMMAND := /run_server.sh
 simple-attest-server_run_PROFILES := detach_join
 simple-attest-server_run_MSGBUS := $(MSGBUS)
 #simple-attest-server_run_HIDE := 1
 simple-attest-server_ARGS_DOCKER_BUILD := \
-	--build-arg PATH_INSTALL="$(vinstall-server_DEST)" \
+	--build-arg SUBMODULES="$(simple-attest-server_SUBMODULES)" \
 	--build-arg DIR="/safeboot"
 # Give the server a secrets.yaml as well as access to the client's msgbus
 simple-attest-server_ARGS_DOCKER_RUN := \

@@ -2,4 +2,4 @@
 
 source /my_common.sh
 
-make uninstall
+make uninstall $UNINSTALL_EXTRA_TARGETS
