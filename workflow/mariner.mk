@@ -153,15 +153,15 @@ endef
 
 define mariner_default_volume_source_map
 	$(eval $(call trace,start mariner_default_source_map($1)))
-	$(eval $(strip $1)_SOURCE := $(TOPDIR)/vol_$(strip $1))
-	$(eval $(call trace,set $(strip $1)_SOURCE := $(TOPDIR)/vol_$(strip $1)))
+	$(eval $(strip $1)_SOURCE := $(DEFAULT_CRUD)/vol_$(strip $1))
+	$(eval $(call trace,set $(strip $1)_SOURCE := $($(strip $1)_SOURCE)))
 	$(eval $(call trace,end mariner_default_source_map($1)))
 endef
 
 define mariner_default_volume_dest_map
 	$(eval $(call trace,start mariner_default_dest_map($1)))
 	$(eval $(strip $1)_DEST := /$(strip $1))
-	$(eval $(call trace,set $(strip $1)_DEST := $(TOPDIR)/vol_$(strip $1)))
+	$(eval $(call trace,set $(strip $1)_DEST := $($(strip $1)_DEST)))
 	$(eval $(call trace,end mariner_default_dest_map($1)))
 endef
 
