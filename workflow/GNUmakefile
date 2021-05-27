@@ -2,11 +2,9 @@
 include workflow/mariner.mk
 
 # Override global defaults;
-# - Set tracing to always output (overwrite) the same trace file
 # - Make docker objects use a "safeboot_" prefix.
 # - Set the default map so that directory paths for docker contexts are
 #   expected in the workflow subdirectory.
-TRACEFILE := $(DEFAULT_CRUD)/TRACE.unique
 DSPACE := safeboot
 $(eval $(call do_mariner_prep))
 
