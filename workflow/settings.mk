@@ -7,7 +7,7 @@
 #   "Docker semantics" apply here (in terms of whether it is pulling an image
 #   or a Dockerfile, whether it pulls a named image from a default repository
 #   or one that is specified explicitly, etc).
-SAFEBOOT_WORKFLOW_BASE?=debian:buster-slim
+SAFEBOOT_WORKFLOW_BASE?=debian:bullseye-slim
 #SAFEBOOT_WORKFLOW_BASE?=internal.dockerhub.mycompany.com/library/debian:buster-slim
 
 # If defined, the ibase-1apt-source layer will be injected, allowing apt to use
