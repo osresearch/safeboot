@@ -86,10 +86,8 @@ ibuild-0common_COMMANDS := shell $(MYVERBS)
 #
 # This also sets up <module>_<verb>_TOUCHFILE for each 2-tuple, pointing to a
 # path in the crud directory. These touchfiles are updated whenever the
-# corresponding verbs complete successfully. The normal 2-tuple targets are
-# masked out ("hidden") in our case, because we construct friendly targets
-# further down, using the touchfiles. Note, "reset" isn't in MYVERBS and so
-# isn't in the _COMMANDS either, because it is purely a host-side operation
+# corresponding verbs complete successfully. Note, "reset" isn't in MYVERBS and
+# so isn't in the _COMMANDS either, because it is purely a host-side operation
 # rather than a method of the container images. That said, we need to add a
 # TOUCHFILE attribute for every "<module>_reset" 2-tuple, so that we can
 # generate dependencies between pairs of <module>_<verb> 2-tuples later on
@@ -118,7 +116,6 @@ define gen_image_submodule
 		$(foreach e,$($(sname)_CONFIGURE_ENVS),--env $e="$($(sname)_CONFIGURE_ENVS_$e)"))
 	$(eval $(iname)_COMMANDS := shell $(MYVERBS))
 	$(foreach v,$(MYVERBS),\
-		$(eval $(iname)_$v_HIDE := 1)
 		$(eval $(iname)_$v_TOUCHFILE = $(DEFAULT_CRUD)/safeboot-ic2-$(iname)_$v)
 		$(eval $(iname)_$v_COMMAND := /my_$v.sh))
 	$(eval $(iname)_reset_TOUCHFILE = $(DEFAULT_CRUD)/safeboot-ic2-$(iname)_reset)

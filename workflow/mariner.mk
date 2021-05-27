@@ -1007,10 +1007,6 @@ endef
 # - use a different gen function to produce rules, as we have distinct "launch"
 #   and "wait" rules to create. (No need to do this for "detach_nojoin", which
 #   is a fire-and-forget semantic.)
-# - if $(command)_detach_join_HIDE is set (non-empty), generate the launch/wait
-#   rules in terms of the underlying touchfiles but do _not_ generate the
-#   visible "_launch" and "_wait" dependency targets. See the comments for the
-#   gen_rule_image_command_profile_join function below.
 #
 # uniquePrefix: gric
 define gen_rules_image_command
@@ -1039,12 +1035,10 @@ define gen_rules_image_command
 				$($(grici)_$i_$(gricc)_OPTIONS)))))
 	$(eval $(call mkout_long_var,$(gricic)_MOUNT_ARGS))
 	$(foreach i,$($(gricic)_PROFILES),
-		$(eval h := $(strip $($(gricic)_HIDE)))
 		$(if $(filter detach_join,$i),
-			$(eval h ?= $(strip $($(gricc)_detach_join_HIDE)))
-			$(eval $(call gen_rule_image_command_profile_join,$(gricic),$i,$h))
+			$(eval $(call gen_rule_image_command_profile_join,$(gricic),$i))
 		,
-			$(eval $(call gen_rule_image_command_profile,$(gricic),$i,$(gricf),$h))
+			$(eval $(call gen_rule_image_command_profile,$(gricic),$i,$(gricf)))
 		))
 endef
 
@@ -1053,7 +1047,6 @@ define gen_rule_image_command_profile
 	$(eval gricp2 := $(strip $1))
 	$(eval gricpP := $(strip $2))
 	$(eval gricpF := $(strip $3))
-	$(eval gricpH := $(strip $4))
 	$(eval gricpC := $(strip $($(gricp2)_COMMAND)))
 	$(eval gricpM := $(strip $($(gricp2)_MSGBUS)))
 	$(eval gricpA := $(strip $($(gricp2)_ARGS_DOCKER_RUN)))
@@ -1081,10 +1074,9 @@ $$Qecho "Launching a '$(gricpBI)' $(gricpP) container running command ('$(gricpB
 	$(eval TMPa := $(gricpC))
 	$(eval $(call mkout_rule,$($(gricp2)_TOUCHFILE),$$($(gricp2)_DEPS),
 		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8 TMP9 TMPa))
-	$(if $(gricpH),,
-		$(eval TMPTGT := $(strip $(if $(and $(filter $(gricpP),$(gricpF)),
-			$(filter $(gricpF),$(gricpP))),,_$(gricpP))))
-		$(eval $(call mkout_rule,$(gricp2)$(TMPTGT),$($(gricp2)_TOUCHFILE))))
+	$(eval TMPTGT := $(strip $(if $(and $(filter $(gricpP),$(gricpF)),
+		$(filter $(gricpF),$(gricpP))),,_$(gricpP))))
+	$(eval $(call mkout_rule,$(gricp2)$(TMPTGT),$($(gricp2)_TOUCHFILE)))
 endef
 
 # This implements a tick-tock trick using two touchfiles, a "joinfile" and a
@@ -1143,7 +1135,6 @@ endef
 define gen_rule_image_command_profile_join
 	$(eval gricpj2 := $(strip $1))
 	$(eval gricpjP := $(strip $2))
-	$(eval gricpj_hide_wrappers := $(strip $3))
 	$(eval $(gricpj2)_JOINFILE := $(DEFAULT_CRUD)/jjoinfile_$(gricpj2))
 	$(eval $(gricpj2)_DONEFILE := $(DEFAULT_CRUD)/jdonefile_$(gricpj2))
 	$(eval gricpjC := $(strip $($(gricpj2)_COMMAND)))
@@ -1183,10 +1174,9 @@ $$Qecho "Waiting on completion of container '$(gricpj2)_$(gricpjP)'")
 	$(eval TMP8 := (exit $$$$$$$$rcode))
 	$(eval $(call mkout_rule,$($(gricpj2)_DONEFILE),$($(gricpj2)_JOINFILE),
 		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8))
-	$(if $(gricpj_hide_wrappers),,
-		$(eval $(call mkout_rule,$(gricpj2)_$(gricpjP)_launch,$($(gricpj2)_JOINFILE),))
-		$(eval $(call mkout_rule,$(gricpj2)_$(gricpjP)_wait,$($(gricpj2)_DONEFILE),))
-		$(eval $(call mkout_rule,$(gricpj2)_$(gricpjP),$(gricpj2)_$(gricpjP)_wait,)))
+	$(eval $(call mkout_rule,$(gricpj2)_$(gricpjP)_launch,$($(gricpj2)_JOINFILE),))
+	$(eval $(call mkout_rule,$(gricpj2)_$(gricpjP)_wait,$($(gricpj2)_DONEFILE),))
+	$(eval $(call mkout_rule,$(gricpj2)_$(gricpjP),$(gricpj2)_$(gricpjP)_wait,))
 endef
 
 #################
