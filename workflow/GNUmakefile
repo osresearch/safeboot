@@ -3,10 +3,14 @@ include workflow/mariner.mk
 
 # Override global defaults;
 # - Make docker objects use a "safeboot_" prefix.
-# - Set the default map so that directory paths for docker contexts are
-#   expected in the workflow subdirectory.
+# - Replace TOP_DEPS with a touchfile in the crud directory, "regen", rather
+#   than the usual mariner.mk and GNUmakefile (which otherwise tend to trigger
+#   global rebuilds at the slightest at the slightest provocation).
 DSPACE := safeboot
+TOP_DEPS := $(DEFAULT_CRUD)/regen
 $(eval $(call do_mariner_prep))
+$(TOP_DEPS):
+	$Qtouch $(TOP_DEPS)
 
 # Include user-controlled settings
 include workflow/settings.mk
