@@ -7,7 +7,7 @@
 set -e
 
 function cleanup_image {
-	cid=`docker container ls --quiet --filter ancestor=$1 --filter status=running`
+	cid=`docker container ls --quiet --filter label=$1 --filter status=running`
 	if [[ -n $cid ]]; then
 		for i in $cid; do
 			echo "Image $1 is running (cid=$i)"
@@ -17,7 +17,7 @@ function cleanup_image {
 	else
 		echo "Image $1 is not running"
 	fi
-	cid=`docker container ls --quiet --filter ancestor=$1 --filter status=created`
+	cid=`docker container ls --quiet --filter label=$1 --filter status=created`
 	if [[ -n $cid ]]; then
 		for i in $cid; do
 			echo "Image $1 is created but not running (cid=$i)"
@@ -27,7 +27,7 @@ function cleanup_image {
 	else
 		echo "Image $1 is not running"
 	fi
-	cid=`docker container ls --quiet --filter ancestor=$1 --filter status=exited`
+	cid=`docker container ls --quiet --filter label=$1 --filter status=exited`
 	if [[ -n $cid ]]; then
 		for i in $cid; do
 			echo "Image $1 is waiting to be reaped (cid=$i)"
