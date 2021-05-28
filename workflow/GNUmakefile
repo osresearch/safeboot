@@ -28,3 +28,27 @@ include workflow/uml/uml.mk
 
 # The simple-attest demo
 include workflow/simple-attest.mk
+
+#########
+# Helpers
+#########
+
+# This target allows you to shell into a running container (using docker exec).
+# If CID is set, it attempts to shell into the container it identifies,
+# otherwise a listing of running containers is given.
+
+ifeq (,$(CID))
+enter:
+	$Qecho "To shell into a running container, select the desired container by setting CID to"
+	$Qecho "the corresponding 'CONTAINER ID'. Note, you only need to specify enough of the"
+	$Qecho "initial hexadecimal characters to distinguish it from other containers."
+	$Qecho
+	$Qecho "Currently running containers in this project;"
+	$Qdocker container ls --filter=label=$(DSPACE)
+	$Qecho
+	$Qecho "E.g.:   make enter CID=f00d"
+	$Qecho
+else
+enter:
+	$Qdocker exec -it $(CID) /bin/bash
+endif

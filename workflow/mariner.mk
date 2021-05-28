@@ -1062,7 +1062,7 @@ $$Qecho "Launching a '$(gricpBI)' $(gricpP) container running command ('$(gricpB
 	$(eval TMP2 := $$Q$(if $(gricpM),mkdir -p $(gricpM),echo nada > /dev/null))
 	$(eval TMP3 := $$Qdocker run $(DEFAULT_RUNARGS_$(gricpP)) \)
 	$(eval TMP4 := $(gricpA) \)
-	$(eval TMP5 := --label $(DSPACE)_$($(gricp2)_HOSTNAME)=1)
+	$(eval TMP5 := --label $(DSPACE)=1 --label $(DSPACE)_$($(gricp2)_HOSTNAME)=1)
 	$(if $($(gricpBI)_NETWORKS),
 		$(eval TMP5 += --hostname $($(gricp2)_HOSTNAME) --network-alias $($(gricp2)_HOSTNAME) \)
 	,
@@ -1151,7 +1151,7 @@ $$Qecho "Launching a '$(gricpjBI)' $(gricpjP) container running command ('$(gric
 	$(eval TMP2 := $$Q$(if $(gricpjM),mkdir -p $(gricpjM),echo nada > /dev/null))
 	$(eval TMP3 := $$Qdocker run $(DEFAULT_RUNARGS_$(gricpjP)) \)
 	$(eval TMP4 := $(gricpA) \)
-	$(eval TMP5 := --label $(DSPACE)_$($(gricp2)_HOSTNAME)=1)
+	$(eval TMP5 := --label $(DSPACE) --label $(DSPACE)_$($(gricp2)_HOSTNAME)=1)
 	$(if $($(gricpBI)_NETWORKS),
 		$(eval TMP5 += --hostname $($(gricp2)_HOSTNAME) --network-alias $($(gricp2)_HOSTNAME) \)
 	,
