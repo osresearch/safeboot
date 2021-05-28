@@ -3,12 +3,15 @@ include workflow/mariner.mk
 
 # Override global defaults;
 # - Make docker objects use a "safeboot_" prefix.
-# - Replace TOP_DEPS with a touchfile in the crud directory, "regen", rather
-#   than the usual mariner.mk and GNUmakefile (which otherwise tend to trigger
-#   global rebuilds at the slightest at the slightest provocation).
+# - Replace TOP_DEPS with a touchfile in the crud directory, rather than the
+#   usual mariner.mk and GNUmakefile (which otherwise tend to trigger global
+#   rebuilds at the slightest at the slightest provocation). To trigger
+#   regeneration, simply set 'regen' non-empty when running make. E.g.;
+#       make simple-attest regen=1
 DSPACE := safeboot
 TOP_DEPS := $(DEFAULT_CRUD)/regen
 $(eval $(call do_mariner_prep))
+$(if $(regen),$(shell touch $(TOP_DEPS) > /dev/null 2>&1))
 $(TOP_DEPS):
 	$Qtouch $(TOP_DEPS)
 
