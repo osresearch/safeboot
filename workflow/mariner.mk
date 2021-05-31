@@ -10,6 +10,7 @@ $(eval MKOUT ?= $(DEFAULT_CRUD)/Makefile.out)
 $(eval MARINER_MK_PATH ?= $(TOPDIR)/workflow/mariner.mk)
 $(eval TOP_DEPS ?= $(TOPDIR)/workflow/mariner.mk $(TOPDIR)/workflow/GNUmakefile)
 $(eval DEFAULT_SHELL ?= /bin/bash)
+$(eval DEFAULT_UTIL ?= debian:latest)
 $(eval DEFAULT_ARGS_FIND_DEPS ?= )
 $(eval DEFAULT_ARGS_DOCKER_BUILD ?= --force-rm=true)
 $(eval DEFAULT_ARGS_DOCKER_RUN ?= )
@@ -853,10 +854,12 @@ define gen_rules_volume
 		$(eval $(call mkout_comment,Rules for MANAGED volume $(grv)))
 		$(eval $(call mkout_if_shell,stat $($(grv)_TOUCHFILE)))
 		$(eval $(call mkout_rule,$($(grv)_TOUCHFILE),,))
-		$(eval grvx := $$Qecho "Deleting (managed) volume $(grv)")
+		$(eval grvw := $$Qecho "Deleting (managed) volume $(grv)")
+		$(eval grvx := $$Qdocker run -i --rm -v $($(grv)_SOURCE):/foobar $(DEFAULT_UTIL) \
+			/bin/bash -O dotglob -c "rm -rf /foobar/*")
 		$(eval grvy := $$Qrmdir $($(grv)_SOURCE))
 		$(eval grvz := $$Qrm $($(grv)_TOUCHFILE))
-		$(eval $(call mkout_rule,$(grv)_delete,,grvx grvy grvz))
+		$(eval $(call mkout_rule,$(grv)_delete,,grvw grvx grvy grvz))
 		$(eval $(call mkout_else))
 		$(eval MDIRS += $($(grv)_SOURCE))
 		$(eval grvx := $$Qtouch $($(grv)_TOUCHFILE))
@@ -1073,8 +1076,11 @@ $$Qecho "Launching a '$(gricpBI)' $(gricpP) container running command ('$(gricpB
 	$(eval TMP8 := $(if $(gricpM),-v $(gricpM):/msgbus) \)
 	$(eval TMP9 := $(DSPACE)_$(gricpBI) \)
 	$(eval TMPa := $(gricpC))
+	$(if $($(gricp2)_STICKY),
+		$(eval TPMb := $$Qtouch $($(gricp2)_TOUCHFILE)),
+		$(eval TPMb := $$Qecho nada > /dev/null))
 	$(eval $(call mkout_rule,$($(gricp2)_TOUCHFILE),$$($(gricp2)_DEPS),
-		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8 TMP9 TMPa))
+		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8 TMP9 TMPa TPMb))
 	$(eval TMPTGT := $(strip $(if $(and $(filter $(gricpP),$(gricpF)),
 		$(filter $(gricpF),$(gricpP))),,_$(gricpP))))
 	$(eval $(call mkout_rule,$(gricp2)$(TMPTGT),$($(gricp2)_TOUCHFILE)))
