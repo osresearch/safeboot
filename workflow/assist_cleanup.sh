@@ -50,6 +50,18 @@ function cleanup_network {
 	fi
 }
 
+function cleanup_volume {
+	if [[ -d $1 ]]; then
+		echo "volume $2 needs cleaning up"
+		echo "  running: docker run -i --rm -v $1:/foo debian:latest /bin/bash -O dotglob -c \"rm -rf /foo/*\""
+		docker run -i --rm -v $1:/foo debian:latest /bin/bash -O dotglob -c "rm -rf /foo/*"
+		rmdir $1
+	else
+		echo "volume $2 doesn't need cleaning up"
+	fi
+
+}
+
 function cleanup_jfile {
 	if [[ -a $1 ]]; then
 		echo "jfile $2 needs cleaning up"
@@ -67,6 +79,10 @@ case $1 in
 		;;
 	network)
 		cleanup_network $2
+		exit 0
+		;;
+	volume)
+		cleanup_volume $2 `basename $2`
 		exit 0
 		;;
 	jfile)
