@@ -10,6 +10,9 @@
 SAFEBOOT_WORKFLOW_BASE?=debian:bullseye-slim
 #SAFEBOOT_WORKFLOW_BASE?=internal.dockerhub.mycompany.com/library/debian:buster-slim
 
+# Make Mariner use this at its "util" image too.
+DEFAULT_UTIL:=$(SAFEBOOT_WORKFLOW_BASE)
+
 # If defined, the ibase-1apt-source layer will be injected, allowing apt to use
 # an alternative source of debian packages, trust different package signing
 # keys, etc. See the 1apt-source Dockerfile for details.
@@ -24,3 +27,17 @@ SAFEBOOT_WORKFLOW_BASE?=debian:bullseye-slim
 # If defined, builds the iutil-uml image for running plantuml, and the
 # corresponding "make uml" target for iterating over workflow/uml/*.uml files.
 SAFEBOOT_WORKFLOW_UML:=1
+
+# If defined, the 2apt-usable layer will tweak the apt configuration to use the
+# given URL as a (caching) proxy for downloading deb packages. It will also set
+# the "Queue-Mode" to "access", which essentially serializes the pulling of
+# packages. (I tried a couple of different purpose-built containers for
+# proxying and all would glitch sporadically when apt unleashed itself on them.
+# That instability may be in docker networking itself.)
+#
+# docker run --name apt-cacher-ng --init -d --restart=always \
+#  --publish 3142:3142 \
+#  --volume /srv/docker/apt-cacher-ng:/var/cache/apt-cacher-ng \
+#  sameersbn/apt-cacher-ng:3.3-20200524
+# 
+#SAFEBOOT_WORKFLOW_APT_PROXY:=http://172.17.0.1:3142

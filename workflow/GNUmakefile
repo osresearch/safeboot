@@ -1,6 +1,9 @@
 # Include and prepare the Mariner framework
 include workflow/mariner.mk
 
+# Include user-controlled settings
+include workflow/settings.mk
+
 # Override global defaults;
 # - Make docker objects use a "safeboot_" prefix.
 # - Replace TOP_DEPS with a touchfile in the crud directory, rather than the
@@ -14,9 +17,6 @@ $(eval $(call do_mariner_prep))
 $(if $(regen),$(shell touch $(TOP_DEPS) > /dev/null 2>&1))
 $(TOP_DEPS):
 	$Qtouch $(TOP_DEPS)
-
-# Include user-controlled settings
-include workflow/settings.mk
 
 # Define the base layers. It culminates in the definition of a ibase-RESULT
 # variable to the name of the top-most "base" layer.

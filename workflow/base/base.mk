@@ -31,7 +31,9 @@ ibase-0import_DOCKERFILE := /dev/null
 IMAGES += ibase-2apt-usable
 ibase-2apt-usable_EXTENDS := ibase-0import
 ibase-2apt-usable_PATH := $(TOPDIR)/workflow/base/2apt-usable
-ibase-2apt-usable_ARGS_DOCKER_BUILD := --build-arg MYTZ="$(shell cat /etc/timezone)"
+ibase-2apt-usable_ARGS_DOCKER_BUILD := \
+	--build-arg MYTZ="$(shell cat /etc/timezone)" \
+	--build-arg SAFEBOOT_WORKFLOW_APT_PROXY="$(SAFEBOOT_WORKFLOW_APT_PROXY)"
 $(shell $(CP_IF_CMP) /etc/timezone $(TOPDIR)/workflow/base/2apt-usable/timezone)
 IMAGES += ibase-4platform
 ibase-4platform_EXTENDS := ibase-2apt-usable
