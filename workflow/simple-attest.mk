@@ -1,3 +1,4 @@
+# VOLUME wrappers around misc safeboot files
 VOLUMES += vsbin vfunctionssh vsafebootconf vtailwait
 vsbin_MANAGED := false
 vsbin_SOURCE := $(TOPDIR)/sbin
@@ -12,11 +13,20 @@ vtailwait_MANAGED := false
 vtailwait_SOURCE := $(TOPDIR)/workflow/tail_wait.pl
 vtailwait_DEST := /safeboot/tail_wait.pl
 
+# NETWORK on which all simple-attest-* stuff happens
 NETWORKS += n-attest
 
+# MSGBUS directory where all simple-attest-* stuff produces and consumes logs
 MSGBUS := $(DEFAULT_CRUD)/msgbus_simple-attest
 MSGBUSAUTO := client server git
 
+# Some extra verbs we end up needing. (It's silly to have to predeclare these,
+# Mariner needs a rewrite!)
+COMMANDS += setup reset
+setup_COMMAND := /bin/false
+reset_COMMAND := /bin/false
+
+# "simple-attest-client", acts as a TPM-enabled host
 IMAGES += simple-attest-client
 simple-attest-client_EXTENDS := $(ibase-RESULT)
 simple-attest-client_PATH := $(TOPDIR)/workflow/simple-attest-client
@@ -32,6 +42,7 @@ simple-attest-client_ARGS_DOCKER_BUILD := \
 	--build-arg SUBMODULES="$(simple-attest-client_SUBMODULES)" \
 	--build-arg DIR="/safeboot"
 
+# "simple-attest-server", acts as an attestation service instance
 IMAGES += simple-attest-server
 simple-attest-server_EXTENDS := $(ibase-RESULT)
 simple-attest-server_PATH := $(TOPDIR)/workflow/simple-attest-server
@@ -46,17 +57,19 @@ simple-attest-server_run_MSGBUS := $(MSGBUS)
 simple-attest-server_ARGS_DOCKER_BUILD := \
 	--build-arg SUBMODULES="$(simple-attest-server_SUBMODULES)" \
 	--build-arg DIR="/safeboot"
-# Give the server a secrets.yaml as well as access to the client's msgbus
+# Give the server a secrets.yaml
 simple-attest-server_ARGS_DOCKER_RUN := \
 	-v=$(TOPDIR)/workflow/stub-secrets.yaml:/safeboot/secrets.yaml
 
-COMMANDS += setup reset
-setup_COMMAND := /bin/false
-reset_COMMAND := /bin/false
-
+# VOLUME to hold the authoratative git repo for attestation config
 VOLUMES += vgit
 vgit_MANAGED := true
 vgit_DEST := /git
+
+# "simple-attest-git" is the only container image that can mount vgit
+# read-write. It supports the 'setup' (batch) verb to initialize the repo in
+# vgit, and supports the 'run' (detach_join) verb to run the flask web app that
+# provides the REST API for manipulating the database.
 IMAGES += simple-attest-git
 simple-attest-git_EXTENDS := $(ibase-RESULT)
 simple-attest-git_PATH := $(TOPDIR)/workflow/simple-attest-git
