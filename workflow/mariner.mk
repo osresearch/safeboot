@@ -716,6 +716,9 @@ define process_3ivc
 	$(eval $(p3ivc)C := $(strip $3))
 	$(eval $(p3ivc)2 := $($(p3ivc)I)_$($(p3ivc)V))
 	$(eval $(p3ivc)3 := $($(p3ivc)I)_$($(p3ivc)V)_$($(p3ivc)C))
+	$(eval $(call set_if_empty,
+		$($(p3ivc)3)_OPTIONS,
+		$($($(p3ivc)2)_OPTIONS)))
 	# If _EXTENDS, recurse to the image-volume-command 3-tuple for the
 	# image that is the immediate ancestor of this one. We go all the way
 	# to the _TERMINATES case, and then do default-handling "on the way
