@@ -40,6 +40,14 @@ def home():
 </table>
 <input type="submit" value="Submit">
 </form>
+
+<h2>To find host entries by hostname suffix;</h2>
+<form method="get" action="/v1/find">
+<table>
+<tr><td>hostname suffix</td><td><input type=text name=hostname_suffix></td></tr>
+</table>
+<input type="submit" value="Submit">
+</form>
 '''
 
 @app.route('/v1/add', methods=['POST'])
@@ -74,6 +82,18 @@ def my_delete():
     j = json.loads(c.stdout)
     if (len(j["entries"]) == 0):
         abort(404)
+    return j
+
+@app.route('/v1/find', methods=['GET'])
+def my_find():
+    c = subprocess.run(['/op_find.sh',
+                       request.args['hostname_suffix']],
+                       stdout=subprocess.PIPE, text=True)
+    if (c.returncode != 0):
+        abort(500)
+    j = json.loads(c.stdout)
+    # TODO: we should check that j exists and has an "entries" field, rather
+    # than returning it blindly...
     return j
 
 if __name__ == "__main__":

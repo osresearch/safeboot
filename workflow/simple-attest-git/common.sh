@@ -1,4 +1,14 @@
 # This is an include-only file. So no shebang header and no execute perms.
+#
+# This file (common.sh) contains definitions required within the git container
+# for operating on the repository, e.g. dropping privs to the git user, taking
+# and releasing the lockfile, etc. The conventions for the repository's
+# directory layerout and the file contents are put in a seperate file,
+# common_defs.sh, which is included at the end of this file _and actually
+# committed to the repo itself_. This is so that the same conventions are
+# available at the attestation service side once it has cloned/merged the repo
+# contents. I.e. common_defs.sh is replicated to those entities so they can
+# operate on the data using the same directory and file assumptions.
 
 set -e
 
@@ -60,75 +70,31 @@ function repo_cmd_unlock {
 	rm -f $REPO_LOCKPATH
 }
 
-# ekpubhash must consist only of lower-case hex, and be at least 16 characters
-# long (8 bytes)
-function check_ekpubhash {
-	(echo "$1" | egrep -e "^[0-9a-f]{16,}$" > /dev/null 2>&1) ||
-		(echo "Error, malformed ekpubhash" >&2 && exit 1) || exit 1
-}
+# The remaining functions are in a separate file because they form part of the git
+# repo itself. (So that the attestation servers, which clone and use the repo
+# in a read-only capacity, always use the same assumptions.) But to avoid
+# chicken and eggs, we source the original (in the root directory, put there by
+# Dockerfile) rather than the copy put into the repo.
+. /common_defs.sh
 
-# the prefix version can be any length (including empty)
-function check_ekpubhash_prefix {
-	(echo "$1" | egrep -e "^[0-9a-f]*$" > /dev/null 2>&1) ||
-		(echo "Error, malformed ekpubhash" >&2 && exit 1) || exit 1
-}
+# Except ... we provide a reverse-lookup (hostname to ekpubhash) in a single
+# file that the attestation service itself pays no attention to. We put the
+# relevant definitions here (rather than common_defs.h) to emphasize this
+# point.
+#
+# TODO: we could do much better than the following. As the size of the dataset
+# grows, the adds and deletes to the reverse-lookup table will dominate, as
+# will memory and file-system thrashing (due to the need to copy and filter
+# copies of the table inside the critical section). As with elsewhere, we make
+# do with a simple but easy-to-validate solution for now, and mark this for a
+# smarter implementation when there is enough time and focus to not make a mess
+# of it.
+#
+# Each line of this file is a space-separated 2-tuple of;
+# - the reversed hostname (per 'rev')
+# - the ekpubhash (truncated to 16 characters if appropriate, i.e. to match
+#   the filename of the JSON in the ekpubhash/ directory tree).
 
-# hostname must consist only of alphanumerics, periods ("."), hyphens ("-"),
-# and underscores ("_"). 
-function check_hostname {
-	(echo "$1" | egrep -e "^[0-9a-zA-Z._-]*$" > /dev/null 2>&1) ||
-		(echo "Error, malformed hostname" >&2 && exit 1) || exit 1
-}
-
-# hostblob must consist only of lower-case hex, arbitrary length
-function check_hostblob {
-	(echo "$1" | egrep -e "^[0-9a-f]*$" > /dev/null 2>&1) ||
-		(echo "Error, malformed hostblob" >&2 && exit 1) || exit 1
-}
-
-# We use a 2-ply directory hierarchy for ekpubhash-indexed files. The
-# first ply uses the first 2 hex characters as a directory name, for a split of
-# 256. The second ply uses the first 6 characters as a directory name, meaning
-# 4 new characters of uniqueness for a further split of 65536, resulting in a
-# total split of ~16 million. (Yes, beneath the first ply, all sub-directories
-# will have the same first 2 characters.) Beneath the second ply, a JSON file
-# will be named using the first 16 characters of the ekpubhash, with fields
-# 'ekpubhash', 'hostname', and 'hexblob'.
-
-# Given an ekpubhash ($1), ensure the 1st and 2nd ply directories exist.
-# Outputs;
-#   PLY1 and PLY2: sub and sub-sub directory names in the ekpubhash tree
-#   FNAME: basename for the JSON file
-#   FPATH: full path to (and including) FNAME
-function ply_path_add {
-	mkdir -p $EK_PATH/$PLY1/$PLY2
-	PLY1=`echo $1 | cut -c 1,2`
-	PLY2=`echo $1 | cut -c 1-6`
-	FNAME=`echo $1 | cut -c 1-16`
-	FPATH="$EK_PATH/$PLY1/$PLY2/$FNAME"
-	mkdir -p "$EK_PATH/$PLY1/$PLY2"
-}
-
-# Given an ekpubhash prefix ($1), figure out the wildcard to match on all the
-# JSON files.
-# Outputs;
-#   FPATH: full path with wildcard pattern
-function ply_path_get {
-	len=${#1}
-	if [[ $len -lt 2 ]]; then
-		FPATH="$EK_PATH/$1*/*/*"
-	else
-		PLY1=`echo $1 | cut -c 1,2`
-		if [[ $len -lt 6 ]]; then
-			FPATH="$EK_PATH/$PLY1/$1*/*"
-		else
-			PLY2=`echo $1 | cut -c 1-6`
-			if [[ $len -lt 16 ]]; then
-				FPATH="$EK_PATH/$PLY1/$PLY2/$1*"
-			else
-				FNAME=`echo $1 | cut -c 1-16`
-				FPATH="$EK_PATH/$PLY1/$PLY2/$FNAME"
-			fi
-		fi
-	fi
-}
+# The initially-empty file
+HN2EK_BASENAME=hn2ek
+HN2EK_PATH=$REPO_PATH/$HN2EK_BASENAME
