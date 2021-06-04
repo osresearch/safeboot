@@ -1,9 +1,9 @@
 #!/bin/bash
 
-. /common.sh
-
 exec 1> /msgbus/git
 exec 2>&1
+
+. /common.sh
 
 expect_root
 
