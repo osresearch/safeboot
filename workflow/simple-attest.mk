@@ -89,6 +89,29 @@ simple-attest-git_ARGS_DOCKER_RUN := \
 	--env=REPO_PREFIX="$(vgit_DEST)" \
 	-p 5000:5000
 
+# "simple-attest-git-ro" is the read-only complement to "simple-attest-git",
+# which runs the git-daemon so that attestation service instances can pull
+# database updates. We use a separate container for modularity of course, but
+# more importantly to mount the vgit volume read-only. This means we can extend
+# simple-attest-git and inherit the same 'git' user account that it created
+# (whose uid/gid is all over the vgit repo and it's simplest to leave it that
+# way), run the git-daemon as that user, and yet be certain it can't modify the
+# database in any way.
+IMAGES += simple-attest-git-ro
+simple-attest-git-ro_EXTENDS := simple-attest-git
+simple-attest-git-ro_PATH := $(TOPDIR)/workflow/simple-attest-git
+simple-attest-git-ro_DOCKERFILE := $(TOPDIR)/workflow/simple-attest-git/ro.Dockerfile
+simple-attest-git-ro_COMMANDS := shell run
+simple-attest-git-ro_VOLUMES := vtailwait vgit
+simple-attest-git-ro_vgit_OPTIONS := readonly
+simple-attest-git-ro_NETWORKS := n-attest
+simple-attest-git-ro_run_COMMAND := /run_daemon.sh
+simple-attest-git-ro_run_PROFILES := detach_join
+simple-attest-git-ro_run_MSGBUS := $(MSGBUS)
+simple-attest-git-ro_ARGS_DOCKER_RUN := \
+	--env=REPO_PREFIX="$(vgit_DEST)" \
+	-p 9418:9418
+
 # Digest and process the above definitions (generate a Makefile and source it
 # back in) before continuing. In that way, we can build subsequent definitions
 # not just using what we defined above, but also using what the Mariner
@@ -102,17 +125,24 @@ S:=simple-attest
 SC:=$S-client
 SS:=$S-server
 SG:=$S-git
+SR:=$S-git-ro
 SCRun:=$(SC)_run
 SSRun:=$(SS)_run
 SGRun:=$(SG)_run
+SRRun:=$(SR)_run
 SGSetup:=$(SG)_setup
 SCRunLaunch:=$($(SCRun)_JOINFILE)
 SSRunLaunch:=$($(SSRun)_JOINFILE)
 SGRunLaunch:=$($(SGRun)_JOINFILE)
+SRRunLaunch:=$($(SRRun)_JOINFILE)
 SCRunWait:=$($(SCRun)_DONEFILE)
 SSRunWait:=$($(SSRun)_DONEFILE)
 SGRunWait:=$($(SGRun)_DONEFILE)
+SRRunWait:=$($(SRRun)_DONEFILE)
+SGRunKill:=$(MSGBUS)/git-ctrl
+SRRunKill:=$(MSGBUS)/ro.git-ctrl
 SGRunKilled:=$(DEFAULT_CRUD)/ztouch-$(SG)-killed
+SRRunKilled:=$(DEFAULT_CRUD)/ztouch-$(SR)-killed
 SUnderway:=$(DEFAULT_CRUD)/ztouch-$S-underway
 SMsgbus:=$(DEFAULT_CRUD)/ztouch-$S-msgbus
 SDeps:=$(foreach i,swtpm tpm2-tools,$(ibuild-$i_install_TOUCHFILE)) $(n-attest_TOUCHFILE)
@@ -122,7 +152,7 @@ SDeps:=$(foreach i,swtpm tpm2-tools,$(ibuild-$i_install_TOUCHFILE)) $(n-attest_T
 # touchfile), as well as, thereafter, starting and stopping the git service.
 $(SGRunKilled): $(SGRunLaunch)
 	$Qecho "Signaling $(SG) to exit"
-	$Qecho "die" > $(MSGBUS)/git-ctrl
+	$Qecho "die" > $(SGRunKill)
 	$Qtouch $@
 $(SGRunWait): $(SGRunKilled)
 $(SGRunLaunch): $($(SGSetup)_TOUCHFILE)
@@ -131,6 +161,16 @@ start-git: $(SGRunLaunch)
 stop-git: $(SGRunWait)
 reset-git: vgit_delete
 	$Qrm -f $($(SGSetup)_TOUCHFILE)
+
+# Extend for the git-daemon (or "git-ro") server.
+$(SRRunKilled): $(SRRunLaunch)
+	$Qecho "Signaling $(SR) to exit"
+	$Qecho "die" > $(SRRunKill)
+	$Qtouch $@
+$(SRRunWait): $(SRRunKilled)
+$(SRRunLaunch): $($(SRSetup)_TOUCHFILE)
+start-git: $(SRRunLaunch)
+stop-git: $(SRRunWait)
 
 # Trail of dependencies for the "simple-attest" use-case;
 # A: "simple-attest" depends on;
@@ -190,13 +230,16 @@ $S-clean:
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh image $(DSPACE)_$(SC)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh image $(DSPACE)_$(SS)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh image $(DSPACE)_$(SG)
+	$Q$(TOPDIR)/workflow/assist_cleanup.sh image $(DSPACE)_$(SR)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh volume $(vgit_SOURCE)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(vgit_TOUCHFILE)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SCRunLaunch)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SSRunLaunch)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SGRunLaunch)
+	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SRRunLaunch)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SCRunWait)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SSRunWait)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SGRunWait)
+	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SRRunWait)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh network $(DSPACE)_n-attest
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(n-attest_TOUCHFILE)
