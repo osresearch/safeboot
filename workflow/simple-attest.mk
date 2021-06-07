@@ -26,41 +26,6 @@ COMMANDS += setup reset
 setup_COMMAND := /bin/false
 reset_COMMAND := /bin/false
 
-# "simple-attest-client", acts as a TPM-enabled host
-IMAGES += simple-attest-client
-simple-attest-client_EXTENDS := $(ibase-RESULT)
-simple-attest-client_PATH := $(TOPDIR)/workflow/simple-attest-client
-simple-attest-client_COMMANDS := shell run
-simple-attest-client_SUBMODULES := libtpms swtpm tpm2-tss tpm2-tools
-simple-attest-client_VOLUMES := vsbin vfunctionssh vsafebootconf vtailwait \
-	$(foreach i,$(simple-attest-client_SUBMODULES),vi$i)
-simple-attest-client_NETWORKS := n-attest
-simple-attest-client_run_COMMAND := /run_client.sh
-simple-attest-client_run_PROFILES := detach_join
-simple-attest-client_run_MSGBUS := $(MSGBUS)
-simple-attest-client_ARGS_DOCKER_BUILD := \
-	--build-arg SUBMODULES="$(simple-attest-client_SUBMODULES)" \
-	--build-arg DIR="/safeboot"
-
-# "simple-attest-server", acts as an attestation service instance
-IMAGES += simple-attest-server
-simple-attest-server_EXTENDS := $(ibase-RESULT)
-simple-attest-server_PATH := $(TOPDIR)/workflow/simple-attest-server
-simple-attest-server_SUBMODULES :=
-simple-attest-server_COMMANDS := shell run
-simple-attest-server_VOLUMES := vsbin vfunctionssh vsafebootconf vtailwait \
-	$(foreach i,$(simple-attest-server_SUBMODULES),vi$i)
-simple-attest-server_NETWORKS := n-attest
-simple-attest-server_run_COMMAND := /run_server.sh
-simple-attest-server_run_PROFILES := detach_join
-simple-attest-server_run_MSGBUS := $(MSGBUS)
-simple-attest-server_ARGS_DOCKER_BUILD := \
-	--build-arg SUBMODULES="$(simple-attest-server_SUBMODULES)" \
-	--build-arg DIR="/safeboot"
-# Give the server a secrets.yaml
-simple-attest-server_ARGS_DOCKER_RUN := \
-	-v=$(TOPDIR)/workflow/stub-secrets.yaml:/safeboot/secrets.yaml
-
 # VOLUME to hold the authoratative git repo for attestation config
 VOLUMES += vgit
 vgit_MANAGED := true
@@ -112,6 +77,75 @@ simple-attest-git-ro_ARGS_DOCKER_RUN := \
 	--env=REPO_PREFIX="$(vgit_DEST)" \
 	-p 9418:9418
 
+# "simple-attest-client", acts as a TPM-enabled host
+IMAGES += simple-attest-client
+simple-attest-client_EXTENDS := $(ibase-RESULT)
+simple-attest-client_PATH := $(TOPDIR)/workflow/simple-attest-client
+simple-attest-client_COMMANDS := shell run
+simple-attest-client_SUBMODULES := libtpms swtpm tpm2-tss tpm2-tools
+simple-attest-client_VOLUMES := vsbin vfunctionssh vsafebootconf vtailwait \
+	$(foreach i,$(simple-attest-client_SUBMODULES),vi$i)
+simple-attest-client_NETWORKS := n-attest
+simple-attest-client_run_COMMAND := /run_client.sh
+simple-attest-client_run_PROFILES := detach_join
+simple-attest-client_run_MSGBUS := $(MSGBUS)
+simple-attest-client_ARGS_DOCKER_BUILD := \
+	--build-arg SUBMODULES="$(simple-attest-client_SUBMODULES)" \
+	--build-arg DIR="/safeboot"
+
+# VOLUME to hold an attestation server's state, managed (read-write) by the
+# update container and used (read-only) by the server. TODO: the idea of
+# setting the volume's default OPTIONS as readonly and overriding it in the
+# read-write case is better than the other way round - so this should be done
+# to the vgit volume too.
+VOLUMES += vserver
+vserver_MANAGED := true
+vserver_DEST := /state
+vserver_OPTIONS := readonly
+
+# "simple-attest-server", acts as an attestation service instance
+IMAGES += simple-attest-server
+simple-attest-server_EXTENDS := $(ibase-RESULT)
+simple-attest-server_PATH := $(TOPDIR)/workflow/simple-attest-server
+simple-attest-server_SUBMODULES :=
+simple-attest-server_COMMANDS := shell run
+simple-attest-server_VOLUMES := vsbin vfunctionssh vsafebootconf vtailwait \
+	$(foreach i,$(simple-attest-server_SUBMODULES),vi$i) \
+	vserver
+simple-attest-server_NETWORKS := n-attest
+simple-attest-server_run_COMMAND := /run_server.sh
+simple-attest-server_run_PROFILES := detach_join
+simple-attest-server_run_MSGBUS := $(MSGBUS)
+simple-attest-server_ARGS_DOCKER_BUILD := \
+	--build-arg SUBMODULES="$(simple-attest-server_SUBMODULES)" \
+	--build-arg DIR="/safeboot"
+# Give the server a secrets.yaml. TODO: get rid of this once
+# simple-attest-server is using $STATE_PREFIX/current/{...}
+simple-attest-server_ARGS_DOCKER_RUN := \
+	--env=STATE_PREFIX="$(vserver_DEST)" \
+	-v=$(TOPDIR)/workflow/stub-secrets.yaml:/safeboot/secrets.yaml
+
+IMAGES += simple-attest-updater
+simple-attest-updater_EXTENDS := $(ibase-RESULT)
+simple-attest-updater_PATH := $(TOPDIR)/workflow/simple-attest-updater
+simple-attest-updater_COMMANDS := shell run setup
+simple-attest-updater_VOLUMES := vtailwait vserver
+simple-attest-updater_vserver_OPTIONS := readwrite
+simple-attest-updater_NETWORKS := n-attest
+simple-attest-updater_run_COMMAND := /run_updater.sh
+simple-attest-updater_run_PROFILES := detach_join
+simple-attest-updater_run_MSGBUS := $(MSGBUS)
+simple-attest-updater_setup_COMMAND := /setup_updater.sh
+simple-attest-updater_setup_PROFILES := batch
+simple-attest-updater_setup_MSGBUS := $(MSGBUS)
+simple-attest-updater_setup_STICKY := true
+simple-attest-updater_ARGS_DOCKER_BUILD := \
+	--build-arg=USERNAME=git
+simple-attest-updater_ARGS_DOCKER_RUN := \
+	--env=STATE_PREFIX="$(vserver_DEST)" \
+	--env=REMOTE_REPO="git://simple-attest-git-ro/attestdb.git" \
+	--env=UPDATE_TIMER=10
+
 # Digest and process the above definitions (generate a Makefile and source it
 # back in) before continuing. In that way, we can build subsequent definitions
 # not just using what we defined above, but also using what the Mariner
@@ -126,23 +160,30 @@ SC:=$S-client
 SS:=$S-server
 SG:=$S-git
 SR:=$S-git-ro
+SU:=$S-updater
 SCRun:=$(SC)_run
 SSRun:=$(SS)_run
 SGRun:=$(SG)_run
 SRRun:=$(SR)_run
+SURun:=$(SU)_run
 SGSetup:=$(SG)_setup
+SUSetup:=$(SU)_setup
 SCRunLaunch:=$($(SCRun)_JOINFILE)
 SSRunLaunch:=$($(SSRun)_JOINFILE)
 SGRunLaunch:=$($(SGRun)_JOINFILE)
 SRRunLaunch:=$($(SRRun)_JOINFILE)
+SURunLaunch:=$($(SURun)_JOINFILE)
 SCRunWait:=$($(SCRun)_DONEFILE)
 SSRunWait:=$($(SSRun)_DONEFILE)
 SGRunWait:=$($(SGRun)_DONEFILE)
 SRRunWait:=$($(SRRun)_DONEFILE)
+SURunWait:=$($(SURun)_DONEFILE)
 SGRunKill:=$(MSGBUS)/git-ctrl
 SRRunKill:=$(MSGBUS)/ro.git-ctrl
+SURunKill:=$(MSUBUS)/updater-ctrl
 SGRunKilled:=$(DEFAULT_CRUD)/ztouch-$(SG)-killed
 SRRunKilled:=$(DEFAULT_CRUD)/ztouch-$(SR)-killed
+SURunKilled:=$(DEFAULT_CRUD)/ztouch-$(SU)-killed
 SUnderway:=$(DEFAULT_CRUD)/ztouch-$S-underway
 SMsgbus:=$(DEFAULT_CRUD)/ztouch-$S-msgbus
 SDeps:=$(foreach i,swtpm tpm2-tools,$(ibuild-$i_install_TOUCHFILE)) $(n-attest_TOUCHFILE)
@@ -171,6 +212,20 @@ $(SRRunWait): $(SRRunKilled)
 $(SRRunLaunch): $($(SRSetup)_TOUCHFILE)
 start-git: $(SRRunLaunch)
 stop-git: $(SRRunWait)
+
+# Manual shite for the updater
+$(SURunKilled): $(SURunLaunch)
+	$Qecho "Signaling $(SU) to exit"
+	$Qecho "die" > $(SURunKill)
+	$Qtouch $@
+$(SURunWait): $(SURunKilled)
+$(SURunLaunch): $($(SUSetup)_TOUCHFILE)
+setup-server: $($(SUSetup)_TOUCHFILE)
+start-server: $(SURunLaunch)
+stop-server: $(SURunWait)
+reset-server: vserver_delete
+	$Qrm -f $($(SUSetup)_TOUCHFILE)
+
 
 # Trail of dependencies for the "simple-attest" use-case;
 # A: "simple-attest" depends on;
@@ -231,15 +286,21 @@ $S-clean:
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh image $(DSPACE)_$(SS)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh image $(DSPACE)_$(SG)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh image $(DSPACE)_$(SR)
+	$Q$(TOPDIR)/workflow/assist_cleanup.sh image $(DSPACE)_$(SU)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh volume $(vgit_SOURCE)
+	$Q$(TOPDIR)/workflow/assist_cleanup.sh volume $(vserver_SOURCE)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(vgit_TOUCHFILE)
+	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(vserver_TOUCHFILE)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SCRunLaunch)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SSRunLaunch)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SGRunLaunch)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SRRunLaunch)
+	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SURunLaunch)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SCRunWait)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SSRunWait)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SGRunWait)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SRRunWait)
+	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(SURunWait)
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh network $(DSPACE)_n-attest
 	$Q$(TOPDIR)/workflow/assist_cleanup.sh jfile $(n-attest_TOUCHFILE)
+	$Q$(TOPDIR)/workflow/assist_cleanup.sh msgbus $(MSGBUS)
