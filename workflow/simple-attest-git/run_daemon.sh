@@ -15,6 +15,7 @@ echo "  - prefix: $REPO_PREFIX"
 # TODO: consider these choices. E.g. "--verbose"?
 (drop_privs /usr/lib/git-core/git-daemon \
 	--reuseaddr --verbose \
+	--listen=0.0.0.0 \
 	--base-path=$REPO_PREFIX \
 	$REPO_PATH) &
 THEPID=$!
