@@ -62,6 +62,19 @@ function cleanup_volume {
 
 }
 
+# same exact trick as cleanup_volume (though different output)
+function cleanup_msgbus {
+	if [[ -d $1 ]]; then
+		echo "msgbus $2 needs cleaning up"
+		echo "  running: docker run -i --rm -v $1:/foo debian:latest /bin/bash -O dotglob -c \"rm -rf /foo/*\""
+		docker run -i --rm -v $1:/foo debian:latest /bin/bash -O dotglob -c "rm -rf /foo/*"
+		rmdir $1
+	else
+		echo "msgbus $2 doesn't need cleaning up"
+	fi
+
+}
+
 function cleanup_jfile {
 	if [[ -a $1 ]]; then
 		echo "jfile $2 needs cleaning up"
@@ -83,6 +96,10 @@ case $1 in
 		;;
 	volume)
 		cleanup_volume $2 `basename $2`
+		exit 0
+		;;
+	msgbus)
+		cleanup_msgbus $2  `basename $2`
 		exit 0
 		;;
 	jfile)
