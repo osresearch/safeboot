@@ -4,9 +4,9 @@ SUBMODULES := \
 	libtpms \
 	swtpm \
 	tpm2-tss \
-	tpm2-tools \
-	tpm2-totp \
-	sbsigntools
+	tpm2-tools
+#	tpm2-totp
+#	sbsigntools
 #	efitools
 
 ###########
@@ -135,15 +135,15 @@ tpm2-tss_CONFIGURE_PROFILE := bootstrap
 tpm2-tss_CONFIGURE_ARGS := --disable-doxygen-doc
 tpm2-tools_SUBMODULE_DEPS := tpm2-tss
 tpm2-tools_CONFIGURE_PROFILE := bootstrap
-tpm2-totp_SUBMODULE_DEPS := tpm2-tss
-tpm2-totp_CONFIGURE_PROFILE := bootstrap
-sbsigntools_CONFIGURE_PROFILE := autogen-configure
-sbsigntools_CONFIGURE_ENVS := DISABLE_COMPILE_CHECK
-sbsigntools_CONFIGURE_ENVS_DISABLE_COMPILE_CHECK := 1
-efitools_SUBMODULE_DEPS := sbsigntools
-efitools_CONFIGURE_ENVS := DESTDIR
-efitools_CONFIGURE_PROFILE := none
-efitools_CONFIGURE_ENVS_DESTDIR := $(viefitools_DEST)
+#tpm2-totp_SUBMODULE_DEPS := tpm2-tss
+#tpm2-totp_CONFIGURE_PROFILE := bootstrap
+#sbsigntools_CONFIGURE_PROFILE := autogen-configure
+#sbsigntools_CONFIGURE_ENVS := DISABLE_COMPILE_CHECK
+#sbsigntools_CONFIGURE_ENVS_DISABLE_COMPILE_CHECK := 1
+#efitools_SUBMODULE_DEPS := sbsigntools
+#efitools_CONFIGURE_ENVS := DESTDIR
+#efitools_CONFIGURE_PROFILE := none
+#efitools_CONFIGURE_ENVS_DESTDIR := $(viefitools_DEST)
 #efitools_CONFIGURE_ENVS := DISABLE_COMPILE_CHECK
 #efitools_CONFIGURE_ENVS_DISABLE_COMPILE_CHECK := 1
 
