@@ -26,7 +26,7 @@ DEFAULT_UTIL:=$(SAFEBOOT_WORKFLOW_BASE)
 
 # If defined, builds the iutil-uml image for running plantuml, and the
 # corresponding "make uml" target for iterating over workflow/uml/*.uml files.
-SAFEBOOT_WORKFLOW_UML:=1
+#SAFEBOOT_WORKFLOW_UML:=1
 
 # If defined, the 2apt-usable layer will tweak the apt configuration to use the
 # given URL as a (caching) proxy for downloading deb packages. It will also set
