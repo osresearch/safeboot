@@ -2,8 +2,8 @@
 
 set -e
 
-PREF=simple-attest-server:
-MSGBUS=/msgbus/server
+PREF=simple-attest-server-ro:
+MSGBUS=/msgbus/server-ro
 MSGBUS_CLIENT=/msgbus/client
 
 # Redirect stdout and stderr to our msgbus file

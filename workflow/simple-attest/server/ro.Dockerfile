@@ -3,5 +3,5 @@ ARG SUBMODULES
 ARG DIR
 ENV SUBMODULES=$SUBMODULES
 ENV DIR=$DIR
-COPY run_server.sh /
-RUN chmod 755 /run_server.sh
+COPY run_ro.sh /
+RUN chmod 755 /run_ro.sh

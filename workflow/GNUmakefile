@@ -30,7 +30,7 @@ include workflow/build/build.mk
 include workflow/uml/uml.mk
 
 # The simple-attest demo
-include workflow/simple-attest.mk
+include workflow/simple-attest/simple-attest.mk
 
 #########
 # Helpers

@@ -3,9 +3,10 @@
 set -e
 
 PREF=simple-attest-client:
-PREF_SERVER=simple-attest-server:
+PREF_SERVER=simple-attest-server-ro:
+SERVER=simple-attest-server-ro
 MSGBUS=/msgbus/client
-MSGBUS_SERVER=/msgbus/server
+MSGBUS_SERVER=/msgbus/server-ro
 TPMSTATE=/tmp/swtpm-state
 TPMPORT1=9876
 TPMPORT2=9877
@@ -44,7 +45,7 @@ echo "$PREF TPM running (pid=$TPMPID)"
 echo "$PREF waiting for server to advertise"
 ./tail_wait.pl $MSGBUS_SERVER "$PREF_SERVER starting"
 echo "$PREF heard from the server, now ping"
-ping -c 1 simple-attest-server
+ping -c 1 $SERVER
 echo "$PREF ping seems fine"
 
 # Do some stuff that uses the TPM

@@ -18,7 +18,7 @@ NETWORKS += n-attest
 
 # MSGBUS directory where all simple-attest-* stuff produces and consumes logs
 MSGBUS := $(DEFAULT_CRUD)/msgbus_simple-attest
-MSGBUSAUTO := client server git
+MSGBUSAUTO := client server-ro server-rw db-ro db-rw
 
 # Some extra verbs we end up needing. (It's silly to have to predeclare these,
 # Mariner needs a rewrite!)
@@ -27,60 +27,61 @@ setup_COMMAND := /bin/false
 reset_COMMAND := /bin/false
 
 # VOLUME to hold the authoratative git repo for attestation config
-VOLUMES += vgit
-vgit_MANAGED := true
-vgit_DEST := /git
+VOLUMES += vdb
+vdb_MANAGED := true
+vdb_DEST := /db
 
-# "simple-attest-git" is the only container image that can mount vgit
-# read-write. It supports the 'setup' (batch) verb to initialize the repo in
-# vgit, and supports the 'run' (detach_join) verb to run the flask web app that
-# provides the REST API for manipulating the database.
-IMAGES += simple-attest-git
-simple-attest-git_EXTENDS := $(ibase-RESULT)
-simple-attest-git_PATH := $(TOPDIR)/workflow/simple-attest-git
-simple-attest-git_COMMANDS := shell run setup reset
-simple-attest-git_VOLUMES := vtailwait vgit
-simple-attest-git_NETWORKS := n-attest
-simple-attest-git_run_COMMAND := /run_git.sh
-simple-attest-git_run_PROFILES := detach_join
-simple-attest-git_run_MSGBUS := $(MSGBUS)
-simple-attest-git_setup_COMMAND := /setup_git.sh
-simple-attest-git_setup_PROFILES := batch
-simple-attest-git_setup_MSGBUS := $(MSGBUS)
-simple-attest-git_setup_STICKY := true
-simple-attest-git_ARGS_DOCKER_BUILD := \
-	--build-arg=USERNAME=git
-simple-attest-git_ARGS_DOCKER_RUN := \
-	--env=REPO_PREFIX="$(vgit_DEST)" \
+# "simple-attest-db-rw" is the only container image that can mount vdb
+# read-write. It supports the 'setup' (batch) verb to initialize the db, and
+# supports the 'run' (detach_join) verb to run the flask web app that provides
+# the REST API for manipulating the database.
+IMAGES += simple-attest-db-rw
+simple-attest-db-rw_EXTENDS := $(ibase-RESULT)
+simple-attest-db-rw_PATH := $(TOPDIR)/workflow/simple-attest/db
+simple-attest-db-rw_DOCKERFILE := $(TOPDIR)/workflow/simple-attest/db/rw.Dockerfile
+simple-attest-db-rw_COMMANDS := shell run setup reset
+simple-attest-db-rw_VOLUMES := vtailwait vdb
+simple-attest-db-rw_NETWORKS := n-attest
+simple-attest-db-rw_run_COMMAND := /run_rw.sh
+simple-attest-db-rw_run_PROFILES := detach_join
+simple-attest-db-rw_run_MSGBUS := $(MSGBUS)
+simple-attest-db-rw_setup_COMMAND := /setup_db.sh
+simple-attest-db-rw_setup_PROFILES := batch
+simple-attest-db-rw_setup_MSGBUS := $(MSGBUS)
+simple-attest-db-rw_setup_STICKY := true
+simple-attest-db-rw_ARGS_DOCKER_BUILD := \
+	--build-arg=USERNAME=lowlyuser
+simple-attest-db-rw_ARGS_DOCKER_RUN := \
+	--env=DB_PREFIX="$(vdb_DEST)" \
 	-p 5000:5000
 
-# "simple-attest-git-ro" is the read-only complement to "simple-attest-git",
-# which runs the git-daemon so that attestation service instances can pull
+# "simple-attest-db-ro" is the read-only complement to "simple-attest-db-rw".
+# It runs the git-daemon so that attestation service instances can pull
 # database updates. We use a separate container for modularity of course, but
 # more importantly to mount the vgit volume read-only. This means we can extend
-# simple-attest-git and inherit the same 'git' user account that it created
-# (whose uid/gid is all over the vgit repo and it's simplest to leave it that
+# simple-attest-db-rw and inherit the same 'lowly' user account that it created
+# (whose uid/gid is all over the vdb repo and it's simplest to leave it that
 # way), run the git-daemon as that user, and yet be certain it can't modify the
 # database in any way.
-IMAGES += simple-attest-git-ro
-simple-attest-git-ro_EXTENDS := simple-attest-git
-simple-attest-git-ro_PATH := $(TOPDIR)/workflow/simple-attest-git
-simple-attest-git-ro_DOCKERFILE := $(TOPDIR)/workflow/simple-attest-git/ro.Dockerfile
-simple-attest-git-ro_COMMANDS := shell run
-simple-attest-git-ro_VOLUMES := vtailwait vgit
-simple-attest-git-ro_vgit_OPTIONS := readonly
-simple-attest-git-ro_NETWORKS := n-attest
-simple-attest-git-ro_run_COMMAND := /run_daemon.sh
-simple-attest-git-ro_run_PROFILES := detach_join
-simple-attest-git-ro_run_MSGBUS := $(MSGBUS)
-simple-attest-git-ro_ARGS_DOCKER_RUN := \
-	--env=REPO_PREFIX="$(vgit_DEST)" \
+IMAGES += simple-attest-db-ro
+simple-attest-db-ro_EXTENDS := simple-attest-db-rw
+simple-attest-db-ro_PATH := $(TOPDIR)/workflow/simple-attest/db
+simple-attest-db-ro_DOCKERFILE := $(TOPDIR)/workflow/simple-attest/db/ro.Dockerfile
+simple-attest-db-ro_COMMANDS := shell run
+simple-attest-db-ro_VOLUMES := vtailwait vdb
+simple-attest-db-ro_vdb_OPTIONS := readonly
+simple-attest-db-ro_NETWORKS := n-attest
+simple-attest-db-ro_run_COMMAND := /run_ro.sh
+simple-attest-db-ro_run_PROFILES := detach_join
+simple-attest-db-ro_run_MSGBUS := $(MSGBUS)
+simple-attest-db-ro_ARGS_DOCKER_RUN := \
+	--env=DB_PREFIX="$(vdb_DEST)" \
 	-p 9418:9418
 
 # "simple-attest-client", acts as a TPM-enabled host
 IMAGES += simple-attest-client
 simple-attest-client_EXTENDS := $(ibase-RESULT)
-simple-attest-client_PATH := $(TOPDIR)/workflow/simple-attest-client
+simple-attest-client_PATH := $(TOPDIR)/workflow/simple-attest/client
 simple-attest-client_COMMANDS := shell run
 simple-attest-client_SUBMODULES := libtpms swtpm tpm2-tss tpm2-tools
 simple-attest-client_VOLUMES := vsbin vfunctionssh vsafebootconf vtailwait \
@@ -103,47 +104,55 @@ vserver_MANAGED := true
 vserver_DEST := /state
 vserver_OPTIONS := readonly
 
-# "simple-attest-server", acts as an attestation service instance
-IMAGES += simple-attest-server
-simple-attest-server_EXTENDS := $(ibase-RESULT)
-simple-attest-server_PATH := $(TOPDIR)/workflow/simple-attest-server
-simple-attest-server_SUBMODULES :=
-simple-attest-server_COMMANDS := shell run
-simple-attest-server_VOLUMES := vsbin vfunctionssh vsafebootconf vtailwait \
-	$(foreach i,$(simple-attest-server_SUBMODULES),vi$i) \
+# "simple-attest-server-ro", acts as an attestation service instance. The
+# reason for the "ro" suffix, as with the simple-attest-db-ro/rw pair, is that
+# the server consists of two containers that mount the server state, one
+# mounting read-only and the other mounting it read-write. Hence ro and rw. The
+# ro case is the actual attestation service instance that hosts talk to. The rw
+# case is the side-car that replicates from the authoratative database
+# (simple-attest-db-ro).
+IMAGES += simple-attest-server-ro
+simple-attest-server-ro_EXTENDS := $(ibase-RESULT)
+simple-attest-server-ro_PATH := $(TOPDIR)/workflow/simple-attest/server
+simple-attest-server-ro_DOCKERFILE := $(TOPDIR)/workflow/simple-attest/server/ro.Dockerfile
+simple-attest-server-ro_SUBMODULES :=
+simple-attest-server-ro_COMMANDS := shell run
+simple-attest-server-ro_VOLUMES := vsbin vfunctionssh vsafebootconf vtailwait \
+	$(foreach i,$(simple-attest-server-ro_SUBMODULES),vi$i) \
 	vserver
-simple-attest-server_NETWORKS := n-attest
-simple-attest-server_run_COMMAND := /run_server.sh
-simple-attest-server_run_PROFILES := detach_join
-simple-attest-server_run_MSGBUS := $(MSGBUS)
-simple-attest-server_ARGS_DOCKER_BUILD := \
-	--build-arg SUBMODULES="$(simple-attest-server_SUBMODULES)" \
+simple-attest-server-ro_NETWORKS := n-attest
+simple-attest-server-ro_run_COMMAND := /run_ro.sh
+simple-attest-server-ro_run_PROFILES := detach_join
+simple-attest-server-ro_run_MSGBUS := $(MSGBUS)
+simple-attest-server-ro_ARGS_DOCKER_BUILD := \
+	--build-arg SUBMODULES="$(simple-attest-server-ro_SUBMODULES)" \
 	--build-arg DIR="/safeboot"
 # Give the server a secrets.yaml. TODO: get rid of this once
-# simple-attest-server is using $STATE_PREFIX/current/{...}
-simple-attest-server_ARGS_DOCKER_RUN := \
+# simple-attest-server-ro is using $STATE_PREFIX/current/{...}
+simple-attest-server-ro_ARGS_DOCKER_RUN := \
 	--env=STATE_PREFIX="$(vserver_DEST)" \
-	-v=$(TOPDIR)/workflow/stub-secrets.yaml:/safeboot/secrets.yaml
+	-v=$(TOPDIR)/workflow/simple-attest/stub-secrets.yaml:/safeboot/secrets.yaml
 
-IMAGES += simple-attest-updater
-simple-attest-updater_EXTENDS := $(ibase-RESULT)
-simple-attest-updater_PATH := $(TOPDIR)/workflow/simple-attest-updater
-simple-attest-updater_COMMANDS := shell run setup
-simple-attest-updater_VOLUMES := vtailwait vserver
-simple-attest-updater_vserver_OPTIONS := readwrite
-simple-attest-updater_NETWORKS := n-attest
-simple-attest-updater_run_COMMAND := /run_updater.sh
-simple-attest-updater_run_PROFILES := detach_join
-simple-attest-updater_run_MSGBUS := $(MSGBUS)
-simple-attest-updater_setup_COMMAND := /setup_updater.sh
-simple-attest-updater_setup_PROFILES := batch
-simple-attest-updater_setup_MSGBUS := $(MSGBUS)
-simple-attest-updater_setup_STICKY := true
-simple-attest-updater_ARGS_DOCKER_BUILD := \
-	--build-arg=USERNAME=git
-simple-attest-updater_ARGS_DOCKER_RUN := \
+IMAGES += simple-attest-server-rw
+simple-attest-server-rw_EXTENDS := $(ibase-RESULT)
+simple-attest-server-rw_PATH := $(TOPDIR)/workflow/simple-attest/server
+simple-attest-server-rw_DOCKERFILE := $(TOPDIR)/workflow/simple-attest/server/rw.Dockerfile
+simple-attest-server-rw_COMMANDS := shell run setup
+simple-attest-server-rw_VOLUMES := vtailwait vserver
+simple-attest-server-rw_vserver_OPTIONS := readwrite
+simple-attest-server-rw_NETWORKS := n-attest
+simple-attest-server-rw_run_COMMAND := /run_rw.sh
+simple-attest-server-rw_run_PROFILES := detach_join
+simple-attest-server-rw_run_MSGBUS := $(MSGBUS)
+simple-attest-server-rw_setup_COMMAND := /setup_rw.sh
+simple-attest-server-rw_setup_PROFILES := batch
+simple-attest-server-rw_setup_MSGBUS := $(MSGBUS)
+simple-attest-server-rw_setup_STICKY := true
+simple-attest-server-rw_ARGS_DOCKER_BUILD := \
+	--build-arg=USERNAME=lowlyuser
+simple-attest-server-rw_ARGS_DOCKER_RUN := \
 	--env=STATE_PREFIX="$(vserver_DEST)" \
-	--env=REMOTE_REPO="git://simple-attest-git-ro/attestdb.git" \
+	--env=REMOTE_REPO="git://simple-attest-db-ro/attestdb.git" \
 	--env=UPDATE_TIMER=10
 
 # Digest and process the above definitions (generate a Makefile and source it
@@ -157,10 +166,10 @@ $(eval $(call do_mariner))
 
 S:=simple-attest
 SC:=$S-client
-SS:=$S-server
-SG:=$S-git
-SR:=$S-git-ro
-SU:=$S-updater
+SS:=$S-server-ro
+SG:=$S-db-rw
+SR:=$S-db-ro
+SU:=$S-server-rw
 SCRun:=$(SC)_run
 SSRun:=$(SS)_run
 SGRun:=$(SG)_run
@@ -178,9 +187,9 @@ SSRunWait:=$($(SSRun)_DONEFILE)
 SGRunWait:=$($(SGRun)_DONEFILE)
 SRRunWait:=$($(SRRun)_DONEFILE)
 SURunWait:=$($(SURun)_DONEFILE)
-SGRunKill:=$(MSGBUS)/git-ctrl
-SRRunKill:=$(MSGBUS)/ro.git-ctrl
-SURunKill:=$(MSUBUS)/updater-ctrl
+SGRunKill:=$(MSGBUS)/db-rw-ctrl
+SRRunKill:=$(MSGBUS)/db-ro-ctrl
+SURunKill:=$(MSUBUS)/server-rw-ctrl
 SGRunKilled:=$(DEFAULT_CRUD)/ztouch-$(SG)-killed
 SRRunKilled:=$(DEFAULT_CRUD)/ztouch-$(SR)-killed
 SURunKilled:=$(DEFAULT_CRUD)/ztouch-$(SU)-killed

@@ -14,12 +14,12 @@ set -e
 
 echo "Running '$0'" >&2
 echo "Settings passed in;" >&2
-echo "   REPO_PREFIX=$REPO_PREFIX" >&2
-echo "      USERNAME=$USERNAME" >&2
+echo "   DB_PREFIX=$DB_PREFIX" >&2
+echo "    USERNAME=$USERNAME" >&2
 
-# REPO_PREFIX must be passed in, fail otherwise
-if [[ -z "$REPO_PREFIX" || ! -d "$REPO_PREFIX" ]]; then
-	echo "Error, REPO_PREFIX (\"$REPO_PREFIX\") is not a valid path" >&2
+# DB_PREFIX must be passed in, fail otherwise
+if [[ -z "$DB_PREFIX" || ! -d "$DB_PREFIX" ]]; then
+	echo "Error, DB_PREFIX (\"$DB_PREFIX\") is not a valid path" >&2
 	exit 1
 fi
 
@@ -32,9 +32,9 @@ fi
 REPO_NAME=attestdb.git
 EK_BASENAME=ekpubhash
 
-REPO_PATH=$REPO_PREFIX/$REPO_NAME
+REPO_PATH=$DB_PREFIX/$REPO_NAME
 EK_PATH=$REPO_PATH/$EK_BASENAME
-REPO_LOCKPATH=$REPO_PREFIX/lock-$REPO_NAME
+REPO_LOCKPATH=$DB_PREFIX/lock-$REPO_NAME
 
 echo "Settings added;" >&2
 echo "     REPO_NAME=$REPO_NAME" >&2
@@ -44,7 +44,7 @@ echo "       EK_PATH=$EK_PATH" >&2
 echo " REPO_LOCKPATH=$REPO_LOCKPATH" >&2
 
 function drop_privs {
-	su --whitelist-environment REPO_PREFIX,USERNAME -c "$1 $2 $3 $4 $5" - $USERNAME
+	su --whitelist-environment DB_PREFIX,USERNAME -c "$1 $2 $3 $4 $5" - $USERNAME
 }
 
 function expect_root {
