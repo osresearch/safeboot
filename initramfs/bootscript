@@ -182,10 +182,9 @@ install_img() {
 	curl "$URL" | tee "$MAPPER" | sha256sum - | tee "$TMPDIR/url.hash" \
 	|| die "$DEV: unable to fetch $URL"
 
-	if [ -n "$URL_HASH" ]; then
-		echo "$URL_HASH  -" > "$TMPDIR/url.hash.golden"
-		if ! cmp "$TMPDIR/url.hash" "$TMPDIR/url.hash.golden" ; then
-			die "$URL: hash failed. Expected $URL_HASH"
+	if [ -r "$TMPDIR/img.hash" ]; then
+		if ! cmp "$TMPDIR/img.hash" "$TMPDIR/url.hash" ; then
+			die "$URL: hash failed!"
 		fi
 
 		warn "$URL: verified $URL_HASH"
