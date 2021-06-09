@@ -461,7 +461,8 @@ $(TPMDIR)/ek.hash: $(TPMDIR)/ek.pub
 
 # Register the virtual TPM in the attestation server logs with the
 # expected value for the kernel that will be booted
-$(TPMDIR)/.ekpub.registered: $(TPMDIR)/ek.pub initramfs/response/* initramfs/response/rootfs.enc.key
+
+$(TPMDIR)/.ekpub.registered: $(TPMDIR)/ek.pub initramfs/response/* initramfs/response/rootfs.enc.key initramfs/response/img.hash
 	tar \
 		-zcf - \
 		-C initramfs/response \
@@ -553,7 +554,24 @@ server-hda.bin:
 build/OVMF_VARS.fd:
 	cp /usr/share/OVMF/OVMF_VARS.fd $@
 
-attest-server:
+UBUNTU_REPO = https://cloud-images.ubuntu.com/focal/current
+ROOTFS = focal-server-cloudimg-amd64.img
+ROOTFS_TAR = $(basename $(ROOTFS)).tar.gz
+$(ROOTFS_TAR):
+	wget -O $(ROOTFS_TAR).tmp $(UBUNTU_REPO)/$(ROOTFS_TAR)
+	wget -O $(ROOTFS_TAR).sha256 $(UBUNTU_REPO)/SHA256SUMS
+	awk '/$(ROOTFS_TAR)/ { print $$1, $$2".tmp" }' < $(ROOTFS_TAR).sha256 \
+	| sha256sum -c
+	mv $(ROOTFS_TAR).tmp $(ROOTFS_TAR)
+
+$(ROOTFS): $(ROOTFS_TAR)
+	tar xvf $(ROOTFS_TAR) $(ROOTFS)
+	touch $(ROOTFS) # force timestamp
+
+initramfs/response/img.hash: $(ROOTFS)
+	sha256sum - < $< | tee $@
+
+attest-server: $(ROOTFS) register
 	# start the attestation server with the paths
 	# to find the local copies for the verification tools
 	PATH=./bin:./sbin:$(PATH) DIR=. \
