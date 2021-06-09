@@ -45,3 +45,4 @@ local.conf
 build
 linux-*
 initramfs/response/wrapper.*
+initramfs/response/*.hash
