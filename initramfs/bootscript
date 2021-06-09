@@ -4,7 +4,12 @@
 # will be passed on the command line
 
 #set -x
-die() { echo >&2 "$@" ; exit 1 ; }
+POLICY_PCR=11
+die() {
+	echo >&2 "$@"
+	echo "FAILED" | tpm2 pcrevent $POLICY_PCR
+	exit 1
+}
 warn() { echo >&2 "$@" ; }
 
 DEV="/dev/sda"
@@ -35,51 +40,69 @@ tpm2_ek_session() {
 	tpm2 flushcontext -t
 	tpm2 flushcontext -s
 	tpm2 startauthsession \
-		--session session.ctx \
+		--session "ek-session.ctx" \
 		--policy-session \
 	|| die "tpm2: unable to start policy session"
 	tpm2 policysecret \
-		--session session.ctx \
+		--session "ek-session.ctx" \
 		--object-context endorsement \
 	|| die "tpm2: unable to set policysecret for endorsement hierarchy"
 }
+tpm2_tk_session() {
+	tpm2 startauthsession \
+		--session "tk-session.ctx" \
+		--policy-session \
+	|| die "tpm2: unable to start tk-policy session"
+	tpm2 policypcr \
+		--session "tk-session.ctx" \
+		--policy "tk-policy.dat" \
+		--pcr-list="sha256:$POLICY_PCR" \
+	|| die "tpm2: unable to load policy pcr"
+}
 
-if [ -r "$TMPDIR/wrapper.seed" ]; then
+if [ -r "$TMPDIR/transport.seed" ]; then
 	# attempt to load the secret wrapping key into our TPM
 	# as a transient object
 	tpm2 createek \
 		--ek-context ek.ctx \
 	|| die "tpm2: unable to create ek object"
 
-	warn "tpm2: Importing duplicate wrapper key"
+	warn "tpm2: Importing duplicate transport key"
 	tpm2_ek_session
+
 	tpm2 import \
 		--parent-context ek.ctx \
-		--parent-auth session:session.ctx \
+		--parent-auth "session:ek-session.ctx" \
 		--key-algorithm rsa \
-		--input "$TMPDIR/wrapper.dpriv" \
-		--seed "$TMPDIR/wrapper.seed" \
-		--public "$TMPDIR/wrapper.pub" \
-		--private "$TMPDIR/wrapper.priv" \
-	|| die "tpm2: unable to import duplicate wrapper key object"
+		--input "$TMPDIR/transport.dpriv" \
+		--seed "$TMPDIR/transport.seed" \
+		--public "$TMPDIR/transport.pub" \
+		--private "$TMPDIR/transport.priv" \
+	|| die "tpm2: unable to import duplicate transport key object"
 
-	warn "tpm2: Loading duplicate wrapper key"
+	warn "tpm2: Loading duplicate transport key"
 	tpm2_ek_session
 	tpm2 load \
 		--parent-context ek.ctx \
-		--auth session:session.ctx \
-		--key-context "$TMPDIR/wrapper.ctx" \
-		--public "$TMPDIR/wrapper.pub" \
-		--private "$TMPDIR/wrapper.priv" \
-	|| die "tpm2: unable to load duplicate wrapper key object"
+		--auth "session:ek-session.ctx" \
+		--key-context "$TMPDIR/transport.ctx" \
+		--public "$TMPDIR/transport.pub" \
+		--private "$TMPDIR/transport.priv" \
+	|| die "tpm2: unable to load duplicate transport key object"
 
-	# attempt to decrypt the rootfs key with the wrapper key
+	# attempt to decrypt the rootfs key with the transport key
 	warn "tpm2: Decrypting rootfs key"
+	tpm2_tk_session
 	tpm2 rsadecrypt \
-		--key-context "$TMPDIR/wrapper.ctx" \
+		--auth "session:tk-session.ctx" \
+		--key-context "$TMPDIR/transport.ctx" \
 		< "$TMPDIR/rootfs.enc.key" \
 		> "$TMPDIR/rootfs.key" \
-	|| die "tpm2: unable to decrypt the rootfs key with wrapper key"
+	|| die "tpm2: unable to decrypt the rootfs key with transport key"
+
+	# extend PCR11 so that the policy can not be satisfied
+	echo "UNLOCKED" | tpm2 pcrevent "$POLICY_PCR" \
+	|| die "tmp2: unable to extend PCR$POLICY_PCR"
 fi
 
 kexec_img() {

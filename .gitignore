@@ -44,5 +44,5 @@ local.conf
 *.gz
 build
 linux-*
-initramfs/response/wrapper.*
+initramfs/response/transport.*
 initramfs/response/*.hash

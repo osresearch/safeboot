@@ -374,7 +374,7 @@ BOOTX64=build/boot/EFI/BOOT/BOOTX64.EFI
 $(BOOTX64): build/vmlinuz initramfs/cmdline.txt bin/sbsign.safeboot build/signing.key build/initrd.cpio.xz
 	mkdir -p "$(dir $@)"
 	DIR=. \
-	bash -x ./sbin/safeboot unify-kernel \
+	./sbin/safeboot unify-kernel \
 		$@.tmp \
 		linux=build/vmlinuz \
 		initrd=build/initrd.cpio.xz \
@@ -455,6 +455,24 @@ $(TPMDIR)/ek.pub: | $(SWTPM) bin/tpm2 build
 	kill `cat "$(TPMDIR)/swtpm-ek.pid"`
 	@-$(RM) "$(TPMDIR)/swtpm-ek.pid"
 
+tpm-shell: $(SWTPM)
+	$(SWTPM) socket \
+		--tpm2 \
+		--flags startup-clear \
+		--tpmstate dir="$(TPMDIR)" \
+		--server type=tcp,port=9998 \
+		--ctrl type=tcp,port=9999 \
+		--pid file="$(TPMDIR)/swtpm-ek.pid" &
+	sleep 1
+	
+	TPM2TOOLS_TCTI=swtpm:host=localhost,port=9998 \
+	LD_LIBRARY_PATH=`pwd`/tpm2-tss/src/tss2-tcti/.libs/ \
+	PATH=`pwd`/bin:`pwd`/sbin:$(PATH) \
+	bash
+
+	kill `cat "$(TPMDIR)/swtpm-ek.pid"`
+	@-$(RM) "$(TPMDIR)/swtpm-ek.pid"
+
 # Convert an EK PEM formatted public key into the hash of the modulus,
 # which is used by the quote and attestation server to identify the machine
 # none of the tools output this easily, so do lots of text manipulation to make it
@@ -466,7 +484,7 @@ $(TPMDIR)/ek.hash: $(TPMDIR)/ek.pub | build
 # Register the virtual TPM in the attestation server logs with the
 # expected value for the kernel that will be booted
 
-$(TPMDIR)/.ekpub.registered: $(TPMDIR)/ek.pub initramfs/response/* initramfs/response/rootfs.enc.key initramfs/response/img.hash | build
+$(TPMDIR)/.ekpub.registered: $(TPMDIR)/ek.pub initramfs/response/* initramfs/response/rootfs.enc.key initramfs/response/transport.seed initramfs/response/img.hash | build
 	tar \
 		-zcf - \
 		-C initramfs/response \
@@ -479,25 +497,34 @@ $(TPMDIR)/.ekpub.registered: $(TPMDIR)/ek.pub initramfs/response/* initramfs/res
 
 # Generate a device specific RSA key and create a TPM2 duplicate structure
 # so that only the destination device can use it with their TPM
-initramfs/response/wrapper.seed: $(TPMDIR)/ek.pub | bin/tpm2
-	openssl genrsa -out build/wrapper-priv.pem
-	openssl rsa -in build/wrapper-priv.pem -pubout -out build/wrapper-pub.pem
+# Set the policy so that it is only valid if PCR11 is 0
+initramfs/response/transport.seed: $(TPMDIR)/ek.pub | bin/tpm2
+	openssl genrsa -out build/transport-priv.pem
+	openssl rsa \
+		-pubout \
+		-in build/transport-priv.pem \
+		-out build/transport-pub.pem \
+
+	echo -n 'fd32fa22c52cfc8e1a0c29eb38519f87084cab0b04b0d8f020a4d38b2f4e223e' \
+	| xxd -p -r > $(TPMDIR)/policy.dat
+
 	./bin/tpm2 duplicate \
 		--tcti none \
 		-U $< \
 		-G rsa \
-		-k build/wrapper-priv.pem \
-		-u $(dir $@)wrapper.pub \
-		-r $(dir $@)wrapper.dpriv \
+		-L "$(TPMDIR)/policy.dat" \
+		-k build/transport-priv.pem \
+		-u $(dir $@)transport.pub \
+		-r $(dir $@)transport.dpriv \
 		-s $(@)
 
 # encrypt the disk encryption key with the seed key so that only the destination
 # machine can decrypt it using a TPM duplicate key
-initramfs/response/rootfs.enc.key: initramfs/response/wrapper.seed
+initramfs/response/rootfs.enc.key: initramfs/response/transport.seed
 	echo magicwords | openssl rsautl \
 		-encrypt \
 		-pubin \
-		-inkey build/wrapper-pub.pem \
+		-inkey build/transport-pub.pem \
 		-out $@
 
 # QEMU tries to boot from the DVD and HD before finally booting from the
