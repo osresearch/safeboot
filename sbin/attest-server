@@ -14,7 +14,7 @@ It then invokes an external handler to verify that the eventlog
 meets the policy requirements, and will return any output from this
 handler to the attesting machine.
 """
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import SimpleHTTPRequestHandler, HTTPServer
 import os
 import logging
 import tempfile
@@ -27,7 +27,7 @@ import hashlib
 alg = 'sha256'
 
 
-class AttestServer(BaseHTTPRequestHandler):
+class AttestServer(SimpleHTTPRequestHandler):
 	def fail(self, msg):
 		logging.info("FAILED: ", msg)
 		self.send_response(401)
@@ -37,10 +37,11 @@ class AttestServer(BaseHTTPRequestHandler):
 
 	def do_GET(self):
 		logging.info("GET request,\nPath: %s\nHeaders:\n%s\n", str(self.path), str(self.headers))
-		self.send_response(200)
-		self.send_header('Content-type', 'text/html')
-		self.end_headers()
-		self.wfile.write("Only POST is supported".encode())
+		return super().do_GET()
+		#self.send_response(200)
+		#self.send_header('Content-type', 'text/html')
+		#self.end_headers()
+		#self.wfile.write("Only POST is supported".encode())
 
 	def do_POST(self):
 		content_length = int(self.headers.get('Content-Length',0))
@@ -72,25 +73,27 @@ class AttestServer(BaseHTTPRequestHandler):
 		with open("/tmp/quote.yaml", "w") as y:
 			y.write(str(quote))
 
-		# Verify that the every quoted PCR matches the computed
-		# eventlog PCRs.  A zero quoted PCR means that no extensions
-		# were made, so it should not exist in the eventlog
+		# Validate that the every computed PCR in the eventlog
+		# matches a quoted PCRs.
+		# This makes no statements about the validitiy of the
+		# event log, only that it is consistent with the quote.
+		# Other PCRs may have values, which is the responsibility
+		# of the verifier to check.
 		if alg not in quote['pcrs']:
 			logging.warning(f"{ekhash=}: quote does not have hash {alg}")
 		quote_pcrs = quote['pcrs'][alg]
 		eventlog_pcrs = quote['eventlog-pcrs'][alg]
 
-		for pcr_index in quote_pcrs:
-			quote_pcr = quote_pcrs[pcr_index]
+		for pcr_index in eventlog_pcrs:
+			eventlog_pcr = eventlog_pcrs[pcr_index]
 
-			if pcr_index in eventlog_pcrs:
-				eventlog_pcr = eventlog_pcrs[pcr_index]
+			if pcr_index in quote_pcrs:
+				quote_pcr = quote_pcrs[pcr_index]
 				if quote_pcr != eventlog_pcr:
 					logging.warning(f"{ekhash=}: {pcr_index=} {quote_pcr=} != {eventlog_pcr=}")
 					quote_valid = False
-			elif quote_pcr != 0:
-				logging.warning(f"{ekhash=}: {pcr_index=} not in eventlog")
-				quote_valid = False
+				else:
+					logging.info(f"{ekhash=}: {pcr_index=} {quote_pcr=} good")
 
 		if quote_valid:
 			logging.info(f"{ekhash=}: so far so good")
