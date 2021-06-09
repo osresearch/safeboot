@@ -41,3 +41,8 @@ DEFAULT_UTIL:=$(SAFEBOOT_WORKFLOW_BASE)
 #  sameersbn/apt-cacher-ng:3.3-20200524
 # 
 #SAFEBOOT_WORKFLOW_APT_PROXY:=http://172.17.0.1:3142
+
+# If defined, tpm2-tools (and tpm2-tss libraries) will be installed from
+# upstream debian packages, instead of configuring, compiling, and installing
+# the local submodules.
+ENABLE_UPSTREAM_TPM2:=1

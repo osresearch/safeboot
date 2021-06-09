@@ -31,12 +31,25 @@ VOLUMES += vdb
 vdb_MANAGED := true
 vdb_DEST := /db
 
+# For images that need tpm2-tools, we create a layer on top of ibase-RESULT to
+# deal with installing upstream packages, as required if ENABLE_UPSTREAM_TPM2
+# is defined. (Otherwise, this layer is a no-op.) Layers that don't need
+# tpm2-tools will extend ibase-RESULT directly.
+IMAGES += simple-attest-base-tpm2
+simple-attest-base-tpm2_EXTENDS := $(ibase-RESULT)
+simple-attest-base-tpm2_NOPATH := true
+ifeq (,$(ENABLE_UPSTREAM_TPM2))
+simple-attest-base-tpm2_DOCKERFILE := /dev/null
+else
+simple-attest-base-tpm2_DOCKERFILE := $(TOPDIR)/workflow/simple-attest/base-tpm2.Dockerfile
+endif
+
 # "simple-attest-db-rw" is the only container image that can mount vdb
 # read-write. It supports the 'setup' (batch) verb to initialize the db, and
 # supports the 'run' (detach_join) verb to run the flask web app that provides
 # the REST API for manipulating the database.
 IMAGES += simple-attest-db-rw
-simple-attest-db-rw_EXTENDS := $(ibase-RESULT)
+simple-attest-db-rw_EXTENDS := simple-attest-base-tpm2
 simple-attest-db-rw_PATH := $(TOPDIR)/workflow/simple-attest/db
 simple-attest-db-rw_DOCKERFILE := $(TOPDIR)/workflow/simple-attest/db/rw.Dockerfile
 simple-attest-db-rw_COMMANDS := shell run setup reset
@@ -80,10 +93,13 @@ simple-attest-db-ro_ARGS_DOCKER_RUN := \
 
 # "simple-attest-client", acts as a TPM-enabled host
 IMAGES += simple-attest-client
-simple-attest-client_EXTENDS := $(ibase-RESULT)
+simple-attest-client_EXTENDS := simple-attest-base-tpm2
 simple-attest-client_PATH := $(TOPDIR)/workflow/simple-attest/client
 simple-attest-client_COMMANDS := shell run
-simple-attest-client_SUBMODULES := libtpms swtpm tpm2-tss tpm2-tools
+simple-attest-client_SUBMODULES := libtpms swtpm
+ifeq (,$(ENABLE_UPSTREAM_TPM2))
+simple-attest-client_SUBMODULES += tpm2-tss tpm2-tools
+endif
 simple-attest-client_VOLUMES := vsbin vfunctionssh vsafebootconf vtailwait \
 	$(foreach i,$(simple-attest-client_SUBMODULES),vi$i)
 simple-attest-client_NETWORKS := n-attest
@@ -112,10 +128,13 @@ vserver_OPTIONS := readonly
 # case is the side-car that replicates from the authoratative database
 # (simple-attest-db-ro).
 IMAGES += simple-attest-server-ro
-simple-attest-server-ro_EXTENDS := $(ibase-RESULT)
+simple-attest-server-ro_EXTENDS := simple-attest-base-tpm2
 simple-attest-server-ro_PATH := $(TOPDIR)/workflow/simple-attest/server
 simple-attest-server-ro_DOCKERFILE := $(TOPDIR)/workflow/simple-attest/server/ro.Dockerfile
 simple-attest-server-ro_SUBMODULES :=
+ifeq (,$(ENABLE_UPSTREAM_TPM2))
+simple-attest-client_SUBMODULES += tpm2-tss tpm2-tools
+endif
 simple-attest-server-ro_COMMANDS := shell run
 simple-attest-server-ro_VOLUMES := vsbin vfunctionssh vsafebootconf vtailwait \
 	$(foreach i,$(simple-attest-server-ro_SUBMODULES),vi$i) \
@@ -195,7 +214,10 @@ SRRunKilled:=$(DEFAULT_CRUD)/ztouch-$(SR)-killed
 SURunKilled:=$(DEFAULT_CRUD)/ztouch-$(SU)-killed
 SUnderway:=$(DEFAULT_CRUD)/ztouch-$S-underway
 SMsgbus:=$(DEFAULT_CRUD)/ztouch-$S-msgbus
-SDeps:=$(foreach i,swtpm tpm2-tools,$(ibuild-$i_install_TOUCHFILE)) $(n-attest_TOUCHFILE)
+SDeps:=$(n-attest_TOUCHFILE) $(ibuild-swtpm_install_TOUCHFILE)
+ifeq (,$(ENABLE_UPSTREAM_TPM2))
+SDeps+=$(ibuild-tpm2-tools_install_TOUCHFILE)
+endif
 
 # The git server. We set up touchfiles and deps to handle initial creation of
 # the git repo (the 'vgit' volume, the setup verb, and msgbus/git-setup

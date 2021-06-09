@@ -2,9 +2,12 @@
 # automated.  Declaration of volumes and images, in particular.
 SUBMODULES := \
 	libtpms \
-	swtpm \
+	swtpm
+ifeq (,$(ENABLE_UPSTREAM_TPM2))
+SUBMODULES += \
 	tpm2-tss \
 	tpm2-tools
+endif
 #	tpm2-totp
 #	sbsigntools
 #	efitools
@@ -131,10 +134,12 @@ swtpm_CONFIGURE_ENVS_LIBTPMS_LIBS := -L$(vilibtpms_DEST)/lib -ltpms
 swtpm_CONFIGURE_ENVS_LIBTPMS_CFLAGS := -I$(vilibtpms_DEST)/include
 swtpm_CONFIGURE_ENVS_INSTALL_EXTRA_TARGETS := python-install
 swtpm_CONFIGURE_ENVS_UNINSTALL_EXTRA_TARGETS := python-uninstall
+ifeq (,$(ENABLE_UPSTREAM_TPM2))
 tpm2-tss_CONFIGURE_PROFILE := bootstrap
 tpm2-tss_CONFIGURE_ARGS := --disable-doxygen-doc
 tpm2-tools_SUBMODULE_DEPS := tpm2-tss
 tpm2-tools_CONFIGURE_PROFILE := bootstrap
+endif
 #tpm2-totp_SUBMODULE_DEPS := tpm2-tss
 #tpm2-totp_CONFIGURE_PROFILE := bootstrap
 #sbsigntools_CONFIGURE_PROFILE := autogen-configure
