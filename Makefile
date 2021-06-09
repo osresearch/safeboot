@@ -474,10 +474,11 @@ $(TPMDIR)/.ekpub.registered: $(TPMDIR)/ek.pub initramfs/response/* initramfs/res
 
 # Generate a device specific RSA key and create a TPM2 duplicate structure
 # so that only the destination device can use it with their TPM
-initramfs/response/wrapper.seed: $(TPMDIR)/ek.pub
+initramfs/response/wrapper.seed: $(TPMDIR)/ek.pub | bin/tpm2
 	openssl genrsa -out build/wrapper-priv.pem
 	openssl rsa -in build/wrapper-priv.pem -pubout -out build/wrapper-pub.pem
-	tpm2 duplicate \
+	./bin/tpm2 duplicate \
+		--tcti none \
 		-U $< \
 		-G rsa \
 		-k build/wrapper-priv.pem \
