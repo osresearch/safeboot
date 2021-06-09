@@ -181,7 +181,10 @@ $(LINUX)/.patched: $(LINUX_TAR)
 	tar xf $(LINUX_TAR)
 	touch $@
 
-build/vmlinuz: build/$(LINUX)/.config
+build:
+	mkdir -p $@
+
+build/vmlinuz: build/$(LINUX)/.config | build
 	$(MAKE) \
 		KBUILD_HOST=safeboot \
 		KBUILD_BUILD_USER=builder \
@@ -205,7 +208,7 @@ linux-menuconfig: build/$(LINUX)/.config
 #
 # Extra package building requirements
 #
-requirements:
+requirements: | build
 	DEBIAN_FRONTEND=noninteractive \
 	apt install -y \
 		devscripts \
@@ -247,9 +250,9 @@ requirements:
 		libelf-dev \
 
 
-# Remove the temporary files
+# Remove the temporary files and build stuff
 clean:
-	rm -rf bin $(SUBMODULES)
+	rm -rf bin $(SUBMODULES) build
 	mkdir $(SUBMODULES)
 	#git submodule update --init --recursive --recommend-shallow 
 
@@ -353,7 +356,7 @@ build/initrd.cpio.bz: build/initrd.cpio
 	sha256sum $@
 
 
-build/signing.key:
+build/signing.key: | build
 	openssl req \
 		-new \
 		-x509 \
@@ -387,6 +390,7 @@ $(BOOTX64): build/vmlinuz initramfs/cmdline.txt bin/sbsign.safeboot build/signin
 	sha256sum "$@"
 
 build/boot/PK.auth: signing.crt
+	mkdir -p $(dir $@)
 	-./sbin/safeboot uefi-sign-keys
 	cp signing.crt PK.auth KEK.auth db.auth "$(dir $@)"
 
@@ -396,7 +400,7 @@ build/esp.bin: $(BOOTX64) build/boot/PK.auth
 build/hda.bin: build/esp.bin build/luks.bin
 	./sbin/mkgpt "$@" $^
 
-build/key.bin:
+build/key.bin: | build
 	echo -n "abcd1234" > "$@"
 
 build/luks.bin: build/key.bin
@@ -422,7 +426,7 @@ TPMSOCK=$(TPMDIR)/sock
 # Setup a new TPM and
 # Extract the EK from a tpm state; wish swtpm_setup had a way
 # to do this instead of requiring this many hoops
-$(TPMDIR)/ek.pub: | $(SWTPM) bin/tpm2
+$(TPMDIR)/ek.pub: | $(SWTPM) bin/tpm2 build
 	mkdir -p "$(TPMDIR)"
 	PATH=$(dir $(SWTPM)):$(PATH) \
 	swtpm/src/swtpm_setup/swtpm_setup \
@@ -454,7 +458,7 @@ $(TPMDIR)/ek.pub: | $(SWTPM) bin/tpm2
 # Convert an EK PEM formatted public key into the hash of the modulus,
 # which is used by the quote and attestation server to identify the machine
 # none of the tools output this easily, so do lots of text manipulation to make it
-$(TPMDIR)/ek.hash: $(TPMDIR)/ek.pub
+$(TPMDIR)/ek.hash: $(TPMDIR)/ek.pub | build
 	sha256sum $< \
 	| cut -d\  -f1 \
 	> $@
@@ -462,7 +466,7 @@ $(TPMDIR)/ek.hash: $(TPMDIR)/ek.pub
 # Register the virtual TPM in the attestation server logs with the
 # expected value for the kernel that will be booted
 
-$(TPMDIR)/.ekpub.registered: $(TPMDIR)/ek.pub initramfs/response/* initramfs/response/rootfs.enc.key initramfs/response/img.hash
+$(TPMDIR)/.ekpub.registered: $(TPMDIR)/ek.pub initramfs/response/* initramfs/response/rootfs.enc.key initramfs/response/img.hash | build
 	tar \
 		-zcf - \
 		-C initramfs/response \
@@ -551,7 +555,7 @@ qemu: build/hda.bin $(SWTPM) $(TPMSTATE)
 
 server-hda.bin:
 	qemu-img create -f qcow2 $@ 4G
-build/OVMF_VARS.fd:
+build/OVMF_VARS.fd: | build
 	cp /usr/share/OVMF/OVMF_VARS.fd $@
 
 UBUNTU_REPO = https://cloud-images.ubuntu.com/focal/current
