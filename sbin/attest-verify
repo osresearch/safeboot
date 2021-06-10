@@ -4,15 +4,16 @@ Eventlog verifier, which only checks golden PCR values against a database.
 """
 import sys
 import yaml
-import sqlite3
 import hashlib
 import logging
+import subprocess
 
 # hard code the hashing algorithm used
 alg = 'sha256'
 
-# sqlite database of hosts and pcrs, indexed by ekhash
-db = None
+# attestation directory path
+db_path = 'build/attest'
+
 
 # Check that all of the required PCRs are present and match the golden values.
 # It is ok if the quote or event log have more, but none must be missing.
@@ -20,8 +21,12 @@ def pcr_validate(golden, quote):
 	if alg not in quote:
 		print("Quote does not have PCR algorithm '%s'" % (alg))
 		return false
+	if alg not in golden:
+		print("PCR file does not have PCR algorithm '%s'" % (alg))
+		return false
 
 	quote = quote[alg]
+	golden = golden[alg]
 	valid = True
 
 	for pcr in golden:
@@ -44,31 +49,28 @@ def verify(quote, quote_valid):
 		logging.warning(f"{ekhash=}: rejecting invalid quote")
 		return -1
 
-	cur = db.cursor()
-	cur.execute("SELECT secret,device FROM hosts WHERE ekhash = ?", (ekhash,))
-	row = cur.fetchone()
-	
-	if row is None:
+	# check for an enrolled directory
+	ekdir = "%s/%s/%s" % (db_path, ekhash[0:2], ekhash)
+	with open(ekdir + "/pcrs") as pcrs_file:
+		valid_pcrs = yaml.safe_load(pcrs_file)
+	if valid_pcrs is None:
 		logging.warning(f"{ekhash=}: rejecting unknown machine")
 		return -1
 
-	secret = row[0]
-	device = row[1]
-
-	cur.execute("SELECT pcr,value FROM pcrs WHERE ekhash = ?", (ekhash,))
-	valid_pcrs = {}
-	for row in cur.fetchall():
-		valid_pcrs[row[0]] = row[1]
-
-	if not pcr_validate(valid_pcrs, quote['pcrs']):
+	print(valid_pcrs, file=sys.stderr)
+	if not pcr_validate(valid_pcrs['pcrs'], quote['pcrs']):
 		logging.warning(f"{device}: {ekhash=}: rejecting bad PCRs")
 		return -1
 
 	# the eventlog meets the policy requirements
 	# so output the secret for encoding by the attestation server
-	logging.info(f"{device}: {ekhash=}: sending secrets")
-	sys.stdout.buffer.write(secret)
-	return 0
+	logging.info(f"{ekhash=}: sending secrets")
+
+	sub = subprocess.run(["tar", "zvcf", "-", "-C", ekdir, "."],
+		stdout=sys.stdout,
+		stderr=sys.stderr,
+	)
+	return sub.returncode
 
 if __name__ == '__main__':
 	from sys import argv
@@ -78,40 +80,6 @@ if __name__ == '__main__':
 		print("Usage: attest-verify cmd...", file=sys.stderr)
 		exit(1)
 
-	db = sqlite3.connect("build/secrets.db")
-	db.execute("""
-		CREATE TABLE IF NOT EXISTS hosts (
-			ekhash CHAR(64) PRIMARY KEY,
-			device TEXT,
-			secret BLOB
-		)
-	""")
-	db.execute("""
-		CREATE TABLE IF NOT EXISTS pcrs (
-			ekhash CHAR(64) PRIMARY KEY,
-			pcr INTEGER,
-			value CHAR(64),
-			FOREIGN KEY (ekhash) REFERENCES hosts (ekhash)
-		)
-	""")
-
-	if argv[1] == "register":
-		# register ek.pub name < secret.bin
-		with open(argv[2],"rb") as ekpub:
-			# compute the "name" of the ekpub
-			ekhash = hashlib.sha256(ekpub.read()).hexdigest()
-		host = argv[3]
-		secret = sys.stdin.buffer.read() # bytes
-		print(ekhash + ": " + host)
-		cur = db.cursor()
-		cur.execute("INSERT OR REPLACE INTO hosts(ekhash, device, secret) VALUES(?,?,?)",
-			(ekhash, host, secret))
-		db.commit()
-		cur.execute("SELECT device FROM hosts WHERE ekhash = ?", (ekhash,))
-		print(cur.fetchall())
-		db.close()
-		exit(0)
-
 	if argv[1] == "predictpcr":
 		# predictpcr ek.pub index digest ....
 		# this is predicts the eventual PCR value based on the hashes
@@ -119,7 +87,7 @@ if __name__ == '__main__':
 		with open(argv[2],"rb") as ekpub:
 			# compute the "name" of the ekpub
 			ekhash = hashlib.sha256(ekpub.read()).hexdigest()
-		pcrindex = argv[3]
+		pcrindex = int(argv[3])
 
 		# extend operation is NewPCR = SHA256(PCR || SHA256(newdata))
 		# this takes in the hash of the values, so the second SHA256 is not used
@@ -127,13 +95,14 @@ if __name__ == '__main__':
 		for newhash in argv[4:]:
 			pcr = hashlib.sha256(pcr + bytes.fromhex(newhash)).digest()
 		pcr = pcr.hex()
-		cur = db.cursor()
-		cur.execute("INSERT OR REPLACE INTO pcrs(ekhash, pcr, value) VALUES(?,?,?)",
-			(ekhash, pcrindex, pcr))
-		db.commit()
-		db.close()
 
-		print(ekhash + ": " + pcrindex + "=" + pcr)
+		with open("%s/%s/%s/pcrs" % (db_path, ekhash[0:2], ekhash), "w") as pcrs:
+			print("pcrs:", file=pcrs)
+			print("  sha256:", file=pcrs)
+			print("    %d : %s" % (pcrindex, pcr), file=pcrs)
+
+		print(ekhash + ": " + str(pcrindex) + "=" + pcr)
+
 		exit(0)
 
 	if argv[1] == "verify":

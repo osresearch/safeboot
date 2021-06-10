@@ -1,7 +1,0 @@
-#cloud-config
-hostname: safeboot-demo
-chpasswd:
-  expire: False
-  list: |
-    root:password
-    ubuntu:password

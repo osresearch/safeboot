@@ -473,59 +473,13 @@ tpm-shell: $(SWTPM)
 	kill `cat "$(TPMDIR)/swtpm-ek.pid"`
 	@-$(RM) "$(TPMDIR)/swtpm-ek.pid"
 
-# Convert an EK PEM formatted public key into the hash of the modulus,
-# which is used by the quote and attestation server to identify the machine
-# none of the tools output this easily, so do lots of text manipulation to make it
-$(TPMDIR)/ek.hash: $(TPMDIR)/ek.pub | build
-	sha256sum $< \
-	| cut -d\  -f1 \
-	> $@
 
 # Register the virtual TPM in the attestation server logs with the
 # expected value for the kernel that will be booted
 
-$(TPMDIR)/.ekpub.registered: $(TPMDIR)/ek.pub initramfs/response/* initramfs/response/rootfs.enc.key initramfs/response/transport.seed initramfs/response/img.hash | build
-	tar \
-		-zcf - \
-		-C initramfs/response \
-		. \
-	| ./sbin/attest-verify \
-		register \
-		$(TPMDIR)/ek.pub \
-		'qemu-server'
+$(TPMDIR)/.ekpub.registered: $(TPMDIR)/ek.pub | bin/tpm2
+	./sbin/attest-enroll safeboot-demo < $<
 	@touch $@
-
-# Generate a device specific RSA key and create a TPM2 duplicate structure
-# so that only the destination device can use it with their TPM
-# Set the policy so that it is only valid if PCR11 is 0
-initramfs/response/transport.seed: $(TPMDIR)/ek.pub | bin/tpm2
-	openssl genrsa -out build/transport-priv.pem
-	openssl rsa \
-		-pubout \
-		-in build/transport-priv.pem \
-		-out build/transport-pub.pem \
-
-	echo -n 'fd32fa22c52cfc8e1a0c29eb38519f87084cab0b04b0d8f020a4d38b2f4e223e' \
-	| xxd -p -r > $(TPMDIR)/policy.dat
-
-	./bin/tpm2 duplicate \
-		--tcti none \
-		-U $< \
-		-G rsa \
-		-L "$(TPMDIR)/policy.dat" \
-		-k build/transport-priv.pem \
-		-u $(dir $@)transport.pub \
-		-r $(dir $@)transport.dpriv \
-		-s $(@)
-
-# encrypt the disk encryption key with the seed key so that only the destination
-# machine can decrypt it using a TPM duplicate key
-initramfs/response/rootfs.enc.key: initramfs/response/transport.seed
-	echo magicwords | openssl rsautl \
-		-encrypt \
-		-pubin \
-		-inkey build/transport-pub.pem \
-		-out $@
 
 # QEMU tries to boot from the DVD and HD before finally booting from the
 # network, so there are attempts to call different boot options and then
