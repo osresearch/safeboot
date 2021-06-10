@@ -16,7 +16,7 @@ THEPID=$!
 disown %
 echo "Backgrounded (pid=$THEPID)"
 
-echo "Waiting for 'die' message on /msgbus/updater-ctrl"
+echo "Waiting for 'die' message on /msgbus/server-rw-ctrl"
 $TAILWAIT /msgbus/server-rw-ctrl "die"
 echo "Got the 'die' message"
 rm /msgbus/server-rw-ctrl

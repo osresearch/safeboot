@@ -22,7 +22,7 @@ THEPID=$!
 disown %
 echo "Backgrounded (pid=$THEPID)"
 
-echo "Waiting for 'die' message on /msgbus/ro.git-ctrl"
+echo "Waiting for 'die' message on /msgbus/db-ro-ctrl"
 $TAILWAIT /msgbus/db-ro-ctrl "die"
 echo "Got the 'die' message"
 rm /msgbus/db-ro-ctrl
