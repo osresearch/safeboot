@@ -2,6 +2,7 @@ VERSION ?= 0.8
 
 GIT_DIRTY := $(shell if git status -s >/dev/null ; then echo dirty ; else echo clean ; fi)
 GIT_HASH  := $(shell git rev-parse HEAD)
+TOP := $(shell pwd)
 
 BINS += bin/sbsign.safeboot
 BINS += bin/sign-efi-sig-list.safeboot
@@ -41,20 +42,25 @@ efitools/Makefile:
 #
 SUBMODULES += tpm2-tss
 
-libtss2-mu = tpm2-tss/src/tss2-mu/.libs/libtss2-mu.a
-libtss2-rc = tpm2-tss/src/tss2-rc/.libs/libtss2-rc.a
-libtss2-sys = tpm2-tss/src/tss2-sys/.libs/libtss2-sys.a
-libtss2-esys = tpm2-tss/src/tss2-esys/.libs/libtss2-esys.a
-libtss2-tcti = tpm2-tss/src/tss2-tcti/.libs/libtss2-tctildr.a
+libtss2-include = -I$(TOP)/tpm2-tss/include
+libtss2-mu = $(TOP)/build/tpm2-tss/src/tss2-mu/.libs/libtss2-mu.a
+libtss2-rc = $(TOP)/build/tpm2-tss/src/tss2-rc/.libs/libtss2-rc.a
+libtss2-sys = $(TOP)/build/tpm2-tss/src/tss2-sys/.libs/libtss2-sys.a
+libtss2-esys = $(TOP)/build/tpm2-tss/src/tss2-esys/.libs/libtss2-esys.a
+libtss2-tcti = $(TOP)/build/tpm2-tss/src/tss2-tcti/.libs/libtss2-tctildr.a
 
-$(libtss2-esys): tpm2-tss/Makefile
-	$(MAKE) -C $(dir $<)
-	mkdir -p $(dir $@)
 tpm2-tss/bootstrap:
+	mkdir -p $(dir $@)
 	git submodule update --init --recursive --recommend-shallow $(dir $@)
-tpm2-tss/Makefile: tpm2-tss/bootstrap
-	cd $(dir $@) ; ./bootstrap && ./configure \
+tpm2-tss/configure: tpm2-tss/bootstrap
+	cd $(dir $@) ; ./bootstrap
+build/tpm2-tss/Makefile: tpm2-tss/configure
+	mkdir -p $(dir $@)
+	cd $(dir $@) ; ../../tpm2-tss/configure \
 		--disable-doxygen-doc \
+
+$(libtss2-esys): build/tpm2-tss/Makefile
+	$(MAKE) -C $(dir $<)
 
 #
 # tpm2-tools is the head after bundling and ecc support built in
@@ -63,24 +69,26 @@ SUBMODULES += tpm2-tools
 
 tpm2-tools/bootstrap:
 	git submodule update --init --recursive --recommend-shallow $(dir $@)
-tpm2-tools/Makefile: tpm2-tools/bootstrap $(libtss2-esys)
-	cd $(dir $@) ; ./bootstrap \
-	&& ./configure \
-		TSS2_RC_CFLAGS=-I../tpm2-tss/include \
-		TSS2_RC_LIBS="../$(libtss2-rc)" \
-		TSS2_MU_CFLAGS=-I../tpm2-tss/include \
-		TSS2_MU_LIBS="../$(libtss2-mu)" \
-		TSS2_SYS_CFLAGS=-I../tpm2-tss/include \
-		TSS2_SYS_LIBS="../$(libtss2-sys)" \
-		TSS2_TCTILDR_CFLAGS=-I../tpm2-tss/include \
-		TSS2_TCTILDR_LIBS="../$(libtss2-tcti)" \
-		TSS2_ESYS_3_0_CFLAGS=-I../tpm2-tss/include \
-		TSS2_ESYS_3_0_LIBS="../$(libtss2-esys) -ldl" \
+tpm2-tools/configure: tpm2-tools/bootstrap
+	cd $(dir $@) ; ./bootstrap
+build/tpm2-tools/Makefile: tpm2-tools/configure $(libtss2-esys)
+	mkdir -p $(dir $@)
+	cd $(dir $@) ; ../../tpm2-tools/configure \
+		TSS2_RC_CFLAGS=$(libtss2-include) \
+		TSS2_RC_LIBS="$(libtss2-rc)" \
+		TSS2_MU_CFLAGS=$(libtss2-include) \
+		TSS2_MU_LIBS="$(libtss2-mu)" \
+		TSS2_SYS_CFLAGS=$(libtss2-include) \
+		TSS2_SYS_LIBS="$(libtss2-sys)" \
+		TSS2_TCTILDR_CFLAGS=$(libtss2-include) \
+		TSS2_TCTILDR_LIBS="$(libtss2-tcti)" \
+		TSS2_ESYS_3_0_CFLAGS=$(libtss2-include) \
+		TSS2_ESYS_3_0_LIBS="$(libtss2-esys) -ldl" \
 
-tpm2-tools/tools/tpm2: tpm2-tools/Makefile
+build/tpm2-tools/tools/tpm2: build/tpm2-tools/Makefile
 	$(MAKE) -C $(dir $<)
 
-bin/tpm2: tpm2-tools/tools/tpm2
+bin/tpm2: build/tpm2-tools/tools/tpm2
 	cp $< $@
 
 
@@ -134,8 +142,8 @@ swtpm/configure: swtpm/autogen.sh
 build/swtpm/Makefile: swtpm/configure | $(LIBTPMS_OUTPUT)
 	mkdir -p $(dir $@)
 	cd $(dir $@) ; \
-	LIBTPMS_LIBS="-L`pwd`/../libtpms/src/.libs -ltpms" \
-	LIBTPMS_CFLAGS="-I`pwd`/../../libtpms/include" \
+	LIBTPMS_LIBS="-L$(TOP)/build/libtpms/src/.libs -ltpms" \
+	LIBTPMS_CFLAGS="-I$(TOP)/libtpms/include" \
 	../../swtpm/configure
 
 $(SWTPM): build/swtpm/Makefile
@@ -481,7 +489,7 @@ $(TPMDIR)/ek.pub: $(TPMDIR)/.created | bin/tpm2 build
 tpm-shell: | bin/tpm2 $(SWTPM)
 	$(MAKE) $(TPM_PID)
 	-TPM2TOOLS_TCTI=swtpm:host=localhost,port=9998 \
-	LD_LIBRARY_PATH=`pwd`/tpm2-tss/src/tss2-tcti/.libs/ \
+	LD_LIBRARY_PATH=$(TOP)/build/tpm2-tss/src/tss2-tcti/.libs/ \
 	PATH=`pwd`/bin:`pwd`/sbin:$(PATH) \
 	bash
 

@@ -22,8 +22,7 @@ symlink busybox bin/sh
 ./sbin/safeboot
 ./sbin/tpm2-attest
 ./bin/tpm2
-#/lib/x86_64-linux-gnu/libtss2-tcti-device.so.0 lib
-./tpm2-tss/src/tss2-tcti/.libs/libtss2-tcti-device.so.0 lib
+./build/tpm2-tss/src/tss2-tcti/.libs/libtss2-tcti-device.so.0 lib
 ./functions.sh etc/safeboot
 ./safeboot.conf etc/safeboot
 /usr/bin/openssl
