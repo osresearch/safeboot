@@ -108,25 +108,37 @@ tpm2-totp/Makefile: tpm2-totp/bootstrap
 # swtpm and libtpms are used for simulating the qemu tpm2
 #
 SUBMODULES += libtpms
-LIBTPMS_OUTPUT := libtpms/src/.libs/libtpms_tpm2.a
+LIBTPMS_OUTPUT := build/libtpms/src/.libs/libtpms_tpm2.a
 libtpms/autogen.sh:
 	git submodule update --init --recursive --recommend-shallow $(dir $@)
-libtpms/Makefile: libtpms/autogen.sh
-	cd $(dir $@) ; ./autogen.sh --with-openssl --with-tpm2
-$(LIBTPMS_OUTPUT): libtpms/Makefile
+libtpms/configure: libtpms/autogen.sh
+	cd $(dir $@) ; \
+	NOCONFIGURE=1 \
+	./autogen.sh
+build/libtpms/Makefile: libtpms/configure
+	mkdir -p $(dir $@)
+	cd $(dir $@) ; \
+	../../libtpms/configure --with-openssl --with-tpm2
+$(LIBTPMS_OUTPUT): build/libtpms/Makefile
 	$(MAKE) -C $(dir $<)
 
 SUBMODULES += swtpm
-SWTPM=swtpm/src/swtpm/swtpm
+SWTPM=build/swtpm/src/swtpm/swtpm
 swtpm/autogen.sh:
 	git submodule update --init --recursive --recommend-shallow $(dir $@)
-swtpm/Makefile: swtpm/autogen.sh $(LIBTPMS_OUTPUT)
+swtpm/configure: swtpm/autogen.sh
 	cd $(dir $@) ; \
-		LIBTPMS_LIBS="-L`pwd`/../libtpms/src/.libs -ltpms" \
-		LIBTPMS_CFLAGS="-I`pwd`/../libtpms/include" \
+		NOCONFIGURE=1 \
 		./autogen.sh \
 
-$(SWTPM): swtpm/Makefile
+build/swtpm/Makefile: swtpm/configure | $(LIBTPMS_OUTPUT)
+	mkdir -p $(dir $@)
+	cd $(dir $@) ; \
+	LIBTPMS_LIBS="-L`pwd`/../libtpms/src/.libs -ltpms" \
+	LIBTPMS_CFLAGS="-I`pwd`/../../libtpms/include" \
+	../../swtpm/configure
+
+$(SWTPM): build/swtpm/Makefile
 	$(MAKE) -C $(dir $<)
 
 
@@ -248,6 +260,7 @@ requirements: | build
 		flex \
 		bison \
 		libelf-dev \
+		libjson-glib-dev \
 
 
 # Remove the temporary files and build stuff
@@ -422,29 +435,39 @@ build/luks.bin: build/key.bin
 TPMDIR=build/vtpm
 TPMSTATE=$(TPMDIR)/tpm2-00.permall
 TPMSOCK=$(TPMDIR)/sock
+TPM_PID=$(TPMDIR)/swtpm.pid
 
-# Setup a new TPM and
-# Extract the EK from a tpm state; wish swtpm_setup had a way
-# to do this instead of requiring this many hoops
-$(TPMDIR)/ek.pub: | $(SWTPM) bin/tpm2 build
+$(TPM_PID): | $(SWTPM)
 	mkdir -p "$(TPMDIR)"
 	PATH=$(dir $(SWTPM)):$(PATH) \
-	swtpm/src/swtpm_setup/swtpm_setup \
+	$(SWTPM) socket \
+		--tpm2 \
+		--flags startup-clear \
+		--tpmstate dir="$(TPMDIR)" \
+		--pid file="$(TPM_PID).tmp" \
+		--server type=tcp,port=9998 \
+		--ctrl type=tcp,port=9999 \
+		&
+	sleep 1
+	mv $(TPM_PID).tmp $(TPM_PID)
+
+
+# Setup a new TPM and
+$(TPMDIR)/.created: | $(SWTPM)
+	mkdir -p "$(TPMDIR)"
+	PATH=$(dir $(SWTPM)):$(PATH) \
+	$(dir $(SWTPM))/../swtpm_setup/swtpm_setup \
 		--tpm2 \
 		--createek \
 		--display \
 		--tpmstate "$(TPMDIR)" \
 		--config /dev/null
+	touch $@
 
-	$(SWTPM) socket \
-		--tpm2 \
-		--flags startup-clear \
-		--tpmstate dir="$(TPMDIR)" \
-		--server type=tcp,port=9998 \
-		--ctrl type=tcp,port=9999 \
-		--pid file="$(TPMDIR)/swtpm-ek.pid" &
-	sleep 1
-	
+# Extract the EK from a tpm state; wish swtpm_setup had a way
+# to do this instead of requiring this many hoops
+$(TPMDIR)/ek.pub: $(TPMDIR)/.created | bin/tpm2 build
+	$(MAKE) $(TPM_PID)
 	TPM2TOOLS_TCTI=swtpm:host=localhost,port=9998 \
 	LD_LIBRARY_PATH=./tpm2-tss/src/tss2-tcti/.libs/ \
 	./bin/tpm2 \
@@ -452,26 +475,18 @@ $(TPMDIR)/ek.pub: | $(SWTPM) bin/tpm2 build
 		-c $(TPMDIR)/ek.ctx \
 		-u $@
 
-	kill `cat "$(TPMDIR)/swtpm-ek.pid"`
-	@-$(RM) "$(TPMDIR)/swtpm-ek.pid"
+	kill `cat "$(TPM_PID)"`
+	@-$(RM) "$(TPM_PID)"
 
-tpm-shell: $(SWTPM)
-	$(SWTPM) socket \
-		--tpm2 \
-		--flags startup-clear \
-		--tpmstate dir="$(TPMDIR)" \
-		--server type=tcp,port=9998 \
-		--ctrl type=tcp,port=9999 \
-		--pid file="$(TPMDIR)/swtpm-ek.pid" &
-	sleep 1
-	
-	TPM2TOOLS_TCTI=swtpm:host=localhost,port=9998 \
+tpm-shell: | bin/tpm2 $(SWTPM)
+	$(MAKE) $(TPM_PID)
+	-TPM2TOOLS_TCTI=swtpm:host=localhost,port=9998 \
 	LD_LIBRARY_PATH=`pwd`/tpm2-tss/src/tss2-tcti/.libs/ \
 	PATH=`pwd`/bin:`pwd`/sbin:$(PATH) \
 	bash
 
-	kill `cat "$(TPMDIR)/swtpm-ek.pid"`
-	@-$(RM) "$(TPMDIR)/swtpm-ek.pid"
+	-kill `cat "$(TPM_PID)"`
+	@-$(RM) "$(TPM_PID)"
 
 
 # Register the virtual TPM in the attestation server logs with the
@@ -479,7 +494,7 @@ tpm-shell: $(SWTPM)
 
 $(TPMDIR)/.ekpub.registered: $(TPMDIR)/ek.pub | bin/tpm2
 	./sbin/attest-enroll safeboot-demo < $<
-	@touch $@
+	touch $@
 
 # QEMU tries to boot from the DVD and HD before finally booting from the
 # network, so there are attempts to call different boot options and then
@@ -500,18 +515,10 @@ $(TPMDIR)/.bootx64.registered: $(BOOTX64) $(TPMDIR)/.ekpub.registered | ./bin/sb
 		$(PCR_RETURNING) \
 		$(PCR_CALL_BOOT) \
 		`./bin/sbsign.safeboot --hash-only $(BOOTX64)`
-	@touch $@
-
+	touch $@
 
 # uefi firmware from https://packages.debian.org/buster-backports/all/ovmf/download
-qemu: build/hda.bin $(SWTPM) $(TPMSTATE)
-	$(SWTPM) socket \
-		--daemon \
-		--terminate \
-		--tpm2 \
-		--tpmstate dir="$(TPMDIR)" \
-		--pid file="$(TPMDIR)/swtpm.pid" \
-		--ctrl type=unixio,path="$(TPMSOCK)" \
+qemu: build/hda.bin $(TPM_PID) $(TPMSTATE)
 
 
 	#cp /usr/share/OVMF/OVMF_VARS.fd build
@@ -531,8 +538,8 @@ qemu: build/hda.bin $(SWTPM) $(TPMSTATE)
 		-boot c \
 
 	stty sane
-	-kill `cat $(TPMDIR)/swtpm.pid`
-	@-$(RM) "$(TPMDIR)/swtpm.pid"
+	-kill `cat $(TPM_PID)`
+	@-$(RM) "$(TPM_PID)"
 
 server-hda.bin:
 	qemu-img create -f qcow2 $@ 4G
@@ -568,9 +575,7 @@ qemu-server: \
 		server-hda.bin \
 		build/OVMF_VARS.fd \
 		$(BOOTX64) \
-		$(TPMDIR)/ek.pub \
-		$(TPMDIR)/.ekpub.registered \
-		$(TPMDIR)/.bootx64.registered \
+		register \
 		| $(SWTPM)
 
 	# start the TPM simulator
@@ -578,7 +583,7 @@ qemu-server: \
 	$(SWTPM) socket \
 		--tpm2 \
 		--tpmstate dir="$(TPMDIR)" \
-		--pid file="$(TPMDIR)/swtpm.pid" \
+		--pid file="$(TPM_PID)" \
 		--ctrl type=unixio,path="$(TPMSOCK)" \
 		&
 
@@ -599,7 +604,7 @@ qemu-server: \
 		-boot n \
 
 	stty sane
-	-kill `cat $(TPMDIR)/swtpm.pid`
-	@-$(RM) "$(TPMDIR)/swtpm.pid" "$(TPMSOCK)"
+	-kill `cat $(TPM_PID)`
+	@-$(RM) "$(TPM_PID)" "$(TPMSOCK)"
 
 
