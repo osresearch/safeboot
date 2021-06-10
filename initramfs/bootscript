@@ -12,13 +12,15 @@ die() {
 }
 warn() { echo >&2 "$@" ; }
 
-DEV="/dev/sda"
+if [ -z "$ROOTFS_DEV" ]; then
+	ROOTFS_DEV="/dev/sda"
+fi
+
 VOLUME="cryptroot"
 MAPPER="/dev/mapper/$VOLUME"
 KERNEL="/root/boot/vmlinuz"
 INITRD="/root/boot/initrd.img"
 KEXEC_EXTRA=""
-URL=""
 
 # Unpack the attestation server's response
 TMPDIR=$(mktemp -d)
@@ -60,7 +62,7 @@ tpm2_tk_session() {
 	|| die "tpm2: unable to load policy pcr"
 }
 
-if [ -r "$TMPDIR/transport.seed" ]; then
+if [ -r "$TMPDIR/tk.seed" ]; then
 	# attempt to load the secret wrapping key into our TPM
 	# as a transient object
 	tpm2 createek \
@@ -74,10 +76,10 @@ if [ -r "$TMPDIR/transport.seed" ]; then
 		--parent-context ek.ctx \
 		--parent-auth "session:ek-session.ctx" \
 		--key-algorithm rsa \
-		--input "$TMPDIR/transport.dpriv" \
-		--seed "$TMPDIR/transport.seed" \
-		--public "$TMPDIR/transport.pub" \
-		--private "$TMPDIR/transport.priv" \
+		--input "$TMPDIR/tk.dpriv" \
+		--seed "$TMPDIR/tk.seed" \
+		--public "$TMPDIR/tk.pub" \
+		--private "$TMPDIR/tk.priv" \
 	|| die "tpm2: unable to import duplicate transport key object"
 
 	warn "tpm2: Loading duplicate transport key"
@@ -85,9 +87,9 @@ if [ -r "$TMPDIR/transport.seed" ]; then
 	tpm2 load \
 		--parent-context ek.ctx \
 		--auth "session:ek-session.ctx" \
-		--key-context "$TMPDIR/transport.ctx" \
-		--public "$TMPDIR/transport.pub" \
-		--private "$TMPDIR/transport.priv" \
+		--key-context "$TMPDIR/tk.ctx" \
+		--public "$TMPDIR/tk.pub" \
+		--private "$TMPDIR/tk.priv" \
 	|| die "tpm2: unable to load duplicate transport key object"
 
 	# attempt to decrypt the rootfs key with the transport key
@@ -95,8 +97,8 @@ if [ -r "$TMPDIR/transport.seed" ]; then
 	tpm2_tk_session
 	tpm2 rsadecrypt \
 		--auth "session:tk-session.ctx" \
-		--key-context "$TMPDIR/transport.ctx" \
-		< "$TMPDIR/rootfs.enc.key" \
+		--key-context "$TMPDIR/tk.ctx" \
+		< "$TMPDIR/rootfs.enc" \
 		> "$TMPDIR/rootfs.key" \
 	|| die "tpm2: unable to decrypt the rootfs key with transport key"
 
@@ -137,7 +139,7 @@ kexec_img() {
 		|| die "$TMP_INITRD: unable to add $KEY to initrd"
 
 		KEXEC_EXTRA="$KEXEC_EXTRA \
-cryptopts=target=rootfs,source=/dev/sda,key=/rootfs.key,luks,discard \
+cryptopts=target=rootfs,source=$ROOTFS_DEV,key=/rootfs.key,luks,discard \
 "
 
 	else
@@ -171,15 +173,15 @@ $KEXEC_EXTRA \
 mount_img() {
 	mkdir -p /run/cryptsetup
 
-	warn "$DEV: unlocking with secret key"
+	warn "$ROOTFS_DEV: unlocking with secret key"
 	cryptsetup luksOpen \
 		--key-file "$KEY" \
-		"$DEV" \
+		"$ROOTFS_DEV" \
 		"$VOLUME"
 }
 
 install_img() {
-	if [ -z "$URL" ]; then
+	if [ -z "$ROOTFS_URL" ]; then
 		die "No disk image, no image URL to fetch. Nothing to do!"
 	fi
 
@@ -187,30 +189,34 @@ install_img() {
 		cryptsetup luksClose "$VOLUME"
 	fi
 
-	#blockdev --setrw "$DEV"
+	#blockdev --setrw "$ROOTFS_DEV"
 
-	warn "$DEV: formatting with secret key"
+	warn "$ROOTFS_DEV: formatting with secret key"
 	cryptsetup luksFormat \
 		--pbkdf pbkdf2 \
 		--batch-mode \
 		--label="$VOLUME" \
-		"$DEV" \
+		"$ROOTFS_DEV" \
 		"$KEY" \
-	|| die "$DEV: luksFormat failed"
+	|| die "$ROOTFS_DEV: luksFormat failed"
 
 	mount_img \
-	|| die "$DEV: luksOpen failed"
+	|| die "$ROOTFS_DEV: luksOpen failed"
 
 	warn "$MAPPER: fetching disk image"
-	curl "$URL" | tee "$MAPPER" | sha256sum - | tee "$TMPDIR/url.hash" \
-	|| die "$DEV: unable to fetch $URL"
 
 	if [ -r "$TMPDIR/img.hash" ]; then
+		curl "$ROOTFS_URL" | tee "$MAPPER" | sha256sum - | tee "$TMPDIR/url.hash" \
+		|| die "$ROOTFS_DEV: unable to fetch $URL"
+
 		if ! cmp "$TMPDIR/img.hash" "$TMPDIR/url.hash" ; then
 			die "$URL: hash failed!"
 		fi
 
 		warn "$URL: verified $URL_HASH"
+	else
+		curl "$ROOTFS_URL" > "$MAPPER"
+		warn "$ROOTFS_URL: skipping validation"
 	fi
 
 	#blockdev --rereadpt "$MAPPER"

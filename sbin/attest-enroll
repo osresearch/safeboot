@@ -1,0 +1,126 @@
+#!/bin/bash
+# Given an TPM endorsement key and desired host name,
+# create the enrollment data for this system.
+# Usage: attest-enroll hostname < ek.pub
+#
+# Outputs stored in a directory based on the hash of the EK pub:
+# - Transport Key (TK): sealed to the EK (pub, dpriv, seed)
+# - Disk Key (DK): random disk encryption key
+# - Client Key (CK): a host certificate for this system
+# - Other data
+
+BASEDIR="$(dirname $0)/.."
+OUTPREFIX="$BASEDIR/build/attest"
+die() { echo >&2 "$@" ; exit 1 ; }
+warn() { echo >&2 "$@" ; }
+tpm2() { "$BASEDIR/bin/tpm2" "$@" ; }
+
+hostname="$1"
+
+tmp="$(mktemp -d)"
+cleanup() { rm -rf "$tmp" ; }
+trap cleanup EXIT
+
+
+cat - > "$tmp/ek.pub" \
+|| die "$0: unable to read ek.pub from stdin"
+
+
+#
+# Verify that the EK meets our specifications
+#
+tpm2 print \
+	-t TPM2B_PUBLIC \
+	"$tmp/ek.pub" \
+| tee "$tmp/ek.txt" \
+|| die "$0: unable to parse EK"
+
+grep -q "value: fixedtpm.*sensitivedataorigin.*restricted" "$tmp/ek.txt" \
+|| die "$0: EK has wrong parameters"
+
+grep -q "authorization policy: 837197..." "$tmp/ek.txt" \
+|| warn "$0: EK has wrong authorization policy, attestation will likely fail"
+
+
+#
+# Figure out where to put this enrolled key
+#
+ekhash="$(sha256sum $tmp/ek.pub | cut -f1 -d' ' )"
+ekprefix="$(echo $ekhash | cut -c1-2)"
+
+if [ -z "$hostname" ] ; then
+	hostname="$(echo $ekhash | cut -c1-8)"
+	warn "$0: using default hostname $hostname"
+fi
+
+# Create the output directory and install files into it
+outdir="$OUTPREFIX/$ekprefix/$ekhash"
+mkdir -p "$outdir" || die "$outdir: unable to create output directory"
+
+cp "$tmp/ek.pub" "$outdir/ek.pub" \
+|| die "$0: unable to copy EK public key to output directory $outdir"
+
+#
+# Generate a device specific RSA key and create a TPM2 duplicate structure
+# so that only the destination device can use it with their TPM
+#
+openssl genrsa -out "$tmp/tk-priv.pem" \
+|| die "$0: unable to create TK private key"
+
+openssl rsa \
+	-pubout \
+	-in "$tmp/tk-priv.pem" \
+	-out "$outdir/tk.pem" \
+|| die "$0: unable to create TK public key"
+
+# HACK: hard code the policy that PCR11 == 0 for the TK
+echo 'fd32fa22c52cfc8e1a0c29eb38519f87084cab0b04b0d8f020a4d38b2f4e223e' \
+| xxd -p -r > "$tmp/policy.dat" \
+|| die "$0: unable to create TK policy"
+
+tpm2 duplicate \
+	--tcti none \
+	-U "$outdir/ek.pub" \
+	-G rsa \
+	-L "$tmp/policy.dat" \
+	-k "$tmp/tk-priv.pem" \
+	-u "$outdir/tk.pub" \
+	-r "$outdir/tk.dpriv" \
+	-s "$outdir/tk.seed" \
+|| die "$0: unable to duplicate TK into TPM for EK"
+
+#
+# TODO: escrow the TK
+#
+
+# encrypt the disk encryption key with the seed key so that only the destination
+# machine can decrypt it using a TPM duplicate key
+openssl rand 64 > "$tmp/rootfs.key" \
+|| die "$0: unable to create disk encryption key"
+
+openssl rsautl \
+	-encrypt \
+	-pubin \
+	-inkey "$outdir/tk.pem" \
+	-in "$tmp/rootfs.key" \
+	-out "$outdir/rootfs.enc" \
+|| die "$0: unable to encrypt disk key with TK"
+
+
+#
+# Build the cloud-init data for this host
+#
+cat > "$outdir/user-data" <<EOF
+#cloud-config
+hostname: $hostname
+chpasswd:
+  expire: False
+  list: |
+    root:password
+    ubuntu:password
+EOF
+
+echo '{"instance-id": "iid-local01"}' > "$outdir/meta-data"
+
+
+warn "$hostname: enrolled $ekhash"
