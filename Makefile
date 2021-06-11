@@ -89,6 +89,7 @@ build/tpm2-tools/tools/tpm2: build/tpm2-tools/Makefile
 	$(MAKE) -C $(dir $<)
 
 bin/tpm2: build/tpm2-tools/tools/tpm2
+	mkdir -p $(dir $@)
 	cp $< $@
 
 
@@ -96,21 +97,26 @@ bin/tpm2: build/tpm2-tools/tools/tpm2
 # tpm2-totp is build from a branch with hostname support
 #
 SUBMODULES += tpm2-totp
-bin/tpm2-totp: tpm2-totp/Makefile $(libtss2-esys)
-	$(MAKE) -C $(dir $<)
-	mkdir -p $(dir $@)
-	cp $(dir $<)/tpm2-totp $@
 tpm2-totp/bootstrap:
 	git submodule update --init --recursive --recommend-shallow tpm2-totp
-tpm2-totp/Makefile: tpm2-totp/bootstrap
-	cd $(dir $@) ; ./bootstrap && ./configure \
+tpm2-totp/configure: tpm2-totp/bootstrap
+	cd $(dir $@) ; ./bootstrap
+build/tpm2-totp/Makefile: tpm2-totp/configure $(libtss2-esys)
+	mkdir -p $(dir $@)
+	cd $(dir $@) && $(TOP)/$< \
 		TSS2_MU_CFLAGS=-I../tpm2-tss/include \
-		TSS2_MU_LIBS="../$(libtss2-mu)" \
-		TSS2_TCTILDR_CFLAGS=-I../tpm2-tss/include \
-		TSS2_TCTILDR_LIBS="../$(libtss2-tcti)" \
-		TSS2_TCTI_DEVICE_LIBDIR="$(dir ../$(libtss2-tcti))" \
-		TSS2_ESYS_CFLAGS=-I../tpm2-tss/include \
-		TSS2_ESYS_LIBS="../$(libtss2-esys) ../$(libtss2-sys) -lssl -lcrypto -ldl" \
+		TSS2_MU_LIBS="$(libtss2-mu)" \
+		TSS2_TCTILDR_CFLAGS=$(libtss2-include) \
+		TSS2_TCTILDR_LIBS="$(libtss2-tcti)" \
+		TSS2_TCTI_DEVICE_LIBDIR="$(dir $(libtss2-tcti))" \
+		TSS2_ESYS_CFLAGS=$(libtss2-include) \
+		TSS2_ESYS_LIBS="$(libtss2-esys) $(libtss2-sys) -lssl -lcrypto -ldl" \
+
+build/tpm2-totp/tpm2-totp: build/tpm2-totp/Makefile
+	$(MAKE) -C $(dir $<)
+bin/tpm2-totp: build/tpm2-totp/tpm2-totp
+	mkdir -p $(dir $@)
+	cp $< $@
 
 #
 # swtpm and libtpms are used for simulating the qemu tpm2
@@ -172,11 +178,14 @@ bin/busybox: busybox/busybox
 SUBMODULES += kexec-tools
 kexec-tools/bootstrap:
 	git submodule update --init --recursive --recommend-shallow $(dir $@)
-kexec-tools/Makefile: kexec-tools/bootstrap
-	cd $(dir $@) ; ./bootstrap && ./configure
-kexec-tools/build/sbin/kexec: kexec-tools/Makefile
+kexec-tools/configure: kexec-tools/bootstrap
+	cd $(dir $@) ; ./bootstrap
+build/kexec-tools/Makefile: kexec-tools/configure
+	mkdir -p $(dir $@)
+	cd $(dir $@) && $(TOP)/$<
+build/kexec-tools/build/sbin/kexec: build/kexec-tools/Makefile
 	$(MAKE) -C $(dir $<)
-bin/kexec: kexec-tools/build/sbin/kexec
+bin/kexec: build/kexec-tools/build/sbin/kexec
 	mkdir -p $(dir $@)
 	cp $< $@
 
