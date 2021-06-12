@@ -3,16 +3,23 @@
 # and the state attested.  The secret file from the remote attestation server
 # will be passed on the command line
 
-#set -x
+set -euo pipefail
+
+echo "TPM2TOOLS_TCTI=$TPM2TOOLS_TCTI"
+. /safeboot/functions.sh
+
+[[ -n ${BOOTSCRIPT_DEBUG:-} ]] && set -vx
+
 POLICY_PCR=11
 die() {
 	echo >&2 "$@"
-	echo "FAILED" | tpm2 pcrevent $POLICY_PCR
+	[[ -z $BOOTSCRIPT_TEST ]] \
+	&& echo "FAILED" | tpm2 pcrevent $POLICY_PCR
 	exit 1
 }
 warn() { echo >&2 "$@" ; }
 
-if [ -z "$ROOTFS_DEV" ]; then
+if [[ -z ${ROOTFS_DEV:-} ]]; then
 	ROOTFS_DEV="/dev/sda"
 fi
 
@@ -30,82 +37,23 @@ tar -xvf - -C "$TMPDIR" \
 STARTUP="$TMPDIR/startup.sh"
 KEY="$TMPDIR/rootfs.key"
 
-if [ -x "$STARTUP" ]; then
+if [[ -x $STARTUP ]]; then
 	# measure the startup script before doing anything else
 	warn "$STARTUP: measuring"
 	tpm2 pcrevent 14 "$STARTUP"
 	warn "$STARTUP: executing"
+	# shellcheck disable=SC1090
 	. "$STARTUP" || die "startup failed"
 fi
 
-tpm2_ek_session() {
-	tpm2 flushcontext -t
-	tpm2 flushcontext -s
-	tpm2 startauthsession \
-		--session "ek-session.ctx" \
-		--policy-session \
-	|| die "tpm2: unable to start policy session"
-	tpm2 policysecret \
-		--session "ek-session.ctx" \
-		--object-context endorsement \
-	|| die "tpm2: unable to set policysecret for endorsement hierarchy"
-}
-tpm2_tk_session() {
-	tpm2 startauthsession \
-		--session "tk-session.ctx" \
-		--policy-session \
-	|| die "tpm2: unable to start tk-policy session"
-	tpm2 policypcr \
-		--session "tk-session.ctx" \
-		--policy "tk-policy.dat" \
-		--pcr-list="sha256:$POLICY_PCR" \
-	|| die "tpm2: unable to load policy pcr"
-}
-
-if [ -r "$TMPDIR/tk.seed" ]; then
-	# attempt to load the secret wrapping key into our TPM
-	# as a transient object
-	tpm2 createek \
-		--ek-context ek.ctx \
-	|| die "tpm2: unable to create ek object"
-
-	warn "tpm2: Importing duplicate transport key"
-	tpm2_ek_session
-
-	tpm2 import \
-		--parent-context ek.ctx \
-		--parent-auth "session:ek-session.ctx" \
-		--key-algorithm rsa \
-		--input "$TMPDIR/tk.dpriv" \
-		--seed "$TMPDIR/tk.seed" \
-		--public "$TMPDIR/tk.pub" \
-		--private "$TMPDIR/tk.priv" \
-	|| die "tpm2: unable to import duplicate transport key object"
-
-	warn "tpm2: Loading duplicate transport key"
-	tpm2_ek_session
-	tpm2 load \
-		--parent-context ek.ctx \
-		--auth "session:ek-session.ctx" \
-		--key-context "$TMPDIR/tk.ctx" \
-		--public "$TMPDIR/tk.pub" \
-		--private "$TMPDIR/tk.priv" \
-	|| die "tpm2: unable to load duplicate transport key object"
-
-	# attempt to decrypt the rootfs key with the transport key
-	warn "tpm2: Decrypting rootfs key"
-	tpm2_tk_session
-	tpm2 rsadecrypt \
-		--auth "session:tk-session.ctx" \
-		--key-context "$TMPDIR/tk.ctx" \
-		< "$TMPDIR/rootfs.enc" \
-		> "$TMPDIR/rootfs.key" \
-	|| die "tpm2: unable to decrypt the rootfs key with transport key"
-
-	# extend PCR11 so that the policy can not be satisfied
-	echo "UNLOCKED" | tpm2 pcrevent "$POLICY_PCR" \
-	|| die "tmp2: unable to extend PCR$POLICY_PCR"
+if [[ -f $TMPDIR/rootfs.key.symkeyenc ]]; then
+	/safeboot/sbin/tpm2-recv "$KEY.symkeyenc" "$KEY.symkey"	\
+		tpm2 policypcr --pcr-list="sha256:$POLICY_PCR"
+	aead_decrypt "$KEY.enc" "$KEY.symkey" "$KEY"
 fi
+
+# If we're testing, stop here.
+[[ -n ${BOOTSCRIPT_TEST:-} ]] && exit 0
 
 kexec_img() {
 	# add the decryption key to initrd by creating a temporary copy
