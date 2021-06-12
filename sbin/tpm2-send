@@ -1,0 +1,277 @@
+#!/bin/bash
+
+PROG=${0##*/}
+if [[ $0 = /* ]]; then
+        BASEDIR=${0%/*}
+elif [[ $0 = */* ]]; then
+        BASEDIR=$PWD/${0%/*}
+else
+        BASEDIR=$PWD
+fi
+
+set -euo pipefail
+shopt -s extglob
+
+function usage {
+	((${1:-1} > 0)) && exec 1>&2
+	pager=cat
+	if [[ -t 0 && -t 1 && -t 2 ]]; then
+		if [[ -z ${PAGER:-} ]] && type less >/dev/null 2>&1; then
+			pager=less
+		elif [[ -z ${PAGER:-} ]] && type more >/dev/null 2>&1; then
+			pager=more
+		elif [[ -n ${PAGER:-} ]]; then
+			pager=$PAGER
+		fi
+	fi
+        $pager <<EOF
+Usage: $PROG EK-PUB SECRET OUT		 # Null policy
+       $PROG EK-PUB SECRET OUT POLICY-CMD [ARGS [\\; ...]]
+       $PROG -P POLICY EK-PUB SECRET OUT
+
+  {$PROG} encrypts a small (up to 32 bytes) {SECRET} file (should
+  contain an AES key) to a target TPM -identified by {EK-PUB}- with the
+  caller's optional choice of policy to be enforced by that TPM.  The
+  {EK-PUB} should be a file containing the target's EKpub in
+  {TPM2B_PUBLIC} format.
+
+  Options:
+
+	-h		This help message.
+	-M EK|TK	Method to use for encryption to TPM (default: EK).
+	-P POLICY	Use the named policy or policyDigest.
+	-f		Overwrite {OUT}.
+	-x		Trace this script.
+
+  Policies given as positional arguments should be of the form:
+
+       tpm2 policy... args... \\; tpm2 policy args... \\; ...
+
+  without any {--session}|{-S} nor {--policy}|{-L} options.
+
+  Also, no need to include {tpm2 policycommandcode}, as {$PROG} will add
+  that automatically.
+
+  E.g.:
+
+      $ $PROG ./ekpub ./secret ./madecredential \\
+	  tpm2 policypcr -l "sha256:0,1,2,3" -f pcrs
+
+  A POLICY can be a digest or an executable.
+  A POLICY digest would be the SHA-256 policyDigest of a policy.
+  A POLICY executable would be a program that, if called with no
+  arguments, outputs a policyDigest.
+
+  The two methods of encryption to a TPM are:
+
+   - EK		Uses {TPM2_MakeCredential()} to encrypt an AES key to
+		the target's EKpub.
+
+		The target uses {TPM2_ActivateCredential()} to decrypt
+		the AES key.
+
+		A well-known key is used as the activation object, and
+		the given policy is associated with it.
+		This method produces a single file named {OUT}.
+
+   - TK		Uses {TPM2_Duplicate()} to encrypt an RSA private key to
+		the target's EKpub, then encrypts an AES key to that
+		key's public key.  That RSA key we refer to as a
+		"transport key", or TK.
+
+		The target uses {TPM2_Import()} to import the TK,
+		{TPM2_Load()} to load it, and {TPM2_RSA_Decrypt()} to
+		decrypt the AES key.
+
+		A policy, if given, is set on the TK that the TPM will
+		enforce when {TPM2_RSA_Decrypt()} is called.
+
+		This method produces multiple files besides {OUT},
+		named:
+
+			{OUT}.tk.dpriv
+			{OUT}.tk.seed
+EOF
+	exit "${1:-1}"
+}
+
+# shellcheck disable=SC1090
+. "$BASEDIR/../functions.sh"
+
+force=false
+method=EK
+policy=
+policyDigest=
+while getopts +:hfxM:P: opt; do
+case "$opt" in
+M)	method=$OPTARG;;
+P)	policy=$OPTARG;;
+h)	usage 0;;
+f)	force=true;;
+x)	set -vx;;
+*)	usage;;
+esac
+done
+shift $((OPTIND - 1))
+
+function err {
+	echo "ERROR: $*" 1>&2
+	exit 1
+}
+
+case "$method" in
+EK)	command_code=TPM2_CC_ActivateCredential;;
+TK)	command_code=TPM2_CC_RSA_Decrypt;;
+*)	err "METHOD must be \"EK\" or \"TK\"";;
+esac
+if [[ -n $policy ]] && (($# > 3)); then
+	echo "Error: -P and policy commands are mutually exclusive" 1>&2
+	exit 1
+fi
+if [[ -n $policy ]]; then
+	(($# == 3)) || usage
+	if ((${#policy} == 64)) &&
+	   [[ ! -f $policy && $policy = +([0-9a-fA-F]) ]]; then
+		# $policy is a policyDigest
+		policyDigest=$policy
+	elif [[ -x $policy ]]; then
+		# Run the script in $policy to get a policyDigest
+		policyDigest=$("$policy")
+	else
+		err "Given policy is neither a SHA-256 policyDigest nor a policy script"
+	fi
+fi
+(($# >= 3)) || usage
+
+ekpub_file=$1
+secret_file=$2
+out_file=$3
+shift 3
+
+[[ -f ${ekpub_file:-} ]]   || usage
+[[ -f ${secret_file:-} ]]  || usage
+[[ -f ${out_file:-}    ]]  && $force && rm -f "${out_file:-}"
+[[ -f ${out_file:-}    ]]  && err "output file ($out_file) exists"
+
+# Make a temp dir and remove it when we exit:
+d=
+trap 'rm -rf "$d"' EXIT
+d=$(mktemp -d)
+
+# Compute a well-known activation object's name for use in
+# TPM2_MakeCredential(), binding a given policy into it.
+#
+# This version uses a TPM via {tpm2 loadexternal}.
+function wkname_tpm {
+	local attrs='sign'
+	local has_policy=
+
+	tpm2 flushcontext --transient-object
+	tpm2 flushcontext --loaded-session
+	tpm2 flushcontext --saved-session 1>&2
+
+	# Load
+	if [[ -n $policyDigest ]]; then
+		tpm2 startauthsession --session "${d}/session.ctx"
+		printf '%s' "$policyDigest" | xxd -p -r > "${d}/policy"
+		echo "policyDigest: $(xxd -p -c 100 < "${d}/policy")" 1>&2
+		attrs='adminwithpolicy|sign'
+		has_policy=true
+	elif (($# > 0)); then
+		make_policyDigest "$command_code" "$@" 1>&2
+		attrs='adminwithpolicy|sign'
+		has_policy=true
+
+		# Flush again, but this time not saved sessions
+		tpm2 flushcontext --transient-object 1>&2
+		tpm2 flushcontext --loaded-session 1>&2
+		echo "policyDigest: $(xxd -p -c 100 < "${d}/policy")" 1>&2
+	fi
+
+	# Load the WK
+	wkpriv > "${d}/wkpriv.pem"
+	tpm2 loadexternal					\
+		--hierarchy n					\
+		--key-algorithm ecc				\
+		--private "${d}/wkpriv.pem"			\
+		${has_policy:+ --policy "${d}/policy"}		\
+		--attributes "$attrs"				\
+		--key-context "${d}/wk.ctx"			\
+	| grep ^name: | cut -d' ' -f2				\
+	|| die "unable to load the WK into a TPM for computing its name"
+}
+
+# Return the cryptographic name of a well-known activation object that
+# binds the given policy.
+function wkname {
+	# Use hard-coded WKnames for known policies.  These are computed for
+	# the WKpriv above.
+	#
+	# TODO: Hardcode more policies here.
+	if [[ -z $policyDigest ]] && (($#)); then
+		wkname_tpm "$@"
+		return 0
+	fi
+	case "X$policyDigest" in
+	X7fdad037a921f7eec4f97c08722692028e96888f0b970dc7b3bb6a9c97e8f988)
+		# pcr11
+		echo 000b20a6cc44c93ad206196c65028f9a8bf2590de0b8f89bca9e968f09f4e616dba6;;
+	X)
+		# null policy
+		echo 000bc76d1462d32d5e6051d0aa121edfa5ed66b8e7f3632ce3c5a172b1ebd8aabc40;;
+	*)
+		# If we have a TPM, use it and compute the WKname on the fly
+		[[ -n ${TPM2TOOLS_TCTI:-} ]]		\
+		|| die "No TPM is available to compute WKname for the requested policy $policyDigest $*"
+		wkname_tpm "$@";;
+	esac
+}
+
+case "$method" in
+EK)	info "Computing WKname"
+	wkname=$(wkname "$@")				\
+	|| die "unable to compute the MakeCredential activation object's cryptographic name"
+	info "Encrypting to EKpub using TPM2_MakeCredential"
+	tpm2 makecredential				\
+		--tcti "none"				\
+		--encryption-key "${ekpub_file}"	\
+		--name "$wkname"			\
+		--secret "${secret_file}"		\
+		--credential-blob "$out_file"		\
+	|| die "unable to MakeCredential";;
+TK)	info "Generating TK"
+	openssl genrsa -out "${d}/tk-priv.pem" \
+        || die "unable to create TK private key"
+        openssl rsa \
+                -pubout \
+                -in "${d}/tk-priv.pem" \
+                -out "${d}/tk.pem" \
+        || die "unable to create TK public key"
+
+	args=()
+	if (($# > 0)); then
+		make_policyDigest "$command_code" "$@" 1>&2
+		args=("--policy=${d}/policy")
+	fi
+
+        info "Exporting TK to EKpub"
+        tpm2 duplicate						\
+                --tcti none					\
+                --parent-public="$ekpub_file"			\
+                --wrapper-algorithm=rsa				\
+                "${args[@]}"					\
+                --private-key="${d}/tk-priv.pem"		\
+                --public="${out_file}.tk.pub"			\
+                --private="${out_file}.tk.dpriv"		\
+                --encrypted-seed="${out_file}.tk.seed"		\
+        || die "$0: unable to duplicate TK into TPM for EK"
+
+        info "Encrypting to TK"
+	openssl rsautl						\
+		-encrypt					\
+		-pubin						\
+		-inkey "${d}/tk.pem"			\
+		-in "$secret_file"				\
+		-out "${out_file}"				\
+        || die "$0: unable to encrypt to TK" ;;
+esac

@@ -1,0 +1,77 @@
+#!/bin/bash
+
+PROG=${0##*/}
+
+if [[ $0 = /* ]]; then
+        BASEDIR=${0%/*}
+elif [[ $0 = */* ]]; then
+        BASEDIR=$PWD/${0%/*}
+else
+        BASEDIR=$PWD
+fi
+
+set -euo pipefail -o noclobber
+shopt -s extglob
+
+function usage {
+	((${1:-1} > 0)) && exec 1>&2
+	cat <<EOF
+Usage: $PROG [-o FILE] [-A | -D] POLICY-CMD [ARGS [\\; ...]]
+
+  The first form computes the policyDigest of the given policy.
+
+  Policies arguments should be of the form:
+
+       $PROG ... tpm2 policy... args... \\; tpm2 policy args...
+
+  but without any {--session}|{-S} nor {--policy}|{-L} options.
+
+  If -A is given then {tpm2 policycommandcode} will be added at the end for
+  enabling TPM2_ActivateCredential().
+
+  If -D is given then {tpm2 policycommandcode} will be added at the end for
+  enabling TPM2_RSA_Decrypt().
+
+  E.g.:
+
+      $ # Require that PCR 11 be unextended
+      $ $PROG tpm2 policypcr -l "sha256:11"
+EOF
+	exit "${1:-1}"
+}
+
+# shellcheck disable=SC1090
+. "$BASEDIR/../functions.sh"
+
+out=
+force=false
+activate=false
+rsa_decrypt=false
+session_context=
+command_code=
+while getopts +:ADhefo:x opt; do
+case "$opt" in
+A)	activate=true;;
+D)	rsa_decrypt=true;;
+h)	usage 0;;
+f)	force=true;;
+o)	out=$OPTARG;;
+x)	set -vx;;
+*)	usage;;
+esac
+done
+shift $((OPTIND - 1))
+
+! $activate  || ! $rsa_decrypt || die "-A and -D are mutually exclusive"
+$activate    && command_code=TPM2_CC_ActivateCredential
+$rsa_decrypt && command_code=TPM2_CC_RSA_Decrypt
+
+# Make a temp dir and remove it when we exit:
+d=
+trap 'rm -rf "$d"' EXIT
+d=$(mktemp -d)
+
+policyDigest=$(make_policyDigest $command_code "$@")
+[[ -z $out ]] || ! $force >| "$out"
+[[ -z $out ]] ||   $force > "$out"
+echo "$policyDigest"

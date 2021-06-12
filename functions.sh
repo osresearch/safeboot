@@ -494,3 +494,89 @@ aead_decrypt() {
 		die "MAC does not match"
 	fi
 }
+
+# Execute a policy given as arguments.
+#
+# The first argument may be a command code; if given, then {tpm2}
+# {policycommandcode} will be added to the given policy.  The rest must be
+# {tpm2_policy*} or {tpm2} {policy*} commands w/o any {--session}|{-c} or
+# {--policy}|{-L} arguments, and multiple commands may be given separate by
+# {';'}.
+#
+# E.g.,
+#
+#	exec_policy TPM2_CC_ActivateCredential "$@"
+#	exec_policy tpm2 policypcr ... ';' tpm2 policysigned ...
+function exec_policy {
+	local command_code=''
+	local add_commandcode=true
+	local has_policy=false
+	local -a cmd
+
+	if (($# > 0)) && [[ -z $1 || $1 = TPM2_CC_* ]]; then
+		command_code=$1
+		shift
+	fi
+	while (($# > 0)); do
+		has_policy=true
+		cmd=()
+		while (($# > 0)) && [[ $1 != ';' ]]; do
+			cmd+=("$1")
+			if ((${#cmd[@]} == 1)) && [[ ${cmd[0]} = tpm2_* ]]; then
+				cmd+=(	--session "${d}/session.ctx"
+					--policy "${d}/policy")
+			elif ((${#cmd[@]} == 2)) && [[ ${cmd[0]} = tpm2 ]]; then
+				cmd+=(	--session "${d}/session.ctx"
+					--policy "${d}/policy")
+			fi
+			shift
+		done
+		(($# > 0)) && shift
+		# Run the policy command in the temp dir.  It -or the last command- must
+		# leave a file there named 'policy'.
+		"${cmd[@]}" 1>&2					\
+		|| die "unable to execute policy command: ${cmd[*]}"
+		[[ ${cmd[0]} = tpm2 ]] && ((${#cmd[@]} == 1))		\
+		&& die "Policy is incomplete"
+		[[ ${cmd[0]} = tpm2 && ${cmd[1]} = policycommandcode ]]	\
+		&& add_commandcode=false
+		[[ ${cmd[0]} = tpm2_policycommandcode ]]		\
+		&& add_commandcode=false
+	done
+	if $has_policy && $add_commandcode && [[ -n $command_code ]]; then
+		tpm2 policycommandcode			\
+			--session "${d}/session.ctx"	\
+			--policy "${d}/policy"		\
+			"$command_code" 1>&2		\
+		|| die "unable to execute policy command: tpm2 policycommandcode $command_code"
+	fi
+	xxd -p -c 100 "${d}/policy"
+}
+
+# Compute the policyDigest of a given policy by executing it in a trial
+# session.
+function make_policyDigest {
+	tpm2 flushcontext --transient-object
+	tpm2 flushcontext --loaded-session
+	tpm2 startauthsession --session "${d}/session.ctx"
+	exec_policy "$@"
+}
+
+# A well-known private key just for the TPM2_MakeCredential()-based encryption
+# of secrets to TPMs.  It was generated with:
+#  openssl genpkey -genparam                               \
+#                  -algorithm EC                           \
+#                  -out "${d}/ecp.pem"                     \
+#                  -pkeyopt ec_paramgen_curve:secp384r1    \
+#                  -pkeyopt ec_param_enc:named_curve
+#  openssl genpkey -paramfile "${d}/ecp.pem"
+function wkpriv {
+	cat <<"EOF"
+-----BEGIN PRIVATE KEY-----
+MIG2AgEAMBAGByqGSM49AgEGBSuBBAAiBIGeMIGbAgEBBDAlMnCWue7CfXjNLibH
+PTJrsOLUcoxqU3FLWYEWMI+HuPnzcwwl7SkKN6cpf4H3oQihZANiAAQ1pw6D5QVw
+vymljYVDyrUriOet8zPB/9tq9XJ7A54qsVkaVufAuEJ6GIvD4xUZ27manMosJADS
+aW2TLJkwxecRh2eTwPtSx2U32M2/yHeuWRV/0juiIozefPsTAlHAi3E=
+-----END PRIVATE KEY-----
+EOF
+}
