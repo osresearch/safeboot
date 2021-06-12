@@ -1,0 +1,204 @@
+#!/bin/bash
+
+PROG=${0##*/}
+if [[ $0 = /* ]]; then
+        BASEDIR=${0%/*}
+elif [[ $0 = */* ]]; then
+        BASEDIR=$PWD/${0%/*}
+else
+        BASEDIR=$PWD
+fi
+
+set -euo pipefail
+
+function usage {
+        cat <<EOF
+Usage: $PROG CIPHERTEXT OUT [POLICY-CMD [ARGS] [;] ...]
+
+  Decrypts the {CIPHERTEXT} file produced by {tpm2-send}.
+
+  If {CIPHERTEXT}.tk.pem, {CIPHERTEXT}.tk.dpriv, {CIPHERTEXT}.tk.pub,
+  and {CIPHERTEXT}.tk.seed exist, then the "TK" method of encryption is
+  assumed.  Otherwise the "EK" method of encryption is assumed.
+
+  See {tpm2-send} for details of the two encryption-to-TPM methods
+  supported.
+
+  The plaintext is written to the {OUT} file.
+
+  If the sender asserted a policy, that policy must be given to {$PROG}
+  so it can execute and satisfy it.
+
+  Policies should be specified as a sequence of {tpm2 policy...}
+  commands, with all necessary arguments except for {--session}|{-S}
+  and {--policy}|{-L} options.  Also, no need to include {tpm2
+  policycommandcode}, as that will get added.  E.g.:
+
+      $ $PROG ./ekpub ./secret ./madecredential \\
+          tpm2 policypcr -l "sha256:0,1,2,3" -f pcrs
+
+    Options:
+
+     -h         This help message.
+     -f         Overwrite OUT-FILE.
+     -x         Trace this script.
+EOF
+	exit 1
+}
+
+# shellcheck disable=SC1090
+. "$BASEDIR/../functions.sh"
+
+force=false
+while getopts +:hfx opt; do
+case "$opt" in
+h)	usage 0;;
+f)	force=true;;
+x)	set -vx;;
+*)	usage;;
+esac
+done
+shift $((OPTIND - 1))
+
+(($# >= 2)) || usage
+ciphertext_file=$1
+out_file=$2
+shift 2
+
+[[ ! -f ${ciphertext_file:-} ]] && die "No ciphertext file given"
+[[ -f ${out_file:-} ]] && $force && rm -f "$out_file"
+[[ ! -f ${out_file:-} ]] || die "Plaintext file exists; use -f?"
+
+d=
+trap 'rm -rf "$d"' EXIT
+d=$(mktemp -d)
+
+use_tk=true
+command_code=TPM2_CC_RSA_Decrypt
+for i in dpriv pub seed; do
+	($use_tk && [[ -s ${ciphertext_file}.tk.$i ]]) || use_tk=false
+done
+$use_tk || command_code=TPM2_CC_ActivateCredential
+
+# Get the EK handle
+tpm2 flushcontext --transient-object
+tpm2 flushcontext --loaded-session
+tpm2 flushcontext --saved-session 1>&2
+tpm2 createek					\
+	--key-algorithm rsa			\
+	--ek-context "${d}/ek.ctx"		\
+	--public "${d}/ek.pub"			\
+|| die "tpm2: unable to create ek object"
+
+# Make policyDigest
+(($# > 0)) && make_policyDigest "$command_code" "$@"
+
+# Create empty auth session for EK
+tpm2 flushcontext --transient-object
+tpm2 flushcontext --loaded-session
+tpm2 startauthsession --session "${d}/sessionek.ctx" --policy-session
+tpm2 policysecret --session "${d}/sessionek.ctx" --object-context endorsement
+
+# Execute and satisfy the policy for the TK or WK
+function auth {
+	tpm2 flushcontext --transient-object
+	tpm2 flushcontext --loaded-session
+	tpm2 startauthsession			\
+		--session "${d}/session.ctx"	\
+		--policy-session
+	# exec_policy will {die} if we fail to satisfy the policy
+	exec_policy "$command_code" "$@"
+	tpm2 flushcontext --transient-object
+	tpm2 flushcontext --loaded-session
+}
+
+if $use_tk; then
+	# attempt to load the secret wrapping key into our TPM
+	# as a transient object
+	tpm2 flushcontext --transient-object
+	tpm2 flushcontext --loaded-session
+
+	info "tpm2: Importing duplicate transport key"
+	tpm2 import \
+		--parent-context "${d}/ek.ctx" \
+		--parent-auth "session:${d}/sessionek.ctx" \
+		--key-algorithm rsa \
+		--input "${ciphertext_file}.tk.dpriv" \
+		--seed "${ciphertext_file}.tk.seed" \
+		--public "${ciphertext_file}.tk.pub" \
+		--private "${d}/tk.priv" \
+	|| die "tpm2: unable to import duplicate transport key object"
+
+	warn "tpm2: Loading duplicate transport key"
+	tpm2 flushcontext --transient-object
+	tpm2 flushcontext --loaded-session
+	tpm2 startauthsession --session "${d}/sessionek.ctx" --policy-session
+	tpm2 policysecret --session "${d}/sessionek.ctx" --object-context endorsement
+	tpm2 load \
+		--parent-context "${d}/ek.ctx" \
+		--auth "session:${d}/sessionek.ctx" \
+		--key-context "${d}/tk.ctx" \
+		--public "${ciphertext_file}.tk.pub" \
+		--private "${d}/tk.priv" \
+	|| die "tpm2: unable to load duplicate transport key object"
+
+	warn "tpm2: Decrypting with TK"
+	if (($# > 0)); then
+		auth "$@"
+		tpm2 rsadecrypt					\
+			--auth "session:${d}/session.ctx"	\
+			--key-context "${d}/tk.ctx"		\
+			--output "${out_file}"			\
+			"${ciphertext_file}"			\
+		|| die "tpm2: unable to decrypt with transport key"
+	else
+		tpm2 rsadecrypt					\
+			--key-context "${d}/tk.ctx"		\
+			--output "${out_file}"			\
+			"${ciphertext_file}"			\
+		|| die "tpm2: unable to decrypt with transport key"
+	fi
+else
+	# Load the WK for use as the activation object for
+	# TPM2_ActivateCredential():
+	tpm2 flushcontext --transient-object 1>&2
+	tpm2 flushcontext --loaded-session 1>&2
+	wkpriv > "${d}/wkpriv.pem"
+	attrs='sign'
+	adminwithpolicy=
+	if (($# > 0)); then
+		attrs='adminwithpolicy|sign'
+		adminwithpolicy=true
+	fi
+	if tpm2 loadexternal						\
+			--hierarchy n					\
+			--key-algorithm ecc				\
+			--private "${d}/wkpriv.pem"			\
+			${adminwithpolicy:+--policy "${d}/policy"}	\
+			--attributes "$attrs"				\
+			--key-context "${d}/wk.ctx" 1>&2; then
+		true
+	else
+		stat=$?
+		echo "ERROR: Failed to load WK: $?" 1>&2
+		exit $stat
+	fi
+
+	# If a policy was given to execute, create a policy session and execute
+	# and satisfy the policy:
+	activatecredential_args=()
+	if (($# > 0)); then
+		activatecredential_args+=(--credentialedkey-auth session:"${d}/session.ctx")
+		auth "$@"
+	fi
+
+	# Finally, ActivateCredential
+	tpm2 activatecredential						\
+		--credentialedkey-context "${d}/wk.ctx"			\
+		"${activatecredential_args[@]}"				\
+		--credentialkey-context "${d}/ek.ctx"			\
+		--credentialkey-auth session:"${d}/sessionek.ctx"	\
+		--credential-blob "$ciphertext_file"			\
+		--certinfo-data "$out_file" > /dev/null			\
+	|| die "could not decrypt using TPM2_ActivateCredential()"
+fi
