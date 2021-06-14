@@ -44,7 +44,7 @@ echo "       EK_PATH=$EK_PATH" >&2
 echo " REPO_LOCKPATH=$REPO_LOCKPATH" >&2
 
 function drop_privs {
-	su --whitelist-environment DB_PREFIX,USERNAME -c "$1 $2 $3 $4 $5" - $USERNAME
+	su --whitelist-environment DB_PREFIX,USERNAME,DB_IN_SETUP -c "$1 $2 $3 $4 $5" - $USERNAME
 }
 
 function expect_root {

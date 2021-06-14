@@ -4,6 +4,7 @@
 # "attestdb.git" repo/clone).
 
 [[ -z "$EK_PATH" || ! -d "$EK_PATH" ]] &&
+	[[ -z "$DB_IN_SETUP" ]] &&
 	(echo "Error, EK_PATH must point to the ekpubhash lookup tree" >&2 && exit 1) &&
 	exit 1
 
