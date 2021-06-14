@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# We deliberately build in a git-less environment (in a container, git is on
+# the host-side, the source is mounted into the container), but don't want to
+# change the source. What to do? Well, provide an alternative "git" executable.
+# You're currently reading it.
+
+# What does the source _use_ git for? So far, it seems the only subcommands
+# currently used are;
+#   - "git describe", for obtaining a textual token for versioning purposes
+#   - "git log", for producing AUTHORS, CHANGES, etc.
+
+set -e
+
+[[ $1 == "describe" ]] && echo "safeboot-unknown" && exit 0
+[[ $1 == "log" ]] && echo "safeboot stub output" && exit 0
+exit 1

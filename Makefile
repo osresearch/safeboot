@@ -1,5 +1,18 @@
 VERSION ?= 0.8
 
+# Boolean mode SAFEBOOT_WORKFLOW. If off (default), everything works as before,
+# move along, nothing to see here. I.e. the safeboot top-level Makefile
+# continues to do things much as it always has.
+#
+# If enabled, however, the content of this Makefile is almost entirely skipped,
+# and the Mariner+Docker-based "workflow" system is used instead. This is
+# unsurprisingly coded up in the ./workflow directory.
+#
+# Note, this must be modal, you can't have both. In the workflow model, the
+# submodules are handled within Docker containers.
+
+ifndef SAFEBOOT_WORKFLOW
+
 GIT_DIRTY := $(shell if git status -s >/dev/null ; then echo dirty ; else echo clean ; fi)
 GIT_HASH  := $(shell git rev-parse HEAD)
 TOP := $(shell pwd)
@@ -626,4 +639,9 @@ qemu-server: \
 	-kill `cat $(TPM_PID)`
 	@-$(RM) "$(TPM_PID)" "$(TPMSOCK)"
 
+else # defined(SAFEBOOT_WORKFLOW)
 
+# Pull in the Mariner workflow
+include workflow/GNUmakefile
+
+endif
