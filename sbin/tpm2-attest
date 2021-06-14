@@ -12,7 +12,8 @@
 # turn off "expressions don't expand in single quotes"
 # and "can't follow non-constant sources"
 # shellcheck disable=SC2016 disable=SC1090
-set -e -o pipefail
+
+[[ $_ != $0 ]] || set -e -o pipefail
 export LC_ALL=C
 
 : "${PREFIX:=}"
@@ -1015,7 +1016,7 @@ ek-crt()
 		|| die "unable to parse TPM endorsement key"
 
 		cat "$TMP/ek.pem"
-		exit 0
+		return 0
 	fi
 
 	cat "$ek_crt" > "$TMP/ek.crt" \
@@ -1062,23 +1063,29 @@ ek-crt()
 
 ########################################
 
-if [ $# -lt 1 ]; then
-	die "Usage: $0 [$commands] ...." 
+if (return 0 2>/dev/null); then
+	echo "Script is being sourced"
+        die() { echo "DIE: $*"; echo "BUT NOT REALLY"; return 1; }
+else
+
+	if [ $# -lt 1 ]; then
+		die "Usage: $0 [$commands] ...." 
+	fi
+
+	command=$1 ; shift
+	#echo "$commands"
+
+	case "$command" in
+		-h|--help)
+			echo "$usage"
+			exit 0
+			;;
+		#$commands)
+		commands|quote|attest|verify-and-seal|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify|ek-sign|ek-crt|eventlog)
+			$command "$@"
+			;;
+		*)
+			die "$0: subcommand $command unknown"
+			;;
+	esac
 fi
-
-command=$1 ; shift
-#echo "$commands"
-
-case "$command" in
-	-h|--help)
-		echo "$usage"
-		exit 0
-		;;
-	#$commands)
-	commands|quote|attest|verify-and-seal|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify|ek-sign|ek-crt|eventlog)
-		$command "$@"
-		;;
-	*)
-		die "$0: subcommand $command unknown"
-		;;
-esac
