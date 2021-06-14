@@ -2,6 +2,7 @@
 
 set -e
 
+TAILWAIT=/safeboot/tail_wait.pl
 PREF=simple-attest-server-ro:
 MSGBUS=/msgbus/server-ro
 MSGBUS_CLIENT=/msgbus/client
@@ -31,10 +32,10 @@ SERVPID=$!
 disown %
 echo "$PREF attestation server running (pid=$SERVPID)"
 
-echo "$PREF waiting for stop command"
-./tail_wait.pl $MSGBUS_CLIENT "control: stop server"
-echo "$PREF got stop command!"
-
+echo "Waiting for 'die' message on /msgbus/server-ro-ctrl"
+$TAILWAIT /msgbus/server-ro-ctrl "die"
+echo "Got the 'die' message"
+rm /msgbus/server-ro-ctrl
 kill $SERVPID
 
 echo "$PREF ending"
