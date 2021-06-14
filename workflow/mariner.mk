@@ -1368,7 +1368,8 @@ define workflow_new_service
 	$(if $($(wnss)_IS_RUNNING),
 		$(eval $(call workflow_new_edge_sink,$(wnsw),stop-$(wnss),$(wnss)_done))
 		$(eval $(call workflow_new_edge_sink,$(wnsw),reset-$(wnss),$(wnss)_done))
-		$(if $(wnsv),$(eval $(call workflow_new_edge_sink,$(wnsw),$(wnsv)_delete,$(wnss)_done))))
+		$(if $(wnsv),$(eval $(call workflow_new_edge_sink,$(wnsw),$(wnsv)_delete,$(wnss)_done))),
+		$(eval $(call mkout_rule,reset-$(wnss))))
 	$(if $(filter HasSetup,$(wnso)),
 		$(if $(wnsv),,$(error Error - '$(wnss)' with 'HasSetup' has no volume?))
 		$(eval $(wnss)_CLEANUP_VOLUME += $(wnsv))
@@ -1450,7 +1451,9 @@ define workflow_cleanup
 	$(foreach g,$($(wcw)_CLEANUP_GROUPS),
 		$(foreach s,$($g_CLEANUP_SERVICES),
 			$(eval $(call cleanup_add,$(wcp) jfile $($(wcw)-$s_run_JOINFILE)))
-			$(eval $(call cleanup_add,$(wcp) jfile $($(wcw)-$s_run_DONEFILE)))))
+			$(eval $(call cleanup_add,$(wcp) jfile $($(wcw)-$s_run_DONEFILE)))
+			$(if $(filter HasSetup,$($s_SETTINGS)),
+				$(eval $(call cleanup_add,$(wcp) jfile $($(wcw)-$s_setup_TOUCHFILE))))))
 	$(foreach a,$(wcn),
 		$(eval $(call cleanup_add,$(wcp) network $(DSPACE)_$a))
 		$(eval $(call cleanup_add,$(wcp) jfile $($a_TOUCHFILE))))
