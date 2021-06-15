@@ -23,7 +23,7 @@ echo "Setting up a software TPM in $TPMSTATE"
 # Initialize a software TPM
 swtpm_setup --tpm2 --createek --display --tpmstate $TPMSTATE --config /dev/null
 # Temporarily start the TPM on an unusual port (and sleep a second to be sure
-# it's alive before we hit it)
+# it's alive before we hit it). TODO: Better would be to tail_wait the output.
 swtpm socket --tpm2 --tpmstate dir=$TPMSTATE \
 	--server type=tcp,bindaddr=127.0.0.1,port=19283 --ctrl type=tcp,bindaddr=127.0.0.1,port=19284 \
 	--flags startup-clear &

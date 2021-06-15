@@ -29,6 +29,11 @@ cd $DIR
 echo "$PREF starting"
 
 # Start the software TPM
+# TODO: this crude "daemonize" logic has the standard race-condition, namely
+# that we spawn the process but move forward too quickly and something then
+# assumes the backgrounded service is ready before it actually is. This could
+# probably be fixed by dy doing a tail_wait on our own output to pick up the
+# telltale signs from the child process that the service is listening.
 swtpm socket --tpm2 --tpmstate dir=$TPMSTATE \
 	--server type=tcp,bindaddr=0.0.0.0,port=$TPMPORT1 --ctrl type=tcp,bindaddr=0.0.0.0,port=$TPMPORT2 \
 	--flags startup-clear &
