@@ -16,8 +16,8 @@ $(eval DEFAULT_ARGS_DOCKER_BUILD ?= --force-rm=true)
 $(eval DEFAULT_ARGS_DOCKER_RUN ?= )
 $(eval DEFAULT_RUNARGS_interactive ?= --rm -a stdin -a stdout -a stderr -i -t)
 $(eval DEFAULT_RUNARGS_batch ?= --rm -i)
-$(eval DEFAULT_RUNARGS_detach_nojoin ?= --rm -d)
-$(eval DEFAULT_RUNARGS_detach_join ?= -d)
+$(eval DEFAULT_RUNARGS_byebye ?= --rm -d)
+$(eval DEFAULT_RUNARGS_async ?= -d)
 $(eval DEFAULT_COMMAND_PROFILES ?= interactive)
 $(eval DEFAULT_NETWORK_MANAGED ?= true)
 $(eval DEFAULT_VOLUME_OPTIONS ?= readwrite)
@@ -1009,10 +1009,10 @@ endef
 # PROFILE that's supported, and then define the generic (PROFILE-agnostic) rule
 # to be an alias for the first listed PROFILE.
 #
-# Special handling for the "detach_join" profile;
+# Special handling for the "async" profile;
 # - use a different gen function to produce rules, as we have distinct "launch"
-#   and "wait" rules to create. (No need to do this for "detach_nojoin", which
-#   is a fire-and-forget semantic.)
+#   and "wait" rules to create. (No need to do this for "byebye", which is a
+#   fire-and-forget semantic.)
 #
 # uniquePrefix: gric
 define gen_rules_image_command
@@ -1041,7 +1041,7 @@ define gen_rules_image_command
 				$($(grici)_$i_$(gricc)_OPTIONS)))))
 	$(eval $(call mkout_long_var,$(gricic)_MOUNT_ARGS))
 	$(foreach i,$($(gricic)_PROFILES),
-		$(if $(filter detach_join,$i),
+		$(if $(filter async,$i),
 			$(eval $(call gen_rule_image_command_profile_join,$(gricic),$i))
 		,
 			$(eval $(call gen_rule_image_command_profile,$(gricic),$i,$(gricf)))
@@ -1321,8 +1321,7 @@ endef
 #   that's later, if this workflow_new_service idea survives.
 # - $2 is the name of the service as well as the suffix of the IMAGE that
 #   implements the service. The actual image name is $1-$2. The service is must
-#   by implemented as the verb "run" in this IMAGE, and be of type
-#   "detach_join".
+#   by implemented as the verb "run" in this IMAGE, and be of type "async".
 # - $3 specifies space-delimited options;
 #   - if $2 needs to be signaled to exit, $3 must include "SignalExit".
 #   - if $2 needs one-time initialization of state, $3 must include "HasSetup".

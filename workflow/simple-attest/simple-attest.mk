@@ -46,8 +46,8 @@ vdb_DEST := /db
 
 # "simple-attest-db-rw" is the only container image that can mount vdb
 # read-write. It supports the 'setup' (batch) verb to initialize the db, and
-# supports the 'run' (detach_join) verb to run the flask web app that provides
-# the REST API for manipulating the database.
+# supports the 'run' (async) verb to run the flask web app that provides the
+# REST API for manipulating the database.
 IMAGES += simple-attest-db-rw
 simple-attest-db-rw_EXTENDS := simple-attest-base-tpm2
 simple-attest-db-rw_PATH := $(TOPDIR)/workflow/simple-attest/db
@@ -56,7 +56,7 @@ simple-attest-db-rw_COMMANDS := shell run setup reset
 simple-attest-db-rw_VOLUMES := vtailwait vdb
 simple-attest-db-rw_NETWORKS := n-attest
 simple-attest-db-rw_run_COMMAND := /run_rw.sh
-simple-attest-db-rw_run_PROFILES := detach_join
+simple-attest-db-rw_run_PROFILES := async
 simple-attest-db-rw_run_MSGBUS := $(MSGBUS)
 simple-attest-db-rw_setup_COMMAND := /setup_db.sh
 simple-attest-db-rw_setup_PROFILES := batch
@@ -85,7 +85,7 @@ simple-attest-db-ro_VOLUMES := vtailwait vdb
 simple-attest-db-ro_vdb_OPTIONS := readonly
 simple-attest-db-ro_NETWORKS := n-attest
 simple-attest-db-ro_run_COMMAND := /run_ro.sh
-simple-attest-db-ro_run_PROFILES := detach_join
+simple-attest-db-ro_run_PROFILES := async
 simple-attest-db-ro_run_MSGBUS := $(MSGBUS)
 simple-attest-db-ro_ARGS_DOCKER_RUN := \
 	--env=DB_PREFIX="$(vdb_DEST)" \
@@ -97,8 +97,8 @@ vtpm_MANAGED := true
 vtpm_DEST := /tpm
 
 # "simple-attest-swtpm" implements a software/virtual TPM. It supports the
-# 'setup' (batch) verb to initialize the state, and the 'run' (detach_join)
-# verb for starting and stopping the swtpm itself.
+# 'setup' (batch) verb to initialize the state, and the 'run' (async) verb for
+# starting and stopping the swtpm itself.
 IMAGES += simple-attest-swtpm
 simple-attest-swtpm_EXTENDS := simple-attest-base-tpm2
 simple-attest-swtpm_PATH := $(TOPDIR)/workflow/simple-attest/swtpm
@@ -108,7 +108,7 @@ simple-attest-swtpm_VOLUMES := vtailwait vtpm \
 	$(foreach i,$(simple-attest-swtpm_SUBMODULES),vi$i)
 simple-attest-swtpm_NETWORKS := n-attest
 simple-attest-swtpm_run_COMMAND := /run_swtpm.sh
-simple-attest-swtpm_run_PROFILES := detach_join
+simple-attest-swtpm_run_PROFILES := async
 simple-attest-swtpm_run_MSGBUS := $(MSGBUS)
 simple-attest-swtpm_setup_COMMAND := /setup_swtpm.sh
 simple-attest-swtpm_setup_PROFILES := batch
@@ -130,7 +130,7 @@ simple-attest-client_VOLUMES := vsbin vfunctionssh vsafebootconf vtailwait \
 	$(foreach i,$(simple-attest-client_SUBMODULES),vi$i)
 simple-attest-client_NETWORKS := n-attest
 simple-attest-client_run_COMMAND := /run_client.sh
-simple-attest-client_run_PROFILES := detach_join
+simple-attest-client_run_PROFILES := async
 simple-attest-client_run_MSGBUS := $(MSGBUS)
 simple-attest-client_ARGS_DOCKER_BUILD := \
 	--build-arg SUBMODULES="$(simple-attest-client_SUBMODULES)" \
@@ -167,7 +167,7 @@ simple-attest-server-ro_VOLUMES := vsbin vfunctionssh vsafebootconf vtailwait \
 	vserver
 simple-attest-server-ro_NETWORKS := n-attest
 simple-attest-server-ro_run_COMMAND := /run_ro.sh
-simple-attest-server-ro_run_PROFILES := detach_join
+simple-attest-server-ro_run_PROFILES := async
 simple-attest-server-ro_run_MSGBUS := $(MSGBUS)
 simple-attest-server-ro_ARGS_DOCKER_BUILD := \
 	--build-arg SUBMODULES="$(simple-attest-server-ro_SUBMODULES)" \
@@ -185,7 +185,7 @@ simple-attest-server-rw_VOLUMES := vtailwait vserver
 simple-attest-server-rw_vserver_OPTIONS := readwrite
 simple-attest-server-rw_NETWORKS := n-attest
 simple-attest-server-rw_run_COMMAND := /run_rw.sh
-simple-attest-server-rw_run_PROFILES := detach_join
+simple-attest-server-rw_run_PROFILES := async
 simple-attest-server-rw_run_MSGBUS := $(MSGBUS)
 simple-attest-server-rw_setup_COMMAND := /setup_rw.sh
 simple-attest-server-rw_setup_PROFILES := batch
