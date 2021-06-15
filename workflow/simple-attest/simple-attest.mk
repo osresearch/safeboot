@@ -100,7 +100,7 @@ vtpm_DEST := /tpm
 # 'setup' (batch) verb to initialize the state, and the 'run' (detach_join)
 # verb for starting and stopping the swtpm itself.
 IMAGES += simple-attest-swtpm
-simple-attest-swtpm_EXTENDS := $(ibase-RESULT)
+simple-attest-swtpm_EXTENDS := simple-attest-base-tpm2
 simple-attest-swtpm_PATH := $(TOPDIR)/workflow/simple-attest/swtpm
 simple-attest-swtpm_COMMANDS := shell run setup
 simple-attest-swtpm_SUBMODULES := libtpms swtpm
