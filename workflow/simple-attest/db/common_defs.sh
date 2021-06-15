@@ -40,30 +40,38 @@ function check_hostblob {
 		(echo "Error, malformed hostblob" >&2 && exit 1) || exit 1
 }
 
-# We use a 2-ply directory hierarchy for ekpubhash-indexed files. The
-# first ply uses the first 2 hex characters as a directory name, for a split of
-# 256. The second ply uses the first 6 characters as a directory name, meaning
-# 4 new characters of uniqueness for a further split of 65536, resulting in a
-# total split of ~16 million. (Yes, beneath the first ply, all sub-directories
-# will have the same first 2 characters.) Beneath the second ply, a JSON file
-# will be named using the first 16 characters of the ekpubhash, with fields
-# 'ekpubhash', 'hostname', and 'hexblob'.
+# We use a 3-ply directory hierarchy for storing per-TPM state, indexed by the
+# "ekpubhash" of that TPM (or rather, it's the hexidecimal representation in
+# text form - 4 bits per character). The first ply uses the first 2 hex
+# characters as a directory name, for a split of 256. The second ply uses the
+# first 6 characters as a directory name, meaning 4 new characters of
+# uniqueness for a further split of 65536, resulting in a total split of ~16
+# million. The last ply uses the first 32 characters of the ekpubhash, with a
+# working assumption that this (128-bits) is enough to establish TPM
+# uniqueness, and no collision-handling is employed beyond that. That 3rd-ply
+# (per-TPM) directory contains individual files for each attribute to be
+# associated with the TPM, including 'ekpubhash' itself (full-length),
+# 'hostname', and 'hexblob'. (TODO: hexblob gets replaced with a namespace of
+# attributes that individually and separately encrypted to the TPM, perhaps in
+# a further sub-directory, or perhaps with a common file prefix. The
+# attestation server will send a host, upon successful attestation, all such
+# attributes.)
 
-# Given an ekpubhash ($1), ensure the 1st and 2nd ply directories exist.
+# Given an ekpubhash ($1), ensure the 3-ply of directories all exist.
 # Outputs;
-#   PLY1 and PLY2: sub and sub-sub directory names in the ekpubhash tree
-#   FNAME: basename for the JSON file
-#   FPATH: full path to (and including) FNAME
+#   PLY1, PLY2, PLY3: directory names
+#   FPATH: full path
 function ply_path_add {
 	PLY1=`echo $1 | cut -c 1,2`
 	PLY2=`echo $1 | cut -c 1-6`
-	FNAME=`echo $1 | cut -c 1-16`
-	FPATH="$EK_PATH/$PLY1/$PLY2/$FNAME"
-	mkdir -p "$EK_PATH/$PLY1/$PLY2"
+	PLY3=`echo $1 | cut -c 1-32`
+	FPATH="$EK_PATH/$PLY1/$PLY2/$PLY3"
+	mkdir -p "$FPATH"
 }
 
 # Given an ekpubhash prefix ($1), figure out the wildcard to match on all the
-# JSON files.
+# matching per-TPM directories. (If using "ls", don't forget to use the "-d"
+# switch!)
 # Outputs;
 #   FPATH: full path with wildcard pattern
 function ply_path_get {
@@ -76,11 +84,11 @@ function ply_path_get {
 			FPATH="$EK_PATH/$PLY1/$1*/*"
 		else
 			PLY2=`echo $1 | cut -c 1-6`
-			if [[ $len -lt 16 ]]; then
+			if [[ $len -lt 32 ]]; then
 				FPATH="$EK_PATH/$PLY1/$PLY2/$1*"
 			else
-				FNAME=`echo $1 | cut -c 1-16`
-				FPATH="$EK_PATH/$PLY1/$PLY2/$FNAME"
+				PLY3=`echo $1 | cut -c 1-32`
+				FPATH="$EK_PATH/$PLY1/$PLY2/$PLY3"
 			fi
 		fi
 	fi

@@ -32,10 +32,10 @@ ply_path_get "$1"
 #            }
 #        ]
 #    }
-# Now the entries are already stored as files that contain the
-# curly-brace-encapsulated 3-tuples, so we only need to take care of the
-# "entries" array (with the "[" and "]" and comma-separation of array entries)
-# as well as the outer "{" and "}".
+# The backing store has directories for each of these entries, with individual
+# files for each field, so we turn them into the curly-brace-encapsulated,
+# 3-tuples using "jq".  From there, we only need to take care of the "[", "]",
+# and comma-separation of array, as well as the outer "{" and "}".
 echo "{ \"entries\": ["
 
 # The following code is the critical section, so surround it with lock/unlock
@@ -55,17 +55,22 @@ repo_cmd_lock || (echo "Error, failed to lock repo" >&2 && exit 1) || exit 1
 # (b) "git rm" the file.
 [[ -z $itfailed ]] &&
 (
-FILE_LIST=`ls $FPATH 2> /dev/null`
+FILE_LIST=`ls -d $FPATH 2> /dev/null`
 for i in $FILE_LIST; do
 	[[ -n $NEEDCOMMA ]] && echo ","
 	[[ -z $QUERY_PLEASE_ALSO_DELETE ]] ||
-		(revhn=`cat $i | jq -r '.hostname' | rev` &&
+		(revhn=`cat $i/hostname | rev` &&
 		echo $revhn `basename "$i"` >> $HN2EK_PATH.filter) ||
 		(echo "Error, failed to add filter" >&2 && exit 1) ||
 		exit 1
-	cat $i
+	JSON_STRING=$(jq -n \
+                  --arg ekpubhash "`cat $i/ekpubhash`" \
+                  --arg hostname "`cat $i/hostname`" \
+                  --arg hostblob "`cat $i/hostblob`" \
+                  '{ekpubhash: $ekpubhash, hostname: $hostname, hostblob: $hostblob}' )
+	echo $JSON_STRING
 	NEEDCOMMA=1
-	[[ -z $QUERY_PLEASE_ALSO_DELETE ]] || git rm $i >&2 ||
+	[[ -z $QUERY_PLEASE_ALSO_DELETE ]] || git rm -r $i >&2 ||
 		(echo "Error, 'git rm'/pattern-tracker failed" >&2 && exit 1) ||
 		exit 1
 done
@@ -74,7 +79,6 @@ done
 # If we haven't yet failed, and we're deleting, and we saw at least one
 # entry to be deleted, filter the deleted entries out of the hn2ek table
 [[ -s $HN2EK_PATH.filter ]] && ATLEAST1=1
-
 if [[ -z $itfailed ]] && [[ -n $QUERY_PLEASE_ALSO_DELETE ]] && [[ -n $ATLEAST1 ]]; then
 	(grep -F -v -f $HN2EK_PATH.filter $HN2EK_PATH > $HN2EK_PATH.new || /bin/true) &&
 	mv $HN2EK_PATH.new $HN2EK_PATH &&
@@ -91,11 +95,13 @@ if [[ -z $itfailed ]] && [[ -n $QUERY_PLEASE_ALSO_DELETE ]] && [[ -n $ATLEAST1 ]
 fi
 
 # TODO: Same comment and same code as in op_add.sh - I won't repeat it here.
-[[ -z $itfailed ]] || (echo "Failure, attempting recovery" >&2 &&
-	echo "running 'git reset --hard'" >&2 && git reset --hard &&
-	echo "running 'git clean -f -d -x'" >&2 && git clean -f -d -x)
+[[ -z $itfailed ]] ||
+	(echo "Failure, attempting recovery" >&2 &&
+		echo "running 'git reset --hard'" >&2 && git reset --hard &&
+		echo "running 'git clean -f -d -x'" >&2 && git clean -f -d -x) ||
+	rollbackfailed=1
 
-repo_cmd_unlock
+[[ -z "$rollbackfailed" ]] && repo_cmd_unlock
 
 echo -n "]}"
 

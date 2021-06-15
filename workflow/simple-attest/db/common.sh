@@ -3,7 +3,7 @@
 # This file (common.sh) contains definitions required within the git container
 # for operating on the repository, e.g. dropping privs to the git user, taking
 # and releasing the lockfile, etc. The conventions for the repository's
-# directory layerout and the file contents are put in a seperate file,
+# directory layout and the file contents are put in a seperate file,
 # common_defs.sh, which is included at the end of this file _and actually
 # committed to the repo itself_. This is so that the same conventions are
 # available at the attestation service side once it has cloned/merged the repo
@@ -16,6 +16,7 @@ echo "Running '$0'" >&2
 echo "Settings passed in;" >&2
 echo "   DB_PREFIX=$DB_PREFIX" >&2
 echo "    USERNAME=$USERNAME" >&2
+echo " DB_IN_SETUP=$DB_IN_SETUP" >&2
 
 # DB_PREFIX must be passed in, fail otherwise
 if [[ -z "$DB_PREFIX" || ! -d "$DB_PREFIX" ]]; then
@@ -44,6 +45,8 @@ echo "       EK_PATH=$EK_PATH" >&2
 echo " REPO_LOCKPATH=$REPO_LOCKPATH" >&2
 
 function drop_privs {
+	# The su'd command will need to source this file also, so we only
+	# preserve the caller environment, not things we've derived
 	su --whitelist-environment DB_PREFIX,USERNAME,DB_IN_SETUP -c "$1 $2 $3 $4 $5" - $USERNAME
 }
 
@@ -88,12 +91,12 @@ function repo_cmd_unlock {
 # copies of the table inside the critical section). As with elsewhere, we make
 # do with a simple but easy-to-validate solution for now, and mark this for a
 # smarter implementation when there is enough time and focus to not make a mess
-# of it.
+# of it (and once things are running at a scale that can detect bugs).
 #
 # Each line of this file is a space-separated 2-tuple of;
 # - the reversed hostname (per 'rev')
-# - the ekpubhash (truncated to 16 characters if appropriate, i.e. to match
-#   the filename of the JSON in the ekpubhash/ directory tree).
+# - the ekpubhash (truncated to 32 characters if appropriate, i.e. to match the
+#   name of the per-TPM sub-sub-sub-drectory in the ekpubhash/ directory tree).
 
 # The initially-empty file
 HN2EK_BASENAME=hn2ek
