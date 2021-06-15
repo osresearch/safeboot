@@ -18,7 +18,7 @@ $(eval DEFAULT_RUNARGS_interactive ?= --rm -a stdin -a stdout -a stderr -i -t)
 $(eval DEFAULT_RUNARGS_batch ?= --rm -i)
 $(eval DEFAULT_RUNARGS_byebye ?= --rm -d)
 $(eval DEFAULT_RUNARGS_async ?= -d)
-$(eval DEFAULT_COMMAND_PROFILES ?= interactive)
+$(eval DEFAULT_COMMAND_PROFILE ?= interactive)
 $(eval DEFAULT_NETWORK_MANAGED ?= true)
 $(eval DEFAULT_VOLUME_OPTIONS ?= readwrite)
 $(eval DEFAULT_VOLUME_MANAGED ?= true)
@@ -322,16 +322,9 @@ OPTIONS_is_readwrite = $(filter readwrite,$(strip $1))
 # uniquePrefix: vvP
 define verify_valid_PROFILE
 	$(eval vvP := $(strip $1))
-	$(if $(DEFAULT_RUNARGS_$(vvP)),,
-		$(error "Bad: $(vvP) is not a valid command profile"))
-endef
-
-# uniquePrefix: vvPs
-define verify_valid_PROFILES
-	$(eval vvPs := $(strip $1))
-	$(eval vvPsl := $($(vvPs)))
-	$(foreach i,$(vvPsl),
-		$(eval $(call verify_valid_PROFILE,$i)))
+	$(eval vvPl := $($(vvP)))
+	$(if $(DEFAULT_RUNARGS_$(vvPl)),,
+		$(error "Bad: $$($(vvP))=$(vvPl) is not a valid command profile"))
 endef
 
 # uniquePrefix: sie
@@ -479,7 +472,7 @@ define process_commands
 		$(eval COMBINED_COMMANDS += shell)
 		$(eval shell_COMMAND ?= $(DEFAULT_SHELL))
 		$(eval shell_DESCRIPTION ?= start $(shell_COMMAND) in a container)
-		$(eval shell_PROFILES ?= interactive))
+		$(eval shell_PROFILE ?= interactive))
 	$(foreach i,$(strip $(COMMANDS)),
 		$(eval $(call process_command,$i)))
 endef
@@ -489,9 +482,9 @@ define process_command
 	$(eval pcv := $(strip $1))
 	# If _COMMAND is empty, explode
 	$(eval $(call verify_not_empty, $(pcv)_COMMAND))
-	# _PROFILES has a default, and needs validation
-	$(eval $(call set_if_empty,$(pcv)_PROFILES,$(DEFAULT_COMMAND_PROFILES)))
-	$(eval $(call verify_valid_PROFILES,$(pcv)_PROFILES))
+	# _PROFILE has a default, and needs validation
+	$(eval $(call set_if_empty,$(pcv)_PROFILE,$(DEFAULT_COMMAND_PROFILE)))
+	$(eval $(call verify_valid_PROFILE,$(pcv)_PROFILE))
 endef
 
 #######################################
@@ -634,8 +627,8 @@ define process_2ic
 	$(eval $(call list_subtract,$(p2ic2)_VOLUMES,$(p2ic2)_UNVOLUMES))
 	$(eval $(call set_if_empty,$(p2ic2)_VOLUMES,$($(p2icI)_VOLUMES)))
 	$(eval $(call list_subtract,$(p2ic2)_VOLUMES,$(p2ic2)_UNVOLUMES))
-	$(eval $(call set_if_empty,$(p2ic2)_PROFILES,$($(p2icC)_PROFILES)))
-	$(eval $(call verify_valid_PROFILES,$(p2ic2)_PROFILES))
+	$(eval $(call set_if_empty,$(p2ic2)_PROFILE,$($(p2icC)_PROFILE)))
+	$(eval $(call verify_valid_PROFILE,$(p2ic2)_PROFILE))
 	$(eval $(call set_if_empty,$(p2ic2)_ARGS_DOCKER_RUN,
 		$($(p2icI)_ARGS_DOCKER_RUN) $($(p2icC)_ARGS_DOCKER_RUN)))
 	$(eval $(p2ic2)_B_IMAGE := $(p2icI))
@@ -992,9 +985,9 @@ define gen_rules_image_commands
 endef
 
 
-# Rules; $1_$2 (<image>_<command>), $1_$2_$(foreach $($1_$2_PROFILES))
+# Rules; $1_$2 (<image>_<command>)
 # Note, the 1-tuple rule-generation for images and volumes was only dependent
-# on the corresponding 1-tuple processing. Things are different here. One
+# on the corresponding 1-tuple processing. Things are different here. Once
 # 2-tuple (image/command) processing has occurred, 3-tuple image/command/volume
 # processing occurs which pulls in and consolidates
 # defaults/inheritence/overrides info from the 1-tuple and 2-tuple processing.
@@ -1005,9 +998,6 @@ endef
 #   2ic: COMMAND, DNAME, VOLUMES
 #    1i: HOSTNAME, PATH, NETWORKS
 #    1v: SOURCE
-# Once all that is considered, we actually have to generate a rule for each
-# PROFILE that's supported, and then define the generic (PROFILE-agnostic) rule
-# to be an alias for the first listed PROFILE.
 #
 # Special handling for the "async" profile;
 # - use a different gen function to produce rules, as we have distinct "launch"
@@ -1019,7 +1009,7 @@ define gen_rules_image_command
 	$(eval grici := $(strip $1))
 	$(eval gricc := $(strip $2))
 	$(eval gricic := $(grici)_$(gricc))
-	$(eval gricf := $(firstword $($(gricic)_PROFILES)))
+	$(eval gricf := $($(gricic)_PROFILE))
 	$(eval $(gricic)_TOUCHFILE ?= $(DEFAULT_CRUD)/touch2-$(gricic))
 	$(eval $(call mkout_comment,Rules for IMAGE/COMMAND $(gricic)))
 	$(eval $(gricic)_DEPS := $($(grici)_TOUCHFILE))
@@ -1040,19 +1030,17 @@ define gen_rules_image_command
 				$($(grici)_$i_$(gricc)_DEST),
 				$($(grici)_$i_$(gricc)_OPTIONS)))))
 	$(eval $(call mkout_long_var,$(gricic)_MOUNT_ARGS))
-	$(foreach i,$($(gricic)_PROFILES),
-		$(if $(filter async,$i),
-			$(eval $(call gen_rule_image_command_profile_join,$(gricic),$i))
-		,
-			$(eval $(call gen_rule_image_command_profile,$(gricic),$i,$(gricf)))
-		))
+	$(if $(filter async,$(gricf)),
+		$(eval $(call gen_rule_image_command_async,$(gricic),$(gricf)))
+	,
+		$(eval $(call gen_rule_image_command,$(gricic),$(gricf)))
+	)
 endef
 
 # uniquePrefix: gricp
-define gen_rule_image_command_profile
+define gen_rule_image_command
 	$(eval gricp2 := $(strip $1))
 	$(eval gricpP := $(strip $2))
-	$(eval gricpF := $(strip $3))
 	$(eval gricpC := $(strip $($(gricp2)_COMMAND)))
 	$(eval gricpM := $(strip $($(gricp2)_MSGBUS)))
 	$(eval gricpA := $(strip $($(gricp2)_ARGS_DOCKER_RUN)))
@@ -1084,9 +1072,7 @@ $$Qecho "Launching a '$(gricpBI)' $(gricpP) container running command ('$(gricpB
 		$(eval TPMb := $$Qecho nada > /dev/null))
 	$(eval $(call mkout_rule,$($(gricp2)_TOUCHFILE),$$($(gricp2)_DEPS),
 		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8 TMP9 TMPa TPMb))
-	$(eval TMPTGT := $(strip $(if $(and $(filter $(gricpP),$(gricpF)),
-		$(filter $(gricpF),$(gricpP))),,_$(gricpP))))
-	$(eval $(call mkout_rule,$(gricp2)$(TMPTGT),$($(gricp2)_TOUCHFILE)))
+	$(eval $(call mkout_rule,$(gricp2),$($(gricp2)_TOUCHFILE)))
 endef
 
 # This implements a tick-tock trick using two touchfiles, a "joinfile" and a
@@ -1141,24 +1127,24 @@ endef
 # inner async commands _not_ generate visible wrapper targets is a UX advantage
 # here.
 #
-# uniquePrefix: gricpj
-define gen_rule_image_command_profile_join
-	$(eval gricpj2 := $(strip $1))
-	$(eval gricpjP := $(strip $2))
-	$(eval $(gricpj2)_JOINFILE := $(DEFAULT_CRUD)/jjoinfile_$(gricpj2))
-	$(eval $(gricpj2)_DONEFILE := $(DEFAULT_CRUD)/jdonefile_$(gricpj2))
-	$(eval gricpjC := $(strip $($(gricpj2)_COMMAND)))
-	$(eval gricpjM := $(strip $($(gricpj2)_MSGBUS)))
-	$(eval gricpjA := $(strip $($(gricpj2)_ARGS_DOCKER_RUN)))
-	$(eval gricpjBI := $(strip $($(gricpj2)_B_IMAGE)))
-	$(eval gricpjBC := $(strip $($(gricpj2)_B_COMMAND)))
+# uniquePrefix: grica
+define gen_rule_image_command_async
+	$(eval grica2 := $(strip $1))
+	$(eval gricaP := $(strip $2))
+	$(eval $(grica2)_JOINFILE := $(DEFAULT_CRUD)/jjoinfile_$(grica2))
+	$(eval $(grica2)_DONEFILE := $(DEFAULT_CRUD)/jdonefile_$(grica2))
+	$(eval gricaC := $(strip $($(grica2)_COMMAND)))
+	$(eval gricaM := $(strip $($(grica2)_MSGBUS)))
+	$(eval gricaA := $(strip $($(grica2)_ARGS_DOCKER_RUN)))
+	$(eval gricaBI := $(strip $($(grica2)_B_IMAGE)))
+	$(eval gricaBC := $(strip $($(grica2)_B_COMMAND)))
 	$(if $($(gricic)_DNAME),
 		$(eval TMP1 := \
-$$Qecho "Launching $(gricpjP) container '$($(gricpj2)_DNAME)'"),
+$$Qecho "Launching $(gricaP) container '$($(grica2)_DNAME)'"),
 		$(eval TMP1 := \
-$$Qecho "Launching a '$(gricpjBI)' $(gricpjP) container running command ('$(gricpjBC)')"))
-	$(eval TMP2 := $$Q$(if $(gricpjM),mkdir -p $(gricpjM),echo nada > /dev/null))
-	$(eval TMP3 := $$Qdocker run $(DEFAULT_RUNARGS_$(gricpjP)) \)
+$$Qecho "Launching a '$(gricaBI)' $(gricaP) container running command ('$(gricaBC)')"))
+	$(eval TMP2 := $$Q$(if $(gricaM),mkdir -p $(gricaM),echo nada > /dev/null))
+	$(eval TMP3 := $$Qdocker run $(DEFAULT_RUNARGS_$(gricaP)) \)
 	$(eval TMP4 := $(gricpA) \)
 	$(eval TMP5 := --label $(DSPACE) --label $(DSPACE)_$($(gricp2)_HOSTNAME)=1)
 	$(if $($(gricpBI)_NETWORKS),
@@ -1166,28 +1152,28 @@ $$Qecho "Launching a '$(gricpjBI)' $(gricpjP) container running command ('$(gric
 	,
 		$(eval TMP5 += --hostname $($(gricp2)_HOSTNAME) \)
 	)
-	$(eval TMP6 := $$$$($(gricpj2)_NETWORK_ARGS) \)
-	$(eval TMP7 := $$$$($(gricpj2)_MOUNT_ARGS) \)
-	$(eval TMP8 := $(if $(gricpjM),-v $(gricpjM):/msgbus) \)
-	$(eval TMP9 := --cidfile=$($(gricpj2)_JOINFILE) \)
-	$(eval TMPa := $(DSPACE)_$(gricpjBI) \)
-	$(eval TMPb := $(gricpjC))
-	$(eval $(call mkout_rule,$($(gricpj2)_JOINFILE),$$($(gricpj2)_DEPS),
+	$(eval TMP6 := $$$$($(grica2)_NETWORK_ARGS) \)
+	$(eval TMP7 := $$$$($(grica2)_MOUNT_ARGS) \)
+	$(eval TMP8 := $(if $(gricaM),-v $(gricaM):/msgbus) \)
+	$(eval TMP9 := --cidfile=$($(grica2)_JOINFILE) \)
+	$(eval TMPa := $(DSPACE)_$(gricaBI) \)
+	$(eval TMPb := $(gricaC))
+	$(eval $(call mkout_rule,$($(grica2)_JOINFILE),$$($(grica2)_DEPS),
 		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8 TMP9 TMPa TMPb))
 	$(eval TMP1 := \
-$$Qecho "Waiting on completion of container '$(gricpj2)_$(gricpjP)'")
-	$(eval TMP2 := $$Qcid=`cat $($(gricpj2)_JOINFILE)` && \)
+$$Qecho "Waiting on completion of container '$(grica2)_$(gricaP)'")
+	$(eval TMP2 := $$Qcid=`cat $($(grica2)_JOINFILE)` && \)
 	$(eval TMP3 := rcode=`docker container wait $$$$$$$$cid` && \)
-	$(eval TMP4 := rm $($(gricpj2)_JOINFILE) && \)
-	$(eval TMP5 := touch $($(gricpj2)_DONEFILE) && \)
+	$(eval TMP4 := rm $($(grica2)_JOINFILE) && \)
+	$(eval TMP5 := touch $($(grica2)_DONEFILE) && \)
 	$(eval TMP6 := (docker container rm $$$$$$$$cid > /dev/null 2>&1) && \)
-	$(eval TMP7 := (test $$$$$$$$rcode -eq 0 || echo "Error in container '$(gricpj2)_$(gricpjP)'") && \)
+	$(eval TMP7 := (test $$$$$$$$rcode -eq 0 || echo "Error in container '$(grica2)_$(gricaP)'") && \)
 	$(eval TMP8 := (exit $$$$$$$$rcode))
-	$(eval $(call mkout_rule,$($(gricpj2)_DONEFILE),$($(gricpj2)_JOINFILE),
+	$(eval $(call mkout_rule,$($(grica2)_DONEFILE),$($(grica2)_JOINFILE),
 		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8))
-	$(eval $(call mkout_rule,$(gricpj2)_$(gricpjP)_launch,$($(gricpj2)_JOINFILE),))
-	$(eval $(call mkout_rule,$(gricpj2)_$(gricpjP)_wait,$($(gricpj2)_DONEFILE),))
-	$(eval $(call mkout_rule,$(gricpj2)_$(gricpjP),$(gricpj2)_$(gricpjP)_wait,))
+	$(eval $(call mkout_rule,$(grica2)_$(gricaP)_launch,$($(grica2)_JOINFILE),))
+	$(eval $(call mkout_rule,$(grica2)_$(gricaP)_wait,$($(grica2)_DONEFILE),))
+	$(eval $(call mkout_rule,$(grica2)_$(gricaP),$(grica2)_$(gricaP)_wait,))
 endef
 
 ##################

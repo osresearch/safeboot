@@ -53,7 +53,7 @@ MYVERBS := configure compile install uninstall clean chown sanity run
 COMMANDS += $(MYVERBS)
 $(foreach i,$(MYVERBS),\
 	$(eval $i_COMMAND := /bin/false)\
-	$(eval $i_PROFILES := batch))
+	$(eval $i_PROFILE := batch))
 
 # This simplifies the ARGS_DOCKER_RUN settings for some containers
 CHOWNER_LINE := --env CHOWNER="$(shell id -u):$(shell id -g)"

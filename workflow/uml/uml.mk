@@ -11,7 +11,7 @@ iutil-uml_PATH := $(TOPDIR)/workflow/uml
 iutil-uml_VOLUMES := vuml
 iutil-uml_COMMANDS := shell run
 iutil-uml_run_COMMAND := /run_plantuml.sh
-iutil-uml_run_PROFILES := batch
+iutil-uml_run_PROFILE := batch
 iutil-uml_ARGS_DOCKER_RUN := \
 	--env=TARGETDIR="$(vuml_DEST)" \
 	$(CHOWNER_LINE)
