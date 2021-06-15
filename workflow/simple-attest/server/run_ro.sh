@@ -27,16 +27,16 @@ cd $DIR
 
 echo "$PREF starting"
 
-# TODO: this is bogus, doesn't do anything, and will fail if you connect to it.
-# Worse still, updates in pxe-server mean that this fails to _start_ even. The
-# client side is likewise contenting itself to ping us instead of connecting.
+# TODO: this is bogus, it needs to be replaced by what the attestation server
+# is _supposed_ to do. The client side is also bogus, for now contenting itself
+# to ping us instead of connecting and attesting.
 # Also...
 # TODO: this crude "daemonize" logic has the standard race-condition, namely
 # that we spawn the process but move forward too quickly and something then
 # assumes the backgrounded service is ready before it actually is. This could
 # probably be fixed by dy doing a tail_wait on our own output to pick up the
 # telltale signs from the child process that the service is listening.
-./sbin/attest-server ./secrets.yaml &
+./sbin/attest-server 8080 &
 SERVPID=$!
 disown %
 echo "$PREF attestation server running (pid=$SERVPID)"

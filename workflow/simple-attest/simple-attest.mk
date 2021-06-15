@@ -172,11 +172,9 @@ simple-attest-server-ro_run_MSGBUS := $(MSGBUS)
 simple-attest-server-ro_ARGS_DOCKER_BUILD := \
 	--build-arg SUBMODULES="$(simple-attest-server-ro_SUBMODULES)" \
 	--build-arg DIR="/safeboot"
-# Give the server a secrets.yaml. TODO: get rid of this once
-# simple-attest-server-ro is using $STATE_PREFIX/current/{...}
 simple-attest-server-ro_ARGS_DOCKER_RUN := \
 	--env=STATE_PREFIX="$(vserver_DEST)" \
-	-v=$(TOPDIR)/workflow/simple-attest/stub-secrets.yaml:/safeboot/secrets.yaml
+	-p 8080:8080
 
 IMAGES += simple-attest-server-rw
 simple-attest-server-rw_EXTENDS := $(ibase-RESULT)
