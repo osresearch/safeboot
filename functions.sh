@@ -9,7 +9,7 @@ die_msg=""
 die() { echo "$die_msg""$*" >&2 ; exit 1 ; }
 warn() { echo "$@" >&2 ; }
 error() { echo "$@" >&2 ; return 1 ; }
-debug() { [[ $VERBOSE = 1 ]] && echo "$@" >&2 ; }
+debug() { ((${VERBOSE:-0})) && echo "$@" >&2 ; }
 
 
 ########################################
@@ -76,7 +76,7 @@ fi
 
 
 tpm2() {
-	if [[ "$VERBOSE" = 1 ]]; then
+	if ((${VERBOSE:-0})); then
 		/usr/bin/time -f '%E %C' "$TPM2" "$@"
 	else
 		"$TPM2" "$@"
