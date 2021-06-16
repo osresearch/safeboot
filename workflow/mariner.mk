@@ -1000,8 +1000,8 @@ endef
 #    1v: SOURCE
 #
 # Special handling for the "async" profile;
-# - use a different gen function to produce rules, as we have distinct "launch"
-#   and "wait" rules to create. (No need to do this for "byebye", which is a
+# - use a different gen function to produce rules, as we have distinct "started"
+#   and "done" rules to create. (No need to do this for "byebye", which is a
 #   fire-and-forget semantic.)
 #
 # uniquePrefix: gric
@@ -1075,69 +1075,53 @@ $$Qecho "Launching a '$(gricpBI)' $(gricpP) container running command ('$(gricpB
 	$(eval $(call mkout_rule,$(gricp2),$($(gricp2)_TOUCHFILE)))
 endef
 
-# This implements a tick-tock trick using two touchfiles, a "joinfile" and a
-# "donefile", which respectively represent the two states of "async command has
-# been launched and we haven't yet ensured its completion and cleaned up after
-# it" and "we're idle/quiescent and could launch a new async command". So in
-# the default/quiescent state, there is no touchfile at all or there is a
-# left-over "donefile" from a previous, completed command. In the
-# launched-but-not-yet-reaped state, there is a "joinfile" and no "donefile".
+# This implements two target states for the async command using two touchfiles,
+# a "startedfile" and a "donefile".
 #
-# Launching of the async command is triggered by dependency on the "joinfile",
-# which itself is dependent on upstream (build) dependencies (if anything is
-# out-of-date, rebuild it before pursuing any of our async command stuff). When
-# the joinfile is absent (quiescence), the dependency triggers the launching of
-# a command, which writes its container-ID to the "joinfile" (thus creating
-# it). At this point, further dependence on the "joinfile" will give "nothing
-# left to do", which is the metaphor we want for "dependence on launching the
-# command is met, because the command has been launched".
+# Launching of the async command is triggered by dependency on the
+# "startedfile", which itself is dependent on upstream dependencies, such as
+# rebuilding artifacts if anything is out-of-date, etc. When the startedfile is
+# absent, the dependency triggers the launching of the command, which writes
+# its container-ID to the startedfile, thus creating it. At this point, further
+# dependence on the startedfile will give "nothing left to do", which is the
+# metaphor we want for "dependence on launching the command is met, because the
+# command has been launched".
 #
 # Dependence on the command being completed is produced by a dependency on the
-# "donefile", which is itself dependent on the "joinfile", and if triggered
+# "donefile", which is itself dependent on the startedfile, and if triggered
 # causes us to;
 # - re-attach to the container and wait for its exit (which may have already
-#   happened),
-# - remove the "joinfile", and
+#   happened), and
 # - create the "donefile".
-# This puts us back in the quiescent state. Rinse and repeat.
+# This puts us in the completed state. For the command to be run again, the
+# startedfile needs to first be deleted so that a dependency on it isn't
+# already satisfied.
 #
 # A curious implication; dependence on the donefile causes us to wait for
-# completion of (and clean up after) the launched command _if it had been
-# launched_, otherwise it first causes the launching of the command (by its
-# dependence on the joinfile) and _then_ blocks on its completion. I.e.;
+# completion of, and clean up after, the launched command _if it had already
+# been launched_. Otherwise it first causes the launching of the command
+# because of its dependence on the startedfile, and _then_ blocks on its
+# completion. I.e.;
 # - For async semantics;
-#   - depend on the joinfile to launch, and
+#   - depend on the startedfile to launch, and
 #   - depend on the donefile to block on completion.
 # - For blocking semantics;
 #   - depend on the donefile directly!
-#
-# Another trick. First, note that by default we create named targets,
-# $(image)_$(command)_launch and $(image)_$(command)_wait, that depend on the
-# joinfile and donefile respectively. (By having the files use absolute paths,
-# starting with "/", they don't pollute the space of visible targets to bash's
-# tab-completion. Having the named targets gives visible wrappers for the
-# launch/wait behavior.) However, if parameter $3 is non-empty, we use that as
-# a trigger to _not_ generate the visible wrapper targets. Why? Well, if you
-# build a test-case that will launch a lot of commands in one part of the
-# workflow (by dependence on all the respective joinfiles) and then wait for
-# them to all complete in another part of the workflow (by dependence on the
-# respective donefiles), you are presumably going to wrap that cumulative
-# "launch"/"wait" behavior into a single pair of targets (with its own
-# joinfile/donefile depending on all the underlying ones). Having the multiple
-# inner async commands _not_ generate visible wrapper targets is a UX advantage
-# here.
 #
 # uniquePrefix: grica
 define gen_rule_image_command_async
 	$(eval grica2 := $(strip $1))
 	$(eval gricaP := $(strip $2))
-	$(eval $(grica2)_JOINFILE := $(DEFAULT_CRUD)/jjoinfile_$(grica2))
-	$(eval $(grica2)_DONEFILE := $(DEFAULT_CRUD)/jdonefile_$(grica2))
+	$(eval $(grica2)_STARTEDFILE := $(DEFAULT_CRUD)/touch_async_$(grica2)_started)
+	$(eval $(grica2)_DONEFILE := $(DEFAULT_CRUD)/touch_async_$(grica2)_done)
 	$(eval gricaC := $(strip $($(grica2)_COMMAND)))
 	$(eval gricaM := $(strip $($(grica2)_MSGBUS)))
 	$(eval gricaA := $(strip $($(grica2)_ARGS_DOCKER_RUN)))
 	$(eval gricaBI := $(strip $($(grica2)_B_IMAGE)))
 	$(eval gricaBC := $(strip $($(grica2)_B_COMMAND)))
+	$(eval v1 := $(shell stat $($(grica2)_STARTEDFILE) > /dev/null 2>&1 && echo YES))
+	$(eval v2 := $(shell stat $($(grica2)_DONEFILE) > /dev/null 2>&1 || echo YES))
+	$(eval $(grica2)_IS_RUNNING := $(if $(and $v1,$v2),YES))
 	$(if $($(gricic)_DNAME),
 		$(eval TMP1 := \
 $$Qecho "Launching $(gricaP) container '$($(grica2)_DNAME)'"),
@@ -1155,23 +1139,24 @@ $$Qecho "Launching a '$(gricaBI)' $(gricaP) container running command ('$(gricaB
 	$(eval TMP6 := $$$$($(grica2)_NETWORK_ARGS) \)
 	$(eval TMP7 := $$$$($(grica2)_MOUNT_ARGS) \)
 	$(eval TMP8 := $(if $(gricaM),-v $(gricaM):/msgbus) \)
-	$(eval TMP9 := --cidfile=$($(grica2)_JOINFILE) \)
+	$(eval TMP9 := --cidfile=$($(grica2)_STARTEDFILE) \)
 	$(eval TMPa := $(DSPACE)_$(gricaBI) \)
 	$(eval TMPb := $(gricaC))
-	$(eval $(call mkout_rule,$($(grica2)_JOINFILE),$$($(grica2)_DEPS),
-		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8 TMP9 TMPa TMPb))
+	$(if $($(grica2)_IS_RUNNING),
+		$(eval $(call mkout_rule,$($(grica2)_STARTEDFILE),$$($(grica2)_DEPS),
+			TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8 TMP9 TMPa TMPb)),
+		$(eval $(call mkout_rule,$($(grica2)_STARTEDFILE))))
 	$(eval TMP1 := \
 $$Qecho "Waiting on completion of container '$(grica2)_$(gricaP)'")
-	$(eval TMP2 := $$Qcid=`cat $($(grica2)_JOINFILE)` && \)
+	$(eval TMP2 := $$Qcid=`cat $($(grica2)_STARTEDFILE)` && \)
 	$(eval TMP3 := rcode=`docker container wait $$$$$$$$cid` && \)
-	$(eval TMP4 := rm $($(grica2)_JOINFILE) && \)
-	$(eval TMP5 := touch $($(grica2)_DONEFILE) && \)
-	$(eval TMP6 := (docker container rm $$$$$$$$cid > /dev/null 2>&1) && \)
-	$(eval TMP7 := (test $$$$$$$$rcode -eq 0 || echo "Error in container '$(grica2)_$(gricaP)'") && \)
-	$(eval TMP8 := (exit $$$$$$$$rcode))
-	$(eval $(call mkout_rule,$($(grica2)_DONEFILE),$($(grica2)_JOINFILE),
-		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8))
-	$(eval $(call mkout_rule,$(grica2)_$(gricaP)_launch,$($(grica2)_JOINFILE),))
+	$(eval TMP4 := touch $($(grica2)_DONEFILE) && \)
+	$(eval TMP5 := (docker container rm $$$$$$$$cid > /dev/null 2>&1) && \)
+	$(eval TMP6 := (test $$$$$$$$rcode -eq 0 || echo "Error in container '$(grica2)_$(gricaP)'") && \)
+	$(eval TMP7 := (exit $$$$$$$$rcode))
+	$(eval $(call mkout_rule,$($(grica2)_DONEFILE),$($(grica2)_STARTEDFILE),
+		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7))
+	$(eval $(call mkout_rule,$(grica2)_$(gricaP)_launch,$($(grica2)_STARTEDFILE),))
 	$(eval $(call mkout_rule,$(grica2)_$(gricaP)_wait,$($(grica2)_DONEFILE),))
 	$(eval $(call mkout_rule,$(grica2)_$(gricaP),$(grica2)_$(gricaP)_wait,))
 endef
@@ -1220,20 +1205,19 @@ define workflow_check_is_node
 		$(error Error: '$(wcinn)' is not a node of '$(wcinw)'))
 endef
 
-# Create a new workflow "edge" (a makefile rule with one workflow node
-# depending on another).
+# Create a new workflow "edge", which is a makefile rule with one workflow node
+# depending on another.
 # - $1 is the workflow
-# - $2 is the result node (that depends on the requirement node)
-# - $3 is the requirement node (that is dependend upon)
+# - $2 is the result node, which depends on the requirement node
+# - $3 is the requirement node, which the result node depends on
 # - $4 is a list of variable names, the values of which contain 1 line of
-#   recipe (action) output each, as per the mkout_rule() API.
+#   recipe output each, as per the mkout_rule API.
 # - $5 is a space-separated option strings, supporting;
 #   - "TouchOutput", meaning that the touchfile path for the result node should
-#     get touched (created/updated) when the dependency is met and actions are
-#     completed. This option should be set if the rule is only supposed to be
-#     trigger when the result is "out of date", and should be omited if the
-#     rule should "run every time" (i.e. if it should always be considered out
-#     of date).
+#     get touched when the dependency is met and actions are completed. This
+#     option should be set if the rule is only supposed to be triggered when
+#     the result is "out of date", and should be omited if the rule should "run
+#     every time", i.e. if it should always be considered out of date.
 #   - "RemoveInput", meaning that the touchfile path for the requirement node
 #     should be removed once the dependency is met and actions are completed.
 # Note, the _raw function is the lowest-common-denominator of all the variants.
@@ -1317,7 +1301,7 @@ endef
 #   "reset-$2", if $3 includes "HasSetup". Note, _for now_, this is the full
 #   name of the VOLUME, not $1-$5. (I.e. $4 isn't scoped like $3, yet.)
 # Nodes created;
-# - $2_launched - this is aliased to the "run" verb's joinfile
+# - $2_launched - this is aliased to the "run" verb's startedfile
 # - $2_done - this is aliased to the "run" verb's donefile
 # - if $3 includes "HasSetup";
 #   - $2_setup - this is aliased to the "setup" verb's touchfile
@@ -1345,7 +1329,7 @@ define workflow_new_service
 	$(eval wnso := $(strip $3))
 	$(eval wnsv := $(strip $4))
 	$(eval $(wnss)_SETTINGS := $(wnso))
-	$(eval $(call workflow_alias_node,$(wnsw),$(wnss)_launched,$($(wnsw)-$(wnss)_run_JOINFILE)))
+	$(eval $(call workflow_alias_node,$(wnsw),$(wnss)_launched,$($(wnsw)-$(wnss)_run_STARTEDFILE)))
 	$(eval $(call workflow_alias_node,$(wnsw),$(wnss)_done,$($(wnsw)-$(wnss)_run_DONEFILE)))
 	$(eval $(call workflow_stat_node,$(wnsw),$(wnss)_launched,$(wnss)_IS_RUNNING))
 	$(eval $(call mkout_comment,Service '$(wnsw)::$(wnss)'))
@@ -1435,7 +1419,7 @@ define workflow_cleanup
 			$(eval $(call cleanup_add,$(wcp) jfile $($v_TOUCHFILE))))))
 	$(foreach g,$($(wcw)_CLEANUP_GROUPS),
 		$(foreach s,$($g_CLEANUP_SERVICES),
-			$(eval $(call cleanup_add,$(wcp) jfile $($(wcw)-$s_run_JOINFILE)))
+			$(eval $(call cleanup_add,$(wcp) jfile $($(wcw)-$s_run_STARTEDFILE)))
 			$(eval $(call cleanup_add,$(wcp) jfile $($(wcw)-$s_run_DONEFILE)))
 			$(if $(filter HasSetup,$($s_SETTINGS)),
 				$(eval $(call cleanup_add,$(wcp) jfile $($(wcw)-$s_setup_TOUCHFILE))))))

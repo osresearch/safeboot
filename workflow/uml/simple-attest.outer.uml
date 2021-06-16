@@ -78,7 +78,7 @@ ClientLaunch : shown in the state diagram embedded in "Underway".
 ClientLaunch : Mariner already generates a touchfile dependency
 ClientLaunch : for this.
 ClientLaunch :
-ClientLaunch : Touchfile: <crud>/jjoinfile_simple-attest-client_run
+ClientLaunch : Touchfile: <crud>/touch_async_simple-attest-client_run_started
 
 ServerLaunch : Starts up the "host"/server container, running the
 ServerLaunch : run_server.sh test script. The behavior of the test is
@@ -86,6 +86,6 @@ ServerLaunch : shown in the state diagram embedded in "Underway".
 ServerLaunch : Mariner already generates a touchfile dependency
 ServerLaunch : for this.
 ServerLaunch :
-ServerLaunch : Touchfile: <crud>/jjoinfile_simple-attest-server_run
+ServerLaunch : Touchfile: <crud>/touch_async_simple-attest-server_run_done
 
 @enduml
