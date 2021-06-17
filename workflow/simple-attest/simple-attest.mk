@@ -223,7 +223,8 @@ $(eval $(call mkout_header,Running 'simple-attest' use-cases))
 $(eval $(call workflow_new_service,simple-attest,db-rw,SignalExit HasSetup,vdb))
 $(eval $(call workflow_new_service,simple-attest,db-ro,SignalExit))
 $(eval $(call workflow_new_group,simple-attest,db,db-rw db-ro))
-$(eval $(call workflow_new_edge,simple-attest,db-ro_launched,db-rw_setup))
+$(if $(db-rw_IS_SETUP),,\
+	$(eval $(call mkout_rule,start-db-ro,setup-db-rw)))
 #   server
 #      - server-rw manages the vserver volume and updates it by pulling changes
 #        from db-ro.
@@ -234,7 +235,8 @@ $(eval $(call workflow_new_edge,simple-attest,db-ro_launched,db-rw_setup))
 $(eval $(call workflow_new_service,simple-attest,server-rw,SignalExit HasSetup,vserver))
 $(eval $(call workflow_new_service,simple-attest,server-ro,SignalExit))
 $(eval $(call workflow_new_group,simple-attest,server,server-rw server-ro))
-$(eval $(call workflow_new_edge,simple-attest,server-ro_launched,server-rw_setup))
+$(if $(server-rw_IS_SETUP),,\
+	$(eval $(call mkout_rule,start-server-ro,setup-server-rw)))
 #   host
 #      - swtpm manages and is the sole user of the vswtpm volume, which
 #        provides persistent/reproducible state for the software TPM that it
@@ -250,20 +252,25 @@ $(eval $(call workflow_new_edge,simple-attest,server-ro_launched,server-rw_setup
 $(eval $(call workflow_new_service,simple-attest,swtpm,SignalExit HasSetup,vtpm))
 $(eval $(call workflow_new_service,simple-attest,client))
 $(eval $(call workflow_new_group,simple-attest,host,swtpm client))
-$(eval $(call workflow_new_edge,simple-attest,client_launched,swtpm_setup))
+$(if $(setup-swtpm_IS_SETUP),,\
+	$(eval $(call mkout_rule,start-client,setup-swtpm)))
 
 # There are also dependencies between the services in different groups;
 # - the database replication service (db-ro) has to be running in order for the
 #   server's one-time initialization (server-rw's "setup") to do an initial
 #   git-clone. But so long as that has already happened, the database doesn't
 #   have to be running for the server to be running.
-$(if $(server-rw_IS_SET_UP),,\
-	$(eval $(call workflow_new_edge,simple-attest,server-rw_setup,db-ro_launched)))
+$(if $(server-rw_IS_SETUP),,\
+	$(eval $(call mkout_comment,server setup requires db-ro to be running))\
+	$(eval $(call workflow_new_edge_source,simple-attest,server-rw_setup,start-db-ro)))
 # - the attestation server (server-ro) should be running before the host (client)
 #   can be launched, as the client will immediately try to connect to it.
-$(eval $(call workflow_new_edge,simple-attest,client_launched,server-ro_launched))
 # - the host client can't run unless the host TPM (swtpm) is running.
-$(eval $(call workflow_new_edge,simple-attest,client_launched,swtpm_launched))
+$(if $(client_IS_STARTED),,\
+	$(eval $(call mkout_comment,client start requires server-ro to be running))\
+	$(eval $(call workflow_new_edge_source,simple-attest,client_launched,start-server-ro))\
+	$(eval $(call mkout_comment,client start requires swtpm to be running))\
+	$(eval $(call workflow_new_edge_source,simple-attest,client_launched,start-swtpm)))
 
 $(eval $(call workflow_cleanup,simple-attest,n-attest,$(MSGBUS)))
 

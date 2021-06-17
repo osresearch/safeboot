@@ -130,14 +130,16 @@ define mkout_header
 endef
 
 # Do a tick-tock thing with _init and _finish, so that once we init we are
-# actually writing to a temp file, and when we _finish we move the temp file
-# into place, _if and only if an exact matching file doesn't already exist_!
+# actually writing to an initially-empty temp file, and when we _finish we move
+# the temp file into place, _if and only if an exact matching file doesn't
+# already exist_!
 define mkout_init
 	$(eval MKOUT := $(MARINER_MKOUT_ORIGIN))
 	$(if $(MARINER_MKOUT_SUFFIX),
 		$(eval MKOUT := $(MKOUT).$(MARINER_MKOUT_SUFFIX)))
 	$(eval MKOUT_TMP := $(MKOUT))
 	$(eval MKOUT := $(MKOUT).tmp)
+	$(shell cat /dev/null > $(MKOUT))
 endef
 
 # As part of finalizing - we sweep the new makefile looking for targets that
@@ -414,7 +416,7 @@ define process_network
 	$(eval $(call set_if_empty, \
 		$(pn)_XTRA, \
 		$(DEFAULT_NETWORK_XTRA)))
-	$(eval $(pn)_TOUCHFILE := $(DEFAULT_CRUD)/ntouch_$(pn))
+	$(eval $(pn)_TOUCHFILE := $(DEFAULT_CRUD)/touch_net_$(pn))
 	# Check the values are legit
 	$(eval $(call verify_valid_BOOL,$(pn)_MANAGED))
 endef
@@ -449,7 +451,7 @@ define process_volume
 	$(eval $(call set_if_empty, \
 		$(pvv)_MANAGED, \
 		$(DEFAULT_VOLUME_MANAGED)))
-	$(eval $(pvv)_TOUCHFILE := $(DEFAULT_CRUD)/vtouch_$(pvv))
+	$(eval $(pvv)_TOUCHFILE := $(DEFAULT_CRUD)/touch_vol_$(pvv))
 	# Check the values are legit
 	$(eval $(call verify_valid_OPTIONS,$(pvv)_OPTIONS))
 	$(eval $(call verify_valid_BOOL,$(pvv)_MANAGED))
@@ -600,7 +602,7 @@ define process_image
 		$($(pip)v)_UNCOMMANDS))
 	$(eval $($(pip)v)_DOUT := $(DEFAULT_CRUD)/Dockerfile_$($(pip)v))
 	$(eval $($(pip)v)_DIN := $($($(pip)v)_DOCKERFILE))
-	$(eval $($(pip)v)_TOUCHFILE := $(DEFAULT_CRUD)/touch_$($(pip)v))
+	$(eval $($(pip)v)_TOUCHFILE := $(DEFAULT_CRUD)/touch_img_$($(pip)v))
 	$(eval $(call verify_all_in_list,$($(pip)v)_NETWORKS,COMBINED_NETWORKS))
 	$(eval $(call verify_all_in_list,$($(pip)v)_VOLUMES,COMBINED_VOLUMES))
 	$(eval $(call verify_all_in_list,$($(pip)v)_COMMANDS,COMBINED_COMMANDS))
@@ -633,6 +635,12 @@ define process_2ic
 		$($(p2icI)_ARGS_DOCKER_RUN) $($(p2icC)_ARGS_DOCKER_RUN)))
 	$(eval $(p2ic2)_B_IMAGE := $(p2icI))
 	$(eval $(p2ic2)_B_COMMAND := $(p2icC))
+	$(if $(filter async,$($(p2ic2)_PROFILE)),
+		$(eval $(p2ic2)_STARTEDFILE := $(DEFAULT_CRUD)/touch_async_$(p2ic2)_started)
+		$(eval $(p2ic2)_DONEFILE := $(DEFAULT_CRUD)/touch_async_$(p2ic2)_done)
+	,
+		$(eval $(p2ic2)_TOUCHFILE := $(DEFAULT_CRUD)/touch_i2c_$(p2ic2))
+	)
 endef
 
 #########################################
@@ -798,7 +806,7 @@ define gen_rules_network
 		$(eval grnx := $$Qdocker network create $($(grn)_XTRA) $(DSPACE)_$($(grn)_DNAME))
 		$(eval grny := $$Qtouch $($(grn)_TOUCHFILE))
 		$(eval grnz := $$Qecho "Created (managed) network $(grn)")
-		$(eval $(call mkout_rule,$($(grn)_TOUCHFILE),,grnx grny grnz))
+		$(eval $(call mkout_rule,$($(grn)_TOUCHFILE), | $(DEFAULT_CRUD),grnx grny grnz))
 		$(eval $(call mkout_rule,$(grn)_delete,,))
 		$(eval $(call mkout_endif))
 		$(eval $(call mkout_rule,$(grn)_create,$($(grn)_TOUCHFILE),))
@@ -856,14 +864,16 @@ define gen_rules_volume
 		$(eval grvy := $$Qrmdir $($(grv)_SOURCE))
 		$(eval grvz := $$Qrm $($(grv)_TOUCHFILE))
 		$(eval $(call mkout_rule,$(grv)_delete,,grvw grvx grvy grvz))
+		$(eval $(call mkout_rule,$(grv)_create,,))
 		$(eval $(call mkout_else))
 		$(eval MDIRS += $($(grv)_SOURCE))
 		$(eval grvx := $$Qtouch $($(grv)_TOUCHFILE))
 		$(eval grvy := $$Qecho "Created (managed) volume $(grv)")
-		$(eval $(call mkout_rule,$($(grv)_TOUCHFILE),| $($(grv)_SOURCE),grvx grvy))
+		$(eval $(call mkout_rule,$($(grv)_TOUCHFILE),| $(DEFAULT_CRUD) $($(grv)_SOURCE),
+			grvx grvy))
+		$(eval $(call mkout_rule,$(grv)_create,$($(grv)_TOUCHFILE),))
 		$(eval $(call mkout_rule,$(grv)_delete,,))
 		$(eval $(call mkout_endif))
-		$(eval $(call mkout_rule,$(grv)_create,$($(grv)_TOUCHFILE),))
 	,
 		$(eval $(call mkout,comment,No rules for UNMANAGED volume $(grv))))
 endef
@@ -930,6 +940,8 @@ endef
 # uniquePrefix: gri
 define gen_rules_image
 	$(eval gri := $(strip $1))
+	$(eval $(call mkout_comment,Rules for IMAGE $(gri)))
+	$(eval $(call mkout_rule,$($(gri)_DOUT) $($(gri)_TOUCHFILE),| $(DEFAULT_CRUD),))
 	$(eval griUpdate1 := $$Qecho "Updating .Dockerfile_$(gri)")
 	$(if $(strip $($(gri)_TERMINATES)),
 		$(eval griUpdate2 := $$Qecho "FROM $(strip $($(gri)_TERMINATES))" > $($(gri)_DOUT))
@@ -937,21 +949,26 @@ define gen_rules_image
 		$(eval griUpdate2 := $$Qecho "FROM $(DSPACE)_$(strip $($(gri)_EXTENDS))" > $($(gri)_DOUT))
 	)
 	$(eval griUpdate3 := $$Qcat $($(gri)_DOCKERFILE) >> $($(gri)_DOUT))
+	$(eval griUpdate := griUpdate1 griUpdate2 griUpdate3)
+	$(eval $(call mkout_rule,$($(gri)_DOUT),$($(gri)_DIN),$(griUpdate)))
+	$(eval $(call mkout_if_shell,stat $($(gri)_TOUCHFILE)))
+	$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),,))
+	$(eval $(call mkout_rule,$(gri)_create,,))
 	$(eval griRemove1 := $$Qecho "Deleting container image $(gri)")
 	$(eval griRemove2 := $$Qdocker image rm $(DSPACE)_$(gri) && docker image prune --force)
 	$(eval griRemove3 := $$Qrm $($(gri)_TOUCHFILE))
+	$(eval griRemove := griRemove1 griRemove2 griRemove3)
+	$(eval $(call mkout_rule,$(gri)_delete,,$(griRemove)))
+	$(if $($(gri)_EXTENDS),
+		$(call mkout_rule,$($(gri)_EXTENDS)_delete,$(gri)_delete,,))
+	$(eval $(call mkout_else))
 	$(eval griBuild := docker build $($(gri)_ARGS_DOCKER_BUILD) -t $(DSPACE)_$(gri))
 	$(eval griCreate1 := $$Qecho "(re-)Creating container image $(gri)")
 	$(if $(call BOOL_is_true,$($(gri)_NOPATH)),
 		$(eval griCreate2 := $$Qcat $($(gri)_DOUT) | $(griBuild) - ),
 		$(eval griCreate2 := $$Q(cd $($(gri)_PATH) && $(griBuild) -f $($(gri)_DOUT) . )))
 	$(eval griCreate3 := $$Qtouch $($(gri)_TOUCHFILE))
-	$(eval griUpdate := griUpdate1 griUpdate2 griUpdate3)
-	$(eval griRemove := griRemove1 griRemove2 griRemove3)
 	$(eval griCreate := griCreate1 griCreate2 griCreate3)
-	$(eval $(call mkout_comment,Rules for IMAGE $(gri)))
-	$(eval $(call mkout_rule,$($(gri)_DOUT) $($(gri)_TOUCHFILE),| $(DEFAULT_CRUD),))
-	$(eval $(call mkout_rule,$($(gri)_DOUT),$($(gri)_DIN),$(griUpdate)))
 	$(if $($(gri)_EXTENDS),
 		$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),$($($(gri)_EXTENDS)_TOUCHFILE),))
 	,
@@ -962,14 +979,9 @@ define gen_rules_image
 		$(eval $(gri)_PATH_DEPS := $(shell find $($(gri)_PATH) $($(gri)_PATH_FILTER)))
 		$(eval $(call mkout_long_var,$(gri)_PATH_DEPS))
 		$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),$$($(gri)_PATH_DEPS),)))
-	$(eval $(call mkout_rule,$(gri)_create,$($(gri)_TOUCHFILE),))
 	$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),,$(griCreate)))
-	$(eval $(call mkout_if_shell,stat $($(gri)_TOUCHFILE)))
-		$(eval $(call mkout_rule,$(gri)_delete,,$(griRemove)))
-		$(if $($(gri)_EXTENDS),
-			$(call mkout_rule,$($(gri)_EXTENDS)_delete,$(gri)_delete,,))
-	$(eval $(call mkout_else))
-		$(eval $(call mkout_rule,$(gri)_delete,,))
+	$(eval $(call mkout_rule,$(gri)_create,$($(gri)_TOUCHFILE),))
+	$(eval $(call mkout_rule,$(gri)_delete,,))
 	$(eval $(call mkout_endif))
 endef
 
@@ -1010,7 +1022,6 @@ define gen_rules_image_command
 	$(eval gricc := $(strip $2))
 	$(eval gricic := $(grici)_$(gricc))
 	$(eval gricf := $($(gricic)_PROFILE))
-	$(eval $(gricic)_TOUCHFILE ?= $(DEFAULT_CRUD)/touch2-$(gricic))
 	$(eval $(call mkout_comment,Rules for IMAGE/COMMAND $(gricic)))
 	$(eval $(gricic)_DEPS := $($(grici)_TOUCHFILE))
 	$(eval $(gricic)_DEPS += $(foreach i,$($(gricic)_NETWORKS),$(strip
@@ -1067,12 +1078,11 @@ $$Qecho "Launching a '$(gricpBI)' $(gricpP) container running command ('$(gricpB
 	$(eval TMP8 := $(if $(gricpM),-v $(gricpM):/msgbus) \)
 	$(eval TMP9 := $(DSPACE)_$(gricpBI) \)
 	$(eval TMPa := $(gricpC))
-	$(if $($(gricp2)_STICKY),
-		$(eval TPMb := $$Qtouch $($(gricp2)_TOUCHFILE)),
-		$(eval TPMb := $$Qecho nada > /dev/null))
+	$(eval TMPb := $$Qtouch $($(gricp2)_TOUCHFILE))
 	$(eval $(call mkout_rule,$($(gricp2)_TOUCHFILE),$$($(gricp2)_DEPS),
-		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8 TMP9 TMPa TPMb))
-	$(eval $(call mkout_rule,$(gricp2),$($(gricp2)_TOUCHFILE)))
+		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8 TMP9 TMPa TMPb))
+	$(eval TMP1 := $$Qrm -f $($(gricp2)_TOUCHFILE))
+	$(eval $(call mkout_rule,$(gricp2),$($(gricp2)_TOUCHFILE),TMP1))
 endef
 
 # This implements two target states for the async command using two touchfiles,
@@ -1112,16 +1122,14 @@ endef
 define gen_rule_image_command_async
 	$(eval grica2 := $(strip $1))
 	$(eval gricaP := $(strip $2))
-	$(eval $(grica2)_STARTEDFILE := $(DEFAULT_CRUD)/touch_async_$(grica2)_started)
-	$(eval $(grica2)_DONEFILE := $(DEFAULT_CRUD)/touch_async_$(grica2)_done)
 	$(eval gricaC := $(strip $($(grica2)_COMMAND)))
 	$(eval gricaM := $(strip $($(grica2)_MSGBUS)))
 	$(eval gricaA := $(strip $($(grica2)_ARGS_DOCKER_RUN)))
 	$(eval gricaBI := $(strip $($(grica2)_B_IMAGE)))
 	$(eval gricaBC := $(strip $($(grica2)_B_COMMAND)))
-	$(eval v1 := $(shell stat $($(grica2)_STARTEDFILE) > /dev/null 2>&1 && echo YES))
-	$(eval v2 := $(shell stat $($(grica2)_DONEFILE) > /dev/null 2>&1 || echo YES))
-	$(eval $(grica2)_IS_RUNNING := $(if $(and $v1,$v2),YES))
+	$(eval started := $(shell stat $($(grica2)_STARTEDFILE) > /dev/null 2>&1 && echo YES))
+	$(eval unfinished := $(shell stat $($(grica2)_DONEFILE) > /dev/null 2>&1 || echo YES))
+	$(eval $(grica2)_IS_RUNNING := $(if $(and $(started),$(unfinished)),YES))
 	$(if $($(gricic)_DNAME),
 		$(eval TMP1 := \
 $$Qecho "Launching $(gricaP) container '$($(grica2)_DNAME)'"),
@@ -1143,9 +1151,11 @@ $$Qecho "Launching a '$(gricaBI)' $(gricaP) container running command ('$(gricaB
 	$(eval TMPa := $(DSPACE)_$(gricaBI) \)
 	$(eval TMPb := $(gricaC))
 	$(if $($(grica2)_IS_RUNNING),
+		$(eval $(call mkout_rule,$($(grica2)_STARTEDFILE)))
+	,
 		$(eval $(call mkout_rule,$($(grica2)_STARTEDFILE),$$($(grica2)_DEPS),
-			TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8 TMP9 TMPa TMPb)),
-		$(eval $(call mkout_rule,$($(grica2)_STARTEDFILE))))
+			TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8 TMP9 TMPa TMPb))
+	)
 	$(eval TMP1 := \
 $$Qecho "Waiting on completion of container '$(grica2)_$(gricaP)'")
 	$(eval TMP2 := $$Qcid=`cat $($(grica2)_STARTEDFILE)` && \)
@@ -1154,10 +1164,15 @@ $$Qecho "Waiting on completion of container '$(grica2)_$(gricaP)'")
 	$(eval TMP5 := (docker container rm $$$$$$$$cid > /dev/null 2>&1) && \)
 	$(eval TMP6 := (test $$$$$$$$rcode -eq 0 || echo "Error in container '$(grica2)_$(gricaP)'") && \)
 	$(eval TMP7 := (exit $$$$$$$$rcode))
-	$(eval $(call mkout_rule,$($(grica2)_DONEFILE),$($(grica2)_STARTEDFILE),
-		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7))
+	$(if $(unfinished),
+		$(eval $(call mkout_rule,$($(grica2)_DONEFILE),$($(grica2)_STARTEDFILE),
+			TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7))
+	,
+		$(eval $(call mkout_rule,$($(grica2)_DONEFILE)))
+	)
 	$(eval $(call mkout_rule,$(grica2)_$(gricaP)_launch,$($(grica2)_STARTEDFILE),))
-	$(eval $(call mkout_rule,$(grica2)_$(gricaP)_wait,$($(grica2)_DONEFILE),))
+	$(eval TMP1 := $$Qrm -f $($(grica2)_STARTEDFILE) $($(grica2)_DONEFILE))
+	$(eval $(call mkout_rule,$(grica2)_$(gricaP)_wait,$($(grica2)_DONEFILE),TMP1))
 	$(eval $(call mkout_rule,$(grica2)_$(gricaP),$(grica2)_$(gricaP)_wait,))
 endef
 
@@ -1181,7 +1196,7 @@ define workflow_alias_node
 	$(eval $(wanw)_NODE_$(wann) := $(wanp))
 endef
 define workflow_new_node
-	$(eval $(call workflow_alias_node,$1,$2,$(DEFAULT_CRUD)/wtouch_$1_$2))
+	$(eval $(call workflow_alias_node,$1,$2,$(DEFAULT_CRUD)/touch_node_$1_$2))
 endef
 # uniquePrefix: wgn
 define workflow_get_node
@@ -1286,12 +1301,12 @@ endef
 #   specified in $2. Note, the generated rules will not have any such scoping,
 #   because these rules are intended to be user-facing. (E.g. we want
 #   "start-db", not "simple-attest-start-db".) To avoid the potential for
-#   different workflows generating conflicting rules, we will (later!) only
+#   different workflows generating conflicting rules, we will, eventually, only
 #   generate workflow rules for the workflow the user is trying to act on. But
 #   that's later, if this workflow_new_service idea survives.
 # - $2 is the name of the service as well as the suffix of the IMAGE that
-#   implements the service. The actual image name is $1-$2. The service is must
-#   by implemented as the verb "run" in this IMAGE, and be of type "async".
+#   implements the service. The actual image name is $1-$2. The service must by
+#   implemented as the verb "run" in this IMAGE, and be of type "async".
 # - $3 specifies space-delimited options;
 #   - if $2 needs to be signaled to exit, $3 must include "SignalExit".
 #   - if $2 needs one-time initialization of state, $3 must include "HasSetup".
@@ -1299,29 +1314,7 @@ endef
 #     and be of type "batch".
 # - $4 optionally specifies a VOLUME that can be automatically cleaned up by
 #   "reset-$2", if $3 includes "HasSetup". Note, _for now_, this is the full
-#   name of the VOLUME, not $1-$5. (I.e. $4 isn't scoped like $3, yet.)
-# Nodes created;
-# - $2_launched - this is aliased to the "run" verb's startedfile
-# - $2_done - this is aliased to the "run" verb's donefile
-# - if $3 includes "HasSetup";
-#   - $2_setup - this is aliased to the "setup" verb's touchfile
-# - if $3 includes "SignalExit";
-#   - $2_signaled - a new touchfile set once the service is signaled to exit
-# Edges/Rules created;
-# - start-$2 depends on launching $2_run
-# - stop-$2 depends on waiting for $2_run to exit, if it is currently running
-# - if $3 includes "HasSetup";
-#   - setup-$2 depends on $2_setup having been run (at least once)
-#   - $2_run depends on $2_setup having been run (at least once)
-#   - and if $4 is defined,
-#     - reset-$2 depends on $4_delete
-#   - reset-$2, when triggered, will clear the one-time initialization
-#     touchfile.
-# - if $2 is presently running;
-#   - reset-$2 depends on waiting for $2_run to exit
-# - if $3 includes "SignalExit";
-#   - $2_signaled depends on $2_launched and signals the service to exit
-#   - $2_done depends on $2_signaled
+#   name of the VOLUME, not $1-$5. I.e. $4 isn't scoped like $3, yet.
 # uniquePrefix: wns
 define workflow_new_service
 	$(eval wnsw := $(strip $1))
@@ -1329,44 +1322,56 @@ define workflow_new_service
 	$(eval wnso := $(strip $3))
 	$(eval wnsv := $(strip $4))
 	$(eval $(wnss)_SETTINGS := $(wnso))
-	$(eval $(call workflow_alias_node,$(wnsw),$(wnss)_launched,$($(wnsw)-$(wnss)_run_STARTEDFILE)))
-	$(eval $(call workflow_alias_node,$(wnsw),$(wnss)_done,$($(wnsw)-$(wnss)_run_DONEFILE)))
-	$(eval $(call workflow_stat_node,$(wnsw),$(wnss)_launched,$(wnss)_IS_RUNNING))
+	$(eval $(wnss)_STARTEDFILE := $($(wnsw)-$(wnss)_run_STARTEDFILE))
+	$(eval $(wnss)_DONEFILE := $($(wnsw)-$(wnss)_run_DONEFILE))
+	$(if $(wnsv),$(eval $(wnss)_CLEANUP_VOLUMES += $(wnsv)))
+	$(eval $(call workflow_alias_node,$(wnsw),$(wnss)_launched,$($(wnss)_STARTEDFILE)))
+	$(eval $(call workflow_alias_node,$(wnsw),$(wnss)_done,$($(wnss)_DONEFILE)))
+	$(eval $(call workflow_stat_node,$(wnsw),$(wnss)_launched,$(wnss)_IS_STARTED))
+	$(eval $(call workflow_stat_node,$(wnsw),$(wnss)_done,$(wnss)_IS_DONE))
 	$(eval $(call mkout_comment,Service '$(wnsw)::$(wnss)'))
-	$(eval $(call workflow_new_edge_sink,$(wnsw),start-$(wnss),$(wnss)_launched))
-	$(if $($(wnss)_IS_RUNNING),
-		$(eval $(call workflow_new_edge_sink,$(wnsw),stop-$(wnss),$(wnss)_done))
-		$(eval $(call workflow_new_edge_sink,$(wnsw),reset-$(wnss),$(wnss)_done))
-		$(if $(wnsv),$(eval $(call workflow_new_edge_sink,$(wnsw),$(wnsv)_delete,$(wnss)_done))),
-		$(eval $(call mkout_rule,reset-$(wnss))))
+	$(if $(and $($(wnss)_IS_STARTED),$($(wnss)_IS_DONE)),
+		$(info Service $(wnss) marked as started and finished, clearing both now)
+		$(shell rm -f $($(wnss)_STARTEDFILE) $($(wnss)_DONEFILE))
+		$(eval $(wnss)_IS_STARTED :=)
+		$(eval $(wnss)_IS_FINISHED :=))
+	$(eval $(call mkout_rule,setup-$(wnss)))
+	$(eval $(call mkout_rule,reset-$(wnss)))
+	$(if $($(wnss)_IS_STARTED),
+		$(eval $(call mkout_rule,start-$(wnss)))
+		$(eval TMP1 := $$Qrm -f $($(wnss)_STARTEDFILE) $($(wnss)_DONEFILE))
+		$(eval $(call workflow_new_edge_sink,$(wnsw),stop-$(wnss),$(wnss)_done,TMP1))
+		$(eval $(call mkout_rule,reset-$(wnss),stop-$(wnss)))
+		$(if $(filter SignalExit,$(wnso)),
+			$(eval $(call workflow_new_node,$(wnsw),$(wnss)_signaled))
+			$(eval K1 := $Qecho "Signaling $(wnsw)-$(wnss) to exit")
+			$(eval K2 := $Qecho "die" > $($(wnsw)-$(wnss)_run_MSGBUS)/$(wnss)-ctrl)
+			$(eval $(call workflow_new_edge,$(wnsw),$(wnss)_signaled,$(wnss)_launched,K1 K2,TouchOutput))
+			$(eval $(call workflow_new_edge,$(wnsw),$(wnss)_done,$(wnss)_signaled)))
+	,
+		$(eval $(call workflow_new_edge_sink,$(wnsw),start-$(wnss),$(wnss)_launched))
+		$(eval $(call mkout_rule,stop-$(wnss)))
+	)
 	$(if $(filter HasSetup,$(wnso)),
-		$(if $(wnsv),,$(error Error - '$(wnss)' with 'HasSetup' has no volume?))
-		$(eval $(wnss)_CLEANUP_VOLUME += $(wnsv))
-		$(eval $(call workflow_alias_node,$(wnsw),$(wnss)_setup,$($(wnsw)-$(wnss)_setup_TOUCHFILE)))
-		$(eval $(call workflow_stat_node,$(wnsw),$(wnss)_setup,$(wnss)_IS_SET_UP))
-		$(if $($(wnss)_IS_SET_UP),,
-			$(eval $(call workflow_new_edge,$(wnsw),$(wnss)_launched,$(wnss)_setup))
-			$(eval $(call workflow_new_edge_sink,$(wnsw),setup-$(wnss),$(wnss)_setup)))
-		$(eval RMTOUCHFILE := $Qrm -f $($(wnsw)-$(wnss)_setup_TOUCHFILE))
-		$(eval $(call mkout_rule,reset-$(wnss),$(wnsv)_delete,RMTOUCHFILE)))
-	$(if $(filter SignalExit,$(wnso)),
-		$(eval $(call workflow_new_node,$(wnsw),$(wnss)_signaled))
-		$(eval K1 := $Qecho "Signaling $(wnsw)-$(wnss) to exit")
-		$(eval K2 := $Qecho "die" > $($(wnsw)-$(wnss)_run_MSGBUS)/$(wnss)-ctrl)
-		$(eval $(call workflow_new_edge,$(wnsw),$(wnss)_signaled,$(wnss)_launched,K1 K2,TouchOutput))
-		$(eval $(call workflow_new_edge,$(wnsw),$(wnss)_done,$(wnss)_signaled)))
+		$(eval $(wnss)_SETUPFILE := $($(wnsw)-$(wnss)_setup_TOUCHFILE))
+		$(eval $(call workflow_alias_node,$(wnsw),$(wnss)_setup,$($(wnss)_SETUPFILE)))
+		$(eval $(call workflow_stat_node,$(wnsw),$(wnss)_setup,$(wnss)_IS_SETUP))
+		$(if $($(wnss)_IS_SETUP),
+			$(eval RMTOUCHFILE := $Qrm -f $($(wnss)_SETUPFILE))
+			$(eval $(call mkout_rule,reset-$(wnss),,RMTOUCHFILE))
+			$(if $(wnsv),$(eval $(call mkout_rule,reset-$(wnss),$(wnsv)_delete)))
+		,
+			$(eval $(call mkout_rule,reset-$(wnss),,))
+			$(eval $(call workflow_new_edge_sink,$(wnsw),setup-$(wnss),$(wnss)_setup))
+		)
+		$(if $($(wnss)_IS_STARTED),
+			$(if $(wnsv),$(eval $(call workflow_new_edge_sink,$(wnsw),$(wnsv)_delete,$(wnss)_done)))
+		,
+			$(if $($(wnss)_IS_SETUP),,$(eval $(call workflow_new_edge_source,$(wnsw),$(wnss)_launched,setup-$(wnss))))
+		)
+	)
 endef
 
-# "workflow_new_group" usage;
-# - $1 is the workflow name. Same comments as for workflow_new_server.
-# - $2 is the name of the group.
-# - $3 is the list of services that should be part of this group.
-# Edges/Rules created;
-# - start-$2 depends on $i_launched for each i in $3 that isn't presently
-#   launched
-# - stop-$2 depends on $i_done for each i in $3 that is presently launched
-# - setup-$2 depends on $i_setup for each i in $3 with the "HasSetup" option
-# - reset-$2 depends on reset-$i for each i in $3
 # uniquePrefix: wng
 define workflow_new_group
 	$(eval wngw := $(strip $1))
@@ -1375,16 +1380,10 @@ define workflow_new_group
 	$(eval $(wngw)_CLEANUP_GROUPS += $(wngg))
 	$(eval $(wngg)_CLEANUP_SERVICES += $(wngs))
 	$(eval $(call mkout_comment,Group '$(wngw)::$(wngg)': services '$(wngs)'))
-	$(eval $(call mkout_rule,start-$(wngg)))
-	$(eval $(call mkout_rule,stop-$(wngg)))
-	$(eval $(call mkout_rule,reset-$(wngg)))
-	$(foreach i,$(wngs),
-		$(if $($i_IS_RUNNING),
-			$(eval $(call workflow_new_edge_sink,$(wngw),stop-$(wngg),$i_done)),
-			$(eval $(call workflow_new_edge_sink,$(wngw),start-$(wngg),$i_launched)))
-		$(if $(filter HasSetup,$($i_SETTINGS)),
-			$(eval $(call workflow_new_edge_sink,$(wngw),setup-$(wngg),$i_setup)))
-		$(eval $(call mkout_rule,reset-$(wngg),reset-$i)))
+	$(eval $(call mkout_rule,start-$(wngg),$(foreach i,$(wngs),start-$i)))
+	$(eval $(call mkout_rule,stop-$(wngg),$(foreach i,$(wngs),stop-$i)))
+	$(eval $(call mkout_rule,setup-$(wngg),$(foreach i,$(wngs),setup-$i)))
+	$(eval $(call mkout_rule,reset-$(wngg),$(foreach i,$(wngs),reset-$i)))
 endef
 
 # Calls to workflow_new_service accumulate state that can be used to generate a cleanup
@@ -1414,7 +1413,7 @@ define workflow_cleanup
 			$(eval $(call cleanup_add,$(wcp) image $(DSPACE)_$(wcw)-$s))))
 	$(foreach g,$($(wcw)_CLEANUP_GROUPS),
 		$(foreach s,$($g_CLEANUP_SERVICES),
-		$(foreach v,$($s_CLEANUP_VOLUME),
+		$(foreach v,$($s_CLEANUP_VOLUMES),
 			$(eval $(call cleanup_add,$(wcp) volume $($v_SOURCE)))
 			$(eval $(call cleanup_add,$(wcp) jfile $($v_TOUCHFILE))))))
 	$(foreach g,$($(wcw)_CLEANUP_GROUPS),
