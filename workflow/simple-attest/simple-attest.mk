@@ -275,3 +275,17 @@ $(if $(client_IS_STARTED),,\
 $(eval $(call workflow_cleanup,simple-attest,n-attest,$(MSGBUS)))
 
 $(eval $(call do_mariner_final))
+
+############ HIGHER-LEVEL WORKFLOWS
+#
+# Stuff below uses the stuff above as "make <lower-layer-stuff>" from recipes.
+
+SUBMAKE=$Qmake --no-print-directory
+simple-attest:
+	$(SUBMAKE) start-db
+	$(SUBMAKE) start-server
+	$(SUBMAKE) start-host
+	$(SUBMAKE) stop-host
+	$(SUBMAKE) stop-server
+	$(SUBMAKE) stop-db
+	$Qecho "Simple attest complete"
