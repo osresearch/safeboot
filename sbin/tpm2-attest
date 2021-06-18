@@ -705,16 +705,10 @@ seal()
 	|| die "$QUOTE_TAR: unable to unpack"
 
 	# create a random key and encrypt stdin with it
-	openssl rand \
-		-out "$TMP/secret.key" \
-		64 \
-	|| die "$TMP/secret.key: unable to get 64 bytes of randomness"
+	_rand 32 > "$TMP/secret.key" \
+	|| die "$TMP/secret.key: unable to get 32 bytes of randomness"
 
-	openssl enc \
-		-aes-256-cbc \
-		-pbkdf2 \
-		-out "$TMP/cipher.bin" \
-		-pass file:"$TMP/secret.key" \
+	aead_encrypt /dev/stdin "$TMP/secret.key" "$TMP/cipher.bin" \
 	|| die "$TMP/cipher.bin: unable to read secret data from stdin"
 
 	# convert the attestation key into a "name"
@@ -782,12 +776,7 @@ unseal()
 		1>&2 \
 	|| die "tpm2_activatecredential: unable to unseal key"
 
-	openssl enc \
-		-d \
-		-aes-256-cbc \
-		-pbkdf2 \
-		-pass file:"$TMP/secret.key" \
-		-in "$TMP/cipher.bin" \
+	aead_decrypt "$TMP/cipher.bin" "$TMP/secret.key" /dev/stdout \
 	|| die "$TMP/cipher.bin: unable to decrypt with secret key"
 
 	rm -f "$TMP/secret.key"
