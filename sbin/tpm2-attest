@@ -717,16 +717,19 @@ seal()
 	AK_NAME="000b$(sha256 < "$TMP/ak.pub")"
 
 	warn "tpm2: making credential: $AK_NAME"
-	tpm2 makecredential \
+	if tpm2 makecredential \
 		--tcti "none" \
 		--encryption-key "$TMP/ek.pub" \
 		--secret "$TMP/secret.key" \
 		--name "$AK_NAME" \
-		--credential-blob "$TMP/credential.bin" \
-	|| die "tpm2_makecredential: unable to seal secret key"
-
-	# remove the secret so that it doesn't live on disk for longer
-	rm -f "$TMP/secret.key"
+		--credential-blob "$TMP/credential.bin"; then
+		# remove the secret so that it doesn't live on disk for longer
+		rm -f "$TMP/secret.key"
+	else
+		# remove the secret so that it doesn't live on disk for longer
+		rm -f "$TMP/secret.key"
+		die "tpm2_makecredential: unable to seal secret key"
+	fi
 
 	# and output the sealed secret, plus the data that has been encrypted with it
 	tar -C "$TMP" -zcf - credential.bin cipher.bin ak.ctx
