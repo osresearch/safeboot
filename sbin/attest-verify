@@ -88,7 +88,7 @@ def verify(quote, quote_valid):
 	# so output the secret for encoding by the attestation server
 	logging.info(f"{ekhash=}: sending secrets")
 
-	sub = subprocess.run(["tar", "zvcf", "-", "-C", ekdir, "."],
+	sub = subprocess.run(["tar", "cf", "-", "-C", ekdir, "."],
 		stdout=sys.stdout,
 		stderr=sys.stderr,
 	)

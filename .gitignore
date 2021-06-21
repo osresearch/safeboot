@@ -16,6 +16,7 @@ debian/safeboot
 *.o
 a.out
 certs/*[0-9]
+*.tar
 *.tgz
 *.log
 *.out
