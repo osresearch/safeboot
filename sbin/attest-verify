@@ -2,6 +2,7 @@
 """
 Eventlog verifier, which only checks golden PCR values against a database.
 """
+import os
 import sys
 import yaml
 import hashlib
@@ -11,9 +12,8 @@ import subprocess
 # hard code the hashing algorithm used
 alg = 'sha256'
 
-# attestation directory path
-db_path = 'build/attest'
-
+# attestation directory path (XXX make configurable)
+db_path = os.environ.get('SAFEBOOT_DB_DIR','build/attest')
 
 # Check that all of the required PCRs are present and match the golden values.
 # It is ok if the quote or event log have more, but none must be missing.
@@ -29,10 +29,15 @@ def pcr_validate(golden, quote):
 	golden = golden[alg]
 	valid = True
 
+	if golden == None:
+		golden = {}
 	for pcr in golden:
-		good_pcr = int(golden[pcr], 16)
+		if type(golden[pcr]) == type(1):
+			good_pcr = golden[pcr]
+		else:
+			good_pcr = int(golden[pcr], 16)
 		if not pcr in quote:
-			print("PCR%d missing" % (pcr), file=sys.stderr)
+			print("PCR%d missing" % (int(pcr)), file=sys.stderr)
 			valid = False
 		elif good_pcr != quote[pcr]:
 			print("PCR%d mismatch %x != expected %x" % (pcr, quote[pcr], good_pcr), file=sys.stderr)
@@ -40,27 +45,44 @@ def pcr_validate(golden, quote):
 
 	return valid
 
+def write_tofu_pcrs(fn, q, which_pcrs):
+	v = { 'pcrs': { 'sha256': {}}}
+	for pcr in which_pcrs:
+		v['pcrs']['sha256'][pcr] = q[pcr]
+	print("Writing TOFU PCRs to %s" % (fn), file=sys.stderr)
+	with open(fn, 'w') as f:
+		yaml.dump(v, f)
 
 def verify(quote, quote_valid):
 	ekhash = quote['ekhash']
+
+	# check for an enrolled directory
+	ekdir = os.path.join(db_path, 'ekpubhash', ekhash[0:2], ekhash[0:6], ekhash[0:32])
+	if not os.path.exists(ekdir):
+		ekdir = os.path.join(db_path, ekhash[0:2], ekhash)
 
 	# default policy is to reject any invalid quotes
 	if quote_valid != "True":
 		logging.warning(f"{ekhash=}: rejecting invalid quote")
 		return -1
 
-	# check for an enrolled directory
-	ekdir = "%s/%s/%s" % (db_path, ekhash[0:2], ekhash)
-	with open(ekdir + "/pcrs") as pcrs_file:
-		valid_pcrs = yaml.safe_load(pcrs_file)
-	if valid_pcrs is None:
-		logging.warning(f"{ekhash=}: rejecting unknown machine")
-		return -1
+	if os.path.exists(os.path.join(ekdir, 'phase2')):
+		tofu_pcrs = [0, 1]
+		if os.path.exists(os.path.join(db_path, 'tofu_pcrs')):
+			with open(os.path.join(db_path, 'tofu_pcrs')) as tofu_pcrs_file:
+				tofu_pcrs = yaml.safe_load(tofu_pcrs_file)
+		if len(tofu_pcrs) > 0 and not os.path.exists(os.path.join(ekdir, "pcrs")):
+			write_tofu_pcrs(os.path.join(ekdir, "pcrs"),
+					quote['pcrs']['sha256'], tofu_pcrs)
+		with open(os.path.join(ekdir, "pcrs")) as pcrs_file:
+			valid_pcrs = yaml.safe_load(pcrs_file)
+		if valid_pcrs is None:
+			logging.warning(f"{ekhash=}: rejecting unknown machine")
+			return -1
 
-	print(valid_pcrs, file=sys.stderr)
-	if not pcr_validate(valid_pcrs['pcrs'], quote['pcrs']):
-		logging.warning(f"{device}: {ekhash=}: rejecting bad PCRs")
-		return -1
+		if not pcr_validate(valid_pcrs['pcrs'], quote['pcrs']):
+			logging.warning(f"{ekhash=}: rejecting bad PCRs")
+			return -1
 
 	# the eventlog meets the policy requirements
 	# so output the secret for encoding by the attestation server
