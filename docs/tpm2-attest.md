@@ -9,8 +9,8 @@ For more information see: <https://safeboot.dev/attestation/>
 ## quote
 Usage:
 ```
-tpm2-attest quote [nonce] > quote.tgz
-scp quote.tgz ...
+tpm2-attest quote [nonce] > quote.tar
+scp quote.tar ...
 ```
 After contacting the remote attestation server to receive the
 nonce, the machine will generate the endorsement key,
@@ -18,7 +18,7 @@ endorsement cert, a one-time attestation key, and a signed quote
 for the all PCRs using that nonce (or the time of day, if no nonce
 is supplied).
 
-The output `quote.tgz` should be sent to the remote side for validation.
+The output `quote.tar` should be sent to the remote side for validation.
 There is nothing sensitive in the file, so it can be sent in clear text
 to the server.
 
@@ -43,7 +43,7 @@ No validation of the attestation server is done.
 ## verify
 Usage:
 ```
-tpm2-attest verify quote.tgz [nonce [ca-path]]
+tpm2-attest verify quote.tar [nonce [ca-path]]
 ```
 
 This will validate that the quote was signed with the attestation key
@@ -75,7 +75,7 @@ will be read from stdin.
 ## eventlog-verify
 Usage:
 ```
-tpm2-attest eventlog-verify quote.tgz [good-pcrs.txt]
+tpm2-attest eventlog-verify quote.tar [good-pcrs.txt]
 ```
 
 This will verify that the PCRs included in the quote match the
@@ -86,7 +86,7 @@ match those as well.
 ## ek-verify
 Usage:
 ```
-tpm2-attest ek-verify quote.tgz ca-path
+tpm2-attest ek-verify quote.tar ca-path
 ```
 
 This will validate that the endorsement key came from a valid TPM.
@@ -105,7 +105,7 @@ stdout is the sha256 hash of the DER format EK certificate.
 ## quote-verify
 Usage:
 ```
-tpm2-attest quote-verify quote.tgz [nonce]
+tpm2-attest quote-verify quote.tar [nonce]
 ```
 
 This command checks that the quote includes the given nonce and
@@ -127,7 +127,7 @@ validate the eventlog PCRs.
 ## seal
 Usage:
 ```
-echo secret | tpm2-attest seal quote.tgz > cipher.bin
+echo secret | tpm2-attest seal quote.tar > cipher.bin
 ```
 
 After a attested quote has been validated, an encrypted reply is sent to
@@ -137,14 +137,14 @@ with that machines endorsment key (`ek.crt`), along with the name
 of the attestation key used to sign the quote.  The TPM will not decrypt
 the message key unless the attestation key was one that it generated.
 
-The `sealed.tgz` file should be sent back to the device being attested;
-it can then run `tpm2-attest unseal < sealed.tgz > secret.txt`
+The `sealed.tar` file should be sent back to the device being attested;
+it can then run `tpm2-attest unseal < sealed.tar > secret.txt`
 to extract the sealed secret (which may be of arbitrary length).
 
 ## unseal
 Usage:
 ```
-cat sealed.tgz | tpm2-attest unseal > secret.txt
+cat sealed.tar | tpm2-attest unseal > secret.txt
 ```
 
 When the remote attestation has been successful, the remote machine will
@@ -154,7 +154,7 @@ if and only if the EK matches and the AK is one that it generated.
 ## verify-and-seal
 Usage:
 ```
-tpm2-attest verify-and-seal quote.tgz [nonce [pcrs]] < secret.txt > sealed.tgz
+tpm2-attest verify-and-seal quote.tar [nonce [pcrs]] < secret.txt > sealed.tar
 ```
 
 If the `nonce` is not specified on the command line, the one in the

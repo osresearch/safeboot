@@ -11,7 +11,7 @@ export PATH="$DIR/../sbin:$DIR/../bin:$PATH"
 
 warn "----- Good test -----"
 tpm2-attest verify \
-	"$DIR/quote-t490.tgz" \
+	"$DIR/quote-t490.tar" \
 	"$DIR/pcrs-t490.txt" \
 	abcdef \
 	"$DIR/../certs" \
@@ -21,7 +21,7 @@ tpm2-attest verify \
 
 warn "--- Wrong nonce (should fail)"
 tpm2-attest verify \
-	"$DIR/quote-t490.tgz" \
+	"$DIR/quote-t490.tar" \
 	"$DIR/pcrs-t490.txt" \
 	12345678 \
 	"$DIR/../certs" \
@@ -31,7 +31,7 @@ tpm2-attest verify \
 warn "--- Wrong PCRs (should fail)"
 sed -e 's/0xC/0xD/' < "$DIR/pcrs-t490.txt" > /tmp/bad-pcrs.txt
 tpm2-attest verify \
-	"$DIR/quote-t490.tgz" \
+	"$DIR/quote-t490.tar" \
 	"/tmp/bad-pcrs.txt" \
 	abcdef \
 	"$DIR/../certs" \
@@ -41,7 +41,7 @@ tpm2-attest verify \
 warn "--- Missing PCR (should fail)"
 ( cat "$DIR/pcrs-t490.txt" ; echo "    5 : 0xC28F2726BA0A11B9FBA161419FF95BE3DA6CA9ADDC286D5FA1E1E9EC0B79DC35" ) > /tmp/bad-pcrs.txt
 tpm2-attest verify \
-	"$DIR/quote-t490.tgz" \
+	"$DIR/quote-t490.tar" \
 	"/tmp/bad-pcrs.txt" \
 	abcdef \
 	"$DIR/../certs" \

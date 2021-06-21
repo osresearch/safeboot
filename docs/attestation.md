@@ -34,9 +34,9 @@ seal a secret for a specific TPM, and unseal it with that TPM.
 ## tl;dr
 
 * Client: Get `$nonce` and `$pcrs` from server (or use a time based nonce)
-* Client: `tpm2-attest $nonce $pcrs > quote.tgz`
-* Client: Send `quote.tgz` to server
-* Server: `tpm2-attest verify-and-seal quote.tgz $nonce < secret.txt > cipher.bin`
+* Client: `tpm2-attest $nonce $pcrs > quote.tar`
+* Client: Send `quote.tar` to server
+* Server: `tpm2-attest verify-and-seal quote.tar $nonce < secret.txt > cipher.bin`
 * Server: Send `cipher.bin` to client
 * Client: `tpm2-attest unseal < cipher.bin > secret.txt`
 * Client: Use `secret.txt` to decrypt disk, authenticate to network, etc
@@ -48,7 +48,7 @@ seal a secret for a specific TPM, and unseal it with that TPM.
 The protocol requires a few round-trips between the local machine
 (the client) and the remote attestation machine (the server), and all
 comunication between the Client and the Server can be in the clear.
-There is no sensitive data exchanged -- the `quote.tgz` file contains
+There is no sensitive data exchanged -- the `quote.tar` file contains
 only public keys and PCR values that are essentially public, and the
 `cipher.bin` reply is encrypted with the TPM's Endorsement Key, so it
 should only be unsealable by that specific TPM.
@@ -76,7 +76,7 @@ The protocol between the client and the server goes in four phases: communicatio
 
 ### Quote signing
 ```
-tpm2-attest quote $nonce $pcrs > quote.tgz
+tpm2-attest quote $nonce $pcrs > quote.tar
 ```
 
 With this command the client machine will:
@@ -92,7 +92,7 @@ The Client then sends this quote file to the Server.
 ### Quote validation
 When the Server receives the quote file from the client, it runs:
 ```
-tpm2-attest verify quote.tgz $nonce
+tpm2-attest verify quote.tar $nonce
 ```
 
 With this command the server will:
@@ -127,7 +127,7 @@ unseal it, and has faith that the TPM will not unseal it if it has been
 reset (to prevent attacks that reboot into untrusted firmware):
 
 ```
-cat secret.txt | tpm2-attest seal quote.tgz > cipher.bin
+cat secret.txt | tpm2-attest seal quote.tar > cipher.bin
 ```
 
 With this command the Server will:
@@ -140,7 +140,7 @@ Note that there is a `verify-and-seal` that combines both the quote validation
 and the sealing of the data to the attestation key in one step:
 
 ```
-cat secret.txt | tpm2-attest seal quote.tgz $nonce > cipher.bin
+cat secret.txt | tpm2-attest seal quote.tar $nonce > cipher.bin
 ```
 
 ### Secret unsealing

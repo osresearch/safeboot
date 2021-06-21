@@ -232,14 +232,14 @@ for i in foo bar baz; do
 	# secrets:
 
 	TPM2TOOLS_TCTI="${TCTIs[$i]}" \
-	"$TOP/sbin/tpm2-attest" quote > "${d}/quote.tgz"
+	"$TOP/sbin/tpm2-attest" quote > "${d}/quote.tar"
 
 	# The quote file has to be be a file because sealing refers to it.
 
-	"$TOP/sbin/tpm2-attest" verify "${d}/quote.tgz"			\
+	"$TOP/sbin/tpm2-attest" verify "${d}/quote.tar"			\
 	| SAFEBOOT_DB_DIR="${d}/db"					\
 	  /safeboot/sbin/attest-verify verify True			\
-	| "$TOP/sbin/tpm2-attest" seal "${d}/quote.tgz"			\
+	| "$TOP/sbin/tpm2-attest" seal "${d}/quote.tar"			\
 	| TPM2TOOLS_TCTI="${TCTIs[$i]}"					\
 	  "$TOP/sbin/tpm2-attest" unseal				\
 	| TPM2TOOLS_TCTI="${TCTIs[$i]}"					\
