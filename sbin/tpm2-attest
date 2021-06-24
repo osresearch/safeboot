@@ -13,7 +13,7 @@
 # and "can't follow non-constant sources"
 # shellcheck disable=SC2016 disable=SC1090
 
-[[ $_ != $0 ]] || set -e -o pipefail
+[[ $_ != "$0" ]] || set -e -o pipefail
 export LC_ALL=C
 
 : "${PREFIX:=}"
