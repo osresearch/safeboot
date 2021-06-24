@@ -303,6 +303,9 @@ shellcheck:
 	for file in \
 		sbin/safeboot* \
 		sbin/tpm2-attest \
+		sbin/tpm2-send \
+		sbin/tpm2-recv \
+		sbin/tpm2-policy \
 		initramfs/*/* \
 	; do \
 		shellcheck $$file functions.sh ; \
