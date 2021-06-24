@@ -304,9 +304,8 @@ shellcheck:
 		sbin/safeboot* \
 		sbin/tpm2-attest \
 		initramfs/*/* \
-		functions.sh \
 	; do \
-		shellcheck $$file ; \
+		shellcheck $$file functions.sh ; \
 	done
 
 # Fetch several of the TPM certs and make them usable
