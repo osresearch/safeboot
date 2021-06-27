@@ -1,9 +1,9 @@
 # This is an include-only file. So no shebang header and no execute perms.
 #
-# This file is copied and modified from the file of the same name in
-# simple-attest-git. Same idea, it shares routines and definitions between the
-# updater and the server, the former having read-write access to the "state"
-# mount and the latter having read-only access.
+# This file is copied and modified from the file of the same name in enrollsvc.
+# Same idea, it shares routines and definitions between the updater and the
+# server, the former having read-write access to the "state" mount and the
+# latter having read-only access.
 
 set -e
 

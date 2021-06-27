@@ -1,7 +1,7 @@
 # This is an include-only file. So no shebang header and no execute perms.
 # It is common to the git server and to attestation updaters that pull from the
 # git server. EK_PATH must point to the 'ekpubhash' directory (in the
-# "attestdb.git" repo/clone).
+# "enrolldb.git" repo/clone).
 
 [[ -z "$EK_PATH" || ! -d "$EK_PATH" ]] &&
 	[[ -z "$DB_IN_SETUP" ]] &&

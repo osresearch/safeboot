@@ -1333,11 +1333,10 @@ endef
 # "workflow_new_service" usage;
 # - $1 is the workflow name. This is assumed to be the prefix to the IMAGE
 #   specified in $2. Note, the generated rules will not have any such scoping,
-#   because these rules are intended to be user-facing. (E.g. we want
-#   "start-db", not "simple-attest-start-db".) To avoid the potential for
-#   different workflows generating conflicting rules, we will, eventually, only
-#   generate workflow rules for the workflow the user is trying to act on. But
-#   that's later, if this workflow_new_service idea survives.
+#   because these rules are intended to be user-facing. To avoid the potential
+#   for different workflows generating conflicting rules, we will, eventually,
+#   only generate workflow rules for the workflow the user is trying to act on.
+#   But that's later, if this workflow_new_service idea survives.
 # - $2 is the name of the service as well as the suffix of the IMAGE that
 #   implements the service. The actual image name is $1-$2. The service must by
 #   implemented as the verb "run" in this IMAGE, and be of type "async".

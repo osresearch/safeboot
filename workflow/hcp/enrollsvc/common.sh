@@ -30,7 +30,7 @@ if [[ -z "$USERNAME" || ! -d "/home/$USERNAME" ]]; then
 	exit 1
 fi
 
-REPO_NAME=attestdb.git
+REPO_NAME=enrolldb.git
 EK_BASENAME=ekpubhash
 
 REPO_PATH=$DB_PREFIX/$REPO_NAME

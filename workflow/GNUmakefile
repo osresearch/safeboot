@@ -10,7 +10,7 @@ include workflow/settings.mk
 #   usual mariner.mk and GNUmakefile (which otherwise tend to trigger global
 #   rebuilds at the slightest at the slightest provocation). To trigger
 #   regeneration, simply set 'regen' non-empty when running make. E.g.;
-#       make simple-attest regen=1
+#       make hcp-test regen=1
 DSPACE := safeboot
 TOP_DEPS := $(DEFAULT_CRUD)/regen
 $(eval $(call do_mariner_prep))
@@ -29,8 +29,8 @@ include workflow/build/build.mk
 # source.
 include workflow/uml/uml.mk
 
-# The simple-attest demo
-include workflow/simple-attest/simple-attest.mk
+# The HCP workflow (Host Cryptographic Provisioning).
+include workflow/hcp/hcp.mk
 
 #########
 # Helpers

@@ -3,8 +3,8 @@
 set -e
 
 TAILWAIT=/safeboot/tail_wait.pl
-PREF=simple-attest-server-ro:
-MSGBUS=/msgbus/server-ro
+PREF=hcp-attestsvc-hcp:
+MSGBUS=/msgbus/attestsvc-hcp
 MSGBUS_CLIENT=/msgbus/client
 
 # Redirect stdout and stderr to our msgbus file
@@ -41,10 +41,10 @@ SERVPID=$!
 disown %
 echo "$PREF attestation server running (pid=$SERVPID)"
 
-echo "Waiting for 'die' message on /msgbus/server-ro-ctrl"
-$TAILWAIT /msgbus/server-ro-ctrl "die"
+echo "Waiting for 'die' message on /msgbus/attestsvc-hcp-ctrl"
+$TAILWAIT /msgbus/attestsvc-hcp-ctrl "die"
 echo "Got the 'die' message"
-rm /msgbus/server-ro-ctrl
+rm /msgbus/attestsvc-hcp-ctrl
 kill $SERVPID
 
 echo "$PREF ending"

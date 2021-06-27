@@ -2,14 +2,14 @@
 
 set -e
 
-PREF=simple-attest-client:
-PREF_SERVER=simple-attest-server-ro:
-PREF_SWTPM=simple-attest-swtpm:
-SERVER=simple-attest-server-ro
+PREF=hcp-client:
+PREF_SERVER=hcp-attestsvc-hcp:
+PREF_SWTPM=hcp-swtpm:
+SERVER=hcp-attestsvc-hcp
 MSGBUS=/msgbus/client
-MSGBUS_SERVER=/msgbus/server-ro
+MSGBUS_SERVER=/msgbus/attestsvc-hcp
 MSGBUS_SWTPM=/msgbus/swtpm
-TPMHOST=simple-attest-swtpm
+TPMHOST=hcp-swtpm
 TPMPORT1=9876
 
 # Redirect stdout and stderr to our msgbus file

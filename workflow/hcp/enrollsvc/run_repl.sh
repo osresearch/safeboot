@@ -1,6 +1,6 @@
 #!/bin/bash
 
-exec 1> /msgbus/db-ro
+exec 1> /msgbus/enrollsvc-repl
 exec 2>&1
 
 . /common.sh
@@ -27,9 +27,9 @@ THEPID=$!
 disown %
 echo "Backgrounded (pid=$THEPID)"
 
-echo "Waiting for 'die' message on /msgbus/db-ro-ctrl"
-$TAILWAIT /msgbus/db-ro-ctrl "die"
+echo "Waiting for 'die' message on /msgbus/enrollsvc-repl-ctrl"
+$TAILWAIT /msgbus/enrollsvc-repl-ctrl "die"
 echo "Got the 'die' message"
-rm /msgbus/db-ro-ctrl
+rm /msgbus/enrollsvc-repl-ctrl
 kill $THEPID
 echo "Killed the git-daemon process"

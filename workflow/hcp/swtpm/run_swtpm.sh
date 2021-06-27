@@ -2,7 +2,7 @@
 
 set -e
 
-PREF=simple-attest-swtpm:
+PREF=hcp-swtpm:
 MSGBUS=/msgbus/swtpm
 TPMSTATE=/tpm
 TPMPORT1=9876
