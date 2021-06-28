@@ -670,10 +670,10 @@ define process_2ic
 	$(eval $(p2ic2)_B_IMAGE := $(p2icI))
 	$(eval $(p2ic2)_B_COMMAND := $(p2icC))
 	$(if $(filter async,$($(p2ic2)_PROFILE)),
-		$(eval $(p2ic2)_STARTEDFILE := $(DEFAULT_CRUD)/touch_async_$(p2ic2)_started)
-		$(eval $(p2ic2)_DONEFILE := $(DEFAULT_CRUD)/touch_async_$(p2ic2)_done)
+		$(eval $(p2ic2)_STARTEDFILE ?= $(DEFAULT_CRUD)/touch_async_$(p2ic2)_started)
+		$(eval $(p2ic2)_DONEFILE ?= $(DEFAULT_CRUD)/touch_async_$(p2ic2)_done)
 	,
-		$(eval $(p2ic2)_TOUCHFILE := $(DEFAULT_CRUD)/touch_i2c_$(p2ic2))
+		$(eval $(p2ic2)_TOUCHFILE ?= $(DEFAULT_CRUD)/touch_i2c_$(p2ic2))
 	)
 endef
 
