@@ -78,6 +78,7 @@ function repo_cmd_unlock {
 # in a read-only capacity, always use the same assumptions.) But to avoid
 # chicken and eggs, we source the original (in the root directory, put there by
 # Dockerfile) rather than the copy put into the repo.
+
 . /common_defs.sh
 
 # Except ... we provide a reverse-lookup (hostname to ekpubhash) in a single

@@ -22,23 +22,26 @@ ply_path_get "$1"
 #            {
 #                "ekpubhash": "abbaf00ddeadbeef"
 #                "hostname": "host-at.some_domain.com"
-#                "hostblob": "01234fedc"
+#                "others": [
+#                    "hostname-some.other.fqdn",
+#                    "hostname-and.one.more",
+#                    "meta-data",
+#                    "rootfs.key.enc",
+#                    "rootfs.key.symkeyenc",
+#                    "user-data",
+#                    "ssh-server-key"
+#                ]
 #            }
 #            ,
 #            {
 #                "ekpubhash": "0123456789abcdef"
 #                "hostname": "whatever.wherever.foo"
-#                "hostblob": "439872493827498327492837498217"
+#                "others": [
+#                ]
 #            }
 #        ]
 #    }
-# The backing store has directories for each of these entries, with individual
-# files for each field, so we turn them into the curly-brace-encapsulated,
-# 3-tuples using "jq".  From there, we only need to take care of the "[", "]",
-# and comma-separation of array, as well as the outer "{" and "}".
-echo "{ \"entries\": ["
 
-# The following code is the critical section, so surround it with lock/unlock
 repo_cmd_lock || (echo "Error, failed to lock repo" >&2 && exit 1) || exit 1
 
 # TODO: as noted in common.sh, the hn2ek implementation is crude and won't
@@ -57,24 +60,21 @@ repo_cmd_lock || (echo "Error, failed to lock repo" >&2 && exit 1) || exit 1
 (
 FILE_LIST=`ls -d $FPATH 2> /dev/null`
 for i in $FILE_LIST; do
-	[[ -n $NEEDCOMMA ]] && echo ","
 	[[ -z $QUERY_PLEASE_ALSO_DELETE ]] ||
-		(revhn=`cat $i/hostname | rev` &&
+		(revhn=`cat $i/hostname* | rev` &&
 		echo $revhn `basename "$i"` >> $HN2EK_PATH.filter) ||
 		(echo "Error, failed to add filter" >&2 && exit 1) ||
 		exit 1
-	JSON_STRING=$(jq -n \
-                  --arg ekpubhash "`cat $i/ekpubhash`" \
-                  --arg hostname "`cat $i/hostname`" \
-                  --arg hostblob "`cat $i/hostblob`" \
-                  '{ekpubhash: $ekpubhash, hostname: $hostname, hostblob: $hostblob}' )
-	echo $JSON_STRING
-	NEEDCOMMA=1
+	ls -1 $i | grep -v "ekpubhash" | grep -v "hostname" | \
+		jq -Rn \
+		--arg ekpubhash "`cat $i/ekpubhash`" \
+		--arg hostname "`cat $i/hostname*`" \
+		'{ekpubhash: $ekpubhash, hostname: $hostname, others: [inputs]}'
 	[[ -z $QUERY_PLEASE_ALSO_DELETE ]] || git rm -r $i >&2 ||
 		(echo "Error, 'git rm'/pattern-tracker failed" >&2 && exit 1) ||
 		exit 1
 done
-) || itfailed=1
+) | jq -n '{entries: [inputs]}' || itfailed=1 
 
 # If we haven't yet failed, and we're deleting, and we saw at least one
 # entry to be deleted, filter the deleted entries out of the hn2ek table
@@ -102,8 +102,6 @@ fi
 	rollbackfailed=1
 
 [[ -z "$rollbackfailed" ]] && repo_cmd_unlock
-
-echo -n "]}"
 
 # If it failed, fail
 [[ -n "$itfailed" ]] && exit 1

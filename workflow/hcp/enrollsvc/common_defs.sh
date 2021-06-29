@@ -34,12 +34,6 @@ function check_hostname_suffix {
 	check_hostname $1
 }
 
-# hostblob must consist only of lower-case hex, arbitrary length
-function check_hostblob {
-	(echo "$1" | egrep -e "^[0-9a-f]*$" > /dev/null 2>&1) ||
-		(echo "Error, malformed hostblob" >&2 && exit 1) || exit 1
-}
-
 # We use a 3-ply directory hierarchy for storing per-TPM state, indexed by the
 # "ekpubhash" of that TPM (or rather, it's the hexidecimal representation in
 # text form - 4 bits per character). The first ply uses the first 2 hex
@@ -57,7 +51,7 @@ function check_hostblob {
 # attestation server will send a host, upon successful attestation, all such
 # attributes.)
 
-# Given an ekpubhash ($1), ensure the 3-ply of directories all exist.
+# Given an ekpubhash ($1), figure out the corresponding 3-ply of directories.
 # Outputs;
 #   PLY1, PLY2, PLY3: directory names
 #   FPATH: full path
@@ -66,7 +60,6 @@ function ply_path_add {
 	PLY2=`echo $1 | cut -c 1-6`
 	PLY3=`echo $1 | cut -c 1-32`
 	FPATH="$EK_PATH/$PLY1/$PLY2/$PLY3"
-	mkdir -p "$FPATH"
 }
 
 # Given an ekpubhash prefix ($1), figure out the wildcard to match on all the
