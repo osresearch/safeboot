@@ -139,13 +139,14 @@ hcp-attestsvc-hcp_run_PROFILE := async
 hcp-attestsvc-hcp_run_MSGBUS := $(MSGBUS)
 hcp-attestsvc-hcp_ARGS_DOCKER_BUILD := \
 	--build-arg SUBMODULES="$(hcp-attestsvc-hcp_SUBMODULES)" \
-	--build-arg DIR="/safeboot"
+	--build-arg DIR="/safeboot" \
+	--build-arg STATE_PREFIX="$(vattest_DEST)" \
+	--build-arg USERNAME=lowlyuser
 hcp-attestsvc-hcp_ARGS_DOCKER_RUN := \
-	--env=STATE_PREFIX="$(vattest_DEST)" \
 	-p 8080:8080
 
 IMAGES += hcp-attestsvc-repl
-hcp-attestsvc-repl_EXTENDS := $(ibase-RESULT)
+hcp-attestsvc-repl_EXTENDS := hcp-attestsvc-hcp
 hcp-attestsvc-repl_PATH := $(TOPDIR)/workflow/hcp/attestsvc
 hcp-attestsvc-repl_DOCKERFILE := $(TOPDIR)/workflow/hcp/attestsvc/repl.Dockerfile
 hcp-attestsvc-repl_COMMANDS := shell run setup
@@ -160,11 +161,12 @@ hcp-attestsvc-repl_setup_PROFILE := batch
 hcp-attestsvc-repl_setup_MSGBUS := $(MSGBUS)
 hcp-attestsvc-repl_setup_STICKY := true
 hcp-attestsvc-repl_ARGS_DOCKER_BUILD := \
-	--build-arg=USERNAME=lowlyuser
+	--build-arg REMOTE_REPO="git://hcp-enrollsvc-repl/enrolldb.git" \
+	--build-arg UPDATE_TIMER=20
+# nop, to make sure we don't inherit the "-p 8080:8080" from the
+# hcp-attestsvc-hcp image we're deriving from.
 hcp-attestsvc-repl_ARGS_DOCKER_RUN := \
-	--env=STATE_PREFIX="$(vattest_DEST)" \
-	--env=REMOTE_REPO="git://hcp-enrollsvc-repl/enrolldb.git" \
-	--env=UPDATE_TIMER=20
+	--env NADA=nada
 
 ####### Host/TPM #######
 

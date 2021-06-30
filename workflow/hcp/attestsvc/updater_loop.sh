@@ -2,6 +2,17 @@
 
 . /common.sh
 
+# These aren't printed or checked in common.sh, because they don't apply to
+# attestsvc-hcp, only attestsvc-repl (in which this script runs).
+echo "   REMOTE_REPO=$REMOTE_REPO" >&2
+echo "  UPDATE_TIMER=$UPDATE_TIMER" >&2
+[[ -z "$REMOTE_REPO" ]] &&
+	(echo "Error, REMOTE_REPO must be set for cloning" >&2 && exit 1) &&
+	exit 1
+[[ -z "$UPDATE_TIMER" ]] &&
+	(echo "Error, UPDATE_TIMER must be set" >&2 && exit 1) &&
+	exit 1
+
 expect_user
 
 BACKOFF_TIMER=$(($UPDATE_TIMER * 5))
