@@ -18,7 +18,6 @@ NETWORKS += n-hcp
 
 # MSGBUS directory where all hcp-* stuff produces and consumes logs
 MSGBUS := $(DEFAULT_CRUD)/msgbus_hcp
-MSGBUSAUTO := client attestsvc-hcp attestsvc-repl enrollsvc-mgmt enrollsvc-repl
 
 # Some extra verbs we end up needing. (It's silly to have to predeclare these,
 # Mariner needs a rewrite!)
@@ -38,6 +37,8 @@ hcp-base-tpm2_DOCKERFILE := /dev/null
 else
 hcp-base-tpm2_DOCKERFILE := $(TOPDIR)/workflow/hcp/base-tpm2.Dockerfile
 endif
+
+####### Enrollment Service #######
 
 # VOLUME to hold the authoratative git repo for the enrollment DB
 VOLUMES += venrolldb
@@ -99,52 +100,7 @@ hcp-enrollsvc-repl_run_MSGBUS := $(MSGBUS)
 hcp-enrollsvc-repl_ARGS_DOCKER_RUN := \
 	-p 9418:9418
 
-# VOLUME to hold software/virtual TPM state
-VOLUMES += vtpm
-vtpm_MANAGED := true
-vtpm_DEST := /tpm
-
-# "hcp-swtpm" implements a software/virtual TPM. It supports the 'setup'
-# (batch) verb to initialize the state, and the 'run' (async) verb for starting
-# and stopping the swtpm itself.
-IMAGES += hcp-swtpm
-hcp-swtpm_EXTENDS := hcp-base-tpm2
-hcp-swtpm_PATH := $(TOPDIR)/workflow/hcp/swtpm
-hcp-swtpm_COMMANDS := shell run setup
-hcp-swtpm_SUBMODULES := libtpms swtpm
-hcp-swtpm_VOLUMES := vtailwait vtpm \
-	$(foreach i,$(hcp-swtpm_SUBMODULES),vi$i)
-hcp-swtpm_NETWORKS := n-hcp
-hcp-swtpm_run_COMMAND := /run_swtpm.sh
-hcp-swtpm_run_PROFILE := async
-hcp-swtpm_run_MSGBUS := $(MSGBUS)
-hcp-swtpm_setup_COMMAND := /setup_swtpm.sh
-hcp-swtpm_setup_PROFILE := batch
-hcp-swtpm_setup_STICKY := true
-hcp-swtpm_ARGS_DOCKER_BUILD := \
-	--build-arg SUBMODULES="$(hcp-swtpm_SUBMODULES)" \
-	--build-arg DIR="/safeboot" \
-	--build-arg ENROLL_URL="http://hcp-enrollsvc-mgmt:5000/v1/add" \
-	--build-arg ENROLL_HOSTNAME=hcp-client
-
-# "hcp-client", acts as a TPM-enabled host
-IMAGES += hcp-client
-hcp-client_EXTENDS := hcp-base-tpm2
-hcp-client_PATH := $(TOPDIR)/workflow/hcp/client
-hcp-client_COMMANDS := shell run
-hcp-client_SUBMODULES := libtpms swtpm
-ifeq (,$(ENABLE_UPSTREAM_TPM2))
-hcp-client_SUBMODULES += tpm2-tss tpm2-tools
-endif
-hcp-client_VOLUMES := vsbin vfunctionssh vsafebootconf vtailwait \
-	$(foreach i,$(hcp-client_SUBMODULES),vi$i)
-hcp-client_NETWORKS := n-hcp
-hcp-client_run_COMMAND := /run_client.sh
-hcp-client_run_PROFILE := async
-hcp-client_run_MSGBUS := $(MSGBUS)
-hcp-client_ARGS_DOCKER_BUILD := \
-	--build-arg SUBMODULES="$(hcp-client_SUBMODULES)" \
-	--build-arg DIR="/safeboot"
+####### Attestation Service #######
 
 # VOLUME to hold an attestation service instance's state, managed (read-write)
 # by the replication sub-service and used (read-only) by the HCP sub-service
@@ -210,6 +166,67 @@ hcp-attestsvc-repl_ARGS_DOCKER_RUN := \
 	--env=REMOTE_REPO="git://hcp-enrollsvc-repl/enrolldb.git" \
 	--env=UPDATE_TIMER=20
 
+####### Host/TPM #######
+
+# We wrap the whole caboodle in a function, so that we can declare multiple
+# host/TPM pairs.
+
+define declare_host_and_tpm
+	$(eval p := $(strip $1))
+	$(eval v := vtpm$p)
+	$(eval s := hcp-swtpm$p)
+	$(eval c := hcp-client$p)
+
+	$(if $(filter $p,$(list-hcp-hosttpm)),
+		$(error Error, host-tpm suffix '$p' already declared))
+	$(eval list-hcp-hosttpm += $p)
+
+	$(eval VOLUMES += $v)
+	$(eval $v_MANAGED := true)
+	$(eval $v_DEST := /tpm)
+
+	$(eval IMAGES += $s)
+	$(eval $s_EXTENDS := hcp-base-tpm2)
+	$(eval $s_PATH := $(TOPDIR)/workflow/hcp/swtpm)
+	$(eval $s_COMMANDS := shell run setup)
+	$(eval $s_SUBMODULES := libtpms swtpm)
+	$(eval $s_VOLUMES := vtailwait $v $(foreach i,$($s_SUBMODULES),vi$i))
+	$(eval $s_NETWORKS := n-hcp)
+	$(eval $s_run_COMMAND := /run_swtpm.sh)
+	$(eval $s_run_PROFILE := async)
+	$(eval $s_run_MSGBUS := $(MSGBUS))
+	$(eval $s_setup_COMMAND := /setup_swtpm.sh)
+	$(eval $s_setup_PROFILE := batch)
+	$(eval $s_setup_STICKY := true)
+	$(eval $s_ARGS_DOCKER_BUILD := \
+		--build-arg HOSTIDX=$p \
+		--build-arg SUBMODULES="$($s_SUBMODULES)" \
+		--build-arg DIR="/safeboot" \
+		--build-arg ENROLL_URL="http://hcp-enrollsvc-mgmt:5000/v1/add" \
+		--build-arg ENROLL_HOSTNAME=$c)
+
+	$(eval IMAGES += $c)
+	$(eval $c_EXTENDS := hcp-base-tpm2)
+	$(eval $c_PATH := $(TOPDIR)/workflow/hcp/client)
+	$(eval $c_COMMANDS := shell run)
+	$(eval $c_SUBMODULES := libtpms swtpm)
+	$(if $(ENABLE_UPSTREAM_TPM2),,
+		$(eval $c_SUBMODULES += tpm2-tss tpm2-tools))
+	$(eval $c_VOLUMES := vsbin vfunctionssh vsafebootconf vtailwait \
+		$(foreach i,$($c_SUBMODULES),vi$i))
+	$(eval $c_NETWORKS := n-hcp)
+	$(eval $c_run_COMMAND := /run_client.sh)
+	$(eval $c_run_PROFILE := async)
+	$(eval $c_run_MSGBUS := $(MSGBUS))
+	$(eval $c_ARGS_DOCKER_BUILD := \
+		--build-arg HOSTIDX=$p \
+		--build-arg SUBMODULES="$($c_SUBMODULES)" \
+		--build-arg DIR="/safeboot")
+endef
+
+# Now create a slew of host/tpm pairs
+$(foreach i,$(shell seq 1 4),$(eval $(call declare_host_and_tpm,$i)))
+
 # Digest and process the above definitions (generate a Makefile and source it
 # back in) before continuing. In that way, we can build subsequent definitions
 # not just using what we defined above, but also using what the Mariner
@@ -222,10 +239,7 @@ $(eval $(call do_mariner))
 
 $(eval $(call mkout_header,Running 'hcp' use-cases))
 
-# Declare the enrollsvc, attestsvc, and host "services", each of which is a
-# pair of symbiotic IMAGES/containers (generally one is stateful/read-write,
-# the other is stateless/read-only).
-#  enrollsvc 
+#  enrollsvc
 #      - enrollsvc-mgmt manages the venrolldb volume with a read-write + locked
 #        REST API, for use by fleet orchestration.
 #      - enrollsvc-repl uses the venrolldb volume in read-only mode to run a
@@ -251,25 +265,26 @@ $(eval $(call workflow_new_service,hcp,attestsvc-hcp,SignalExit))
 $(eval $(call workflow_new_group,hcp,attestsvc,attestsvc-repl attestsvc-hcp))
 $(if $(attestsvc-repl_IS_SETUP),,\
 	$(eval $(call mkout_rule,start-attestsvc-hcp,setup-attestsvc-repl)))
-#   host
-#      - swtpm manages and is the sole user of the vswtpm volume, which
-#        provides persistent/reproducible state for the software TPM that it
-#        implements.
-#      - client runs the host-side of the attestation protocol, by connecting
+#   hosts
+#      - swtpm$i manages and is the sole user of the vswtpm$i volume, which
+#        provides persistent/reproducible state for the corresponding software
+#        TPM.
+#      - client$i runs the host-side of the attestation protocol, by connecting
 #        to the attestation service (hcp-attestsvc-hcp) to attest itself and
 #        receive bootstrap assets. The client uses a TPM library that is
-#        configured to connect to the swtpm service and have it be "the host's
-#        TPM", in a manner that can be converted to using an actual TPM device
-#        later simply by changing an environment variable.
-#      - the client service cannot run unless swtpm has done one-time
+#        configured to connect to the swtpm$i service and have it be "the
+#        host's TPM", in a manner that can be converted to using an actual TPM
+#        device later simply by changing an environment variable.
+#      - the client$i service cannot run unless swtpm$i has done one-time
 #        initialization.
-#      - swtpm cannot do one-time initialization unless enrollsvc-mgmt is
+#      - swtpm$i cannot do one-time initialization unless enrollsvc-mgmt is
 #        running.
-$(eval $(call workflow_new_service,hcp,swtpm,SignalExit HasSetup,vtpm))
-$(eval $(call workflow_new_service,hcp,client))
-$(eval $(call workflow_new_group,hcp,host,swtpm client))
-$(if $(setup-swtpm_IS_SETUP),,\
-	$(eval $(call mkout_rule,start-client,setup-swtpm)))
+$(foreach i,$(list-hcp-hosttpm),\
+$(eval $(call workflow_new_service,hcp,swtpm$i,SignalExit HasSetup,vtpm$i))\
+$(eval $(call workflow_new_service,hcp,client$i))\
+$(if $(setup-swtpm$i_IS_SETUP),,\
+	$(eval $(call mkout_rule,start-client$i,setup-swtpm$i))))\
+$(eval $(call workflow_new_group,hcp,host,$(foreach i,$(list-hcp-hosttpm),swtpm$i client$i)))
 
 # There are also dependencies between the services in different groups;
 # - the enrollsvc-repl service has to be running in order for the Attestation
@@ -284,16 +299,18 @@ $(if $(attestsvc-repl_IS_SETUP),,\
 #   (client) can be launched, as the client will immediately try to connect to
 #   it.
 # - the host client can't run unless the host TPM (swtpm) is running.
-$(if $(client_IS_STARTED),,\
-	$(eval $(call mkout_comment,client start requires attestsvc-hcp to be running))\
-	$(eval $(call workflow_new_edge_source,hcp,client_launched,start-attestsvc-hcp))\
-	$(eval $(call mkout_comment,client start requires swtpm to be running))\
-	$(eval $(call workflow_new_edge_source,hcp,client_launched,start-swtpm)))
+$(foreach i,$(list-hcp-hosttpm),\
+$(if $(client$i_IS_STARTED),,\
+	$(eval $(call mkout_comment,client$i start requires attestsvc-hcp to be running))\
+	$(eval $(call workflow_new_edge_source,hcp,client$i_launched,start-attestsvc-hcp))\
+	$(eval $(call mkout_comment,client$i start requires swtpm$i to be running))\
+	$(eval $(call workflow_new_edge_source,hcp,client$i_launched,start-swtpm$i))))
 # - the enrollsvc-mgmt service has to be running in order for swtpm to do
 #   one-time initialization.
-$(if $(swtpm_IS_SETUP),,\
-	$(eval $(call mkout_comment,host setup requires enrollsvc-mgmt to be running))\
-	$(eval $(call workflow_new_edge_source,hcp,swtpm_setup,start-enrollsvc-mgmt)))
+$(foreach i,$(list-hcp-hosttpm),\
+$(if $(swtpm$i_IS_SETUP),,\
+	$(eval $(call mkout_comment,host$i setup requires enrollsvc-mgmt to be running))\
+	$(eval $(call workflow_new_edge_source,hcp,swtpm$i_setup,start-enrollsvc-mgmt))))
 
 $(eval $(call workflow_cleanup,hcp,n-hcp,$(MSGBUS)))
 

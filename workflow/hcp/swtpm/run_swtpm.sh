@@ -2,8 +2,9 @@
 
 set -e
 
-PREF=hcp-swtpm:
-MSGBUS=/msgbus/swtpm
+PREF=hcp-swtpm$HOSTIDX:
+MSGBUS=/msgbus/swtpm$HOSTIDX
+MSGBUSCTRL=/msgbus/swtpm${HOSTIDX}-ctrl
 TPMSTATE=/tpm
 TPMPORT1=9876
 TPMPORT2=9877
@@ -42,10 +43,10 @@ disown %
 echo "$PREF TPM running (pid=$TPMPID)"
 
 # Wait for the command to tear down
-echo "Waiting for 'die' message on /msgbus/swtpm-ctrl"
-./tail_wait.pl /msgbus/swtpm-ctrl "die"
+echo "Waiting for 'die' message on $MSGBUSCTRL"
+./tail_wait.pl $MSGBUSCTRL "die"
 echo "Got the 'die' message"
-rm /msgbus/swtpm-ctrl
+rm $MSGBUSCTRL
 
 # Kill the software TPM
 kill $TPMPID
