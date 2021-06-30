@@ -68,7 +68,7 @@ tpm2_secret_session()
 {
 	SESSION="${1:-$TPM/session.ctx}"
 
-	tpm2 flushcontext --loaded-session
+	tpm2_flushall ""
 
 	warn "tpm2: starting secret session $SESSION"
 	tpm2 startauthsession >&2 \
