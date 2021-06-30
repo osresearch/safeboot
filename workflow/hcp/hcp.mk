@@ -123,7 +123,9 @@ hcp-swtpm_setup_PROFILE := batch
 hcp-swtpm_setup_STICKY := true
 hcp-swtpm_ARGS_DOCKER_BUILD := \
 	--build-arg SUBMODULES="$(hcp-swtpm_SUBMODULES)" \
-	--build-arg DIR="/safeboot"
+	--build-arg DIR="/safeboot" \
+	--build-arg ENROLL_URL="http://hcp-enrollsvc-mgmt:5000/v1/add" \
+	--build-arg ENROLL_HOSTNAME=hcp-client
 
 # "hcp-client", acts as a TPM-enabled host
 IMAGES += hcp-client
@@ -227,8 +229,7 @@ $(eval $(call mkout_header,Running 'hcp' use-cases))
 #      - enrollsvc-mgmt manages the venrolldb volume with a read-write + locked
 #        REST API, for use by fleet orchestration.
 #      - enrollsvc-repl uses the venrolldb volume in read-only mode to run a
-#        lock-free git-daemon service, for replication to attestation service
-#        instances.
+#        git-daemon service, for replication to attestation service instances.
 #      - enrollsvc-repl service cannot run unless enrollsvc-mgmt has done
 #        one-time initialization.
 $(eval $(call workflow_new_service,hcp,enrollsvc-mgmt,SignalExit HasSetup,venrolldb))
@@ -262,6 +263,8 @@ $(if $(attestsvc-repl_IS_SETUP),,\
 #        later simply by changing an environment variable.
 #      - the client service cannot run unless swtpm has done one-time
 #        initialization.
+#      - swtpm cannot do one-time initialization unless enrollsvc-mgmt is
+#        running.
 $(eval $(call workflow_new_service,hcp,swtpm,SignalExit HasSetup,vtpm))
 $(eval $(call workflow_new_service,hcp,client))
 $(eval $(call workflow_new_group,hcp,host,swtpm client))
@@ -286,6 +289,11 @@ $(if $(client_IS_STARTED),,\
 	$(eval $(call workflow_new_edge_source,hcp,client_launched,start-attestsvc-hcp))\
 	$(eval $(call mkout_comment,client start requires swtpm to be running))\
 	$(eval $(call workflow_new_edge_source,hcp,client_launched,start-swtpm)))
+# - the enrollsvc-mgmt service has to be running in order for swtpm to do
+#   one-time initialization.
+$(if $(swtpm_IS_SETUP),,\
+	$(eval $(call mkout_comment,host setup requires enrollsvc-mgmt to be running))\
+	$(eval $(call workflow_new_edge_source,hcp,swtpm_setup,start-enrollsvc-mgmt)))
 
 $(eval $(call workflow_cleanup,hcp,n-hcp,$(MSGBUS)))
 
