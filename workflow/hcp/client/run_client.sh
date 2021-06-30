@@ -55,7 +55,6 @@ tpm2_pcrread
 echo "Trying an attestation..."
 ./sbin/tpm2-attest attest http://$SERVER:8080 > foobar
 echo "Result looks like this;"
-ls -l foobar
-file foobar
+tar xvf foobar
 
 echo "$PREF ending"
