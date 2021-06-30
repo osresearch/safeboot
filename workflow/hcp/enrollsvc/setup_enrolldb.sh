@@ -6,4 +6,4 @@ export DB_IN_SETUP=1
 
 expect_root
 
-drop_privs /init_repo.sh
+drop_privs_db /init_repo.sh

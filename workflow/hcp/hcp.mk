@@ -39,10 +39,18 @@ else
 hcp-base-tpm2_DOCKERFILE := $(TOPDIR)/workflow/hcp/base-tpm2.Dockerfile
 endif
 
-# VOLUME to hold the authoratative git repo for attestation config
+# VOLUME to hold the authoratative git repo for the enrollment DB
 VOLUMES += venrolldb
 venrolldb_MANAGED := true
 venrolldb_DEST := /enrolldb
+
+# A "DB_USER" account is created so that the DB creation and manipulation
+# doesn't require root privs. As enrollsvc-repl inherits this from
+# enrollsvc-mgmt, we only need to feed it to the latter.
+DB_USER=db_user
+# The enrollsvc-mgmt container also runs the flask app, which needs to be priv
+# separated from everything else, so it uses a distinct account.
+FLASK_USER=flask_user
 
 # "hcp-enrollsvc-mgmt" is the only container image that can mount venrolldb
 # read-write. It supports the 'setup' (batch) verb to initialize the enrolldb,
@@ -63,9 +71,10 @@ hcp-enrollsvc-mgmt_setup_PROFILE := batch
 hcp-enrollsvc-mgmt_setup_MSGBUS := $(MSGBUS)
 hcp-enrollsvc-mgmt_setup_STICKY := true
 hcp-enrollsvc-mgmt_ARGS_DOCKER_BUILD := \
-	--build-arg=USERNAME=lowlyuser
+	--build-arg=DB_PREFIX="$(venrolldb_DEST)" \
+	--build-arg=DB_USER=$(DB_USER) \
+	--build-arg=FLASK_USER=$(FLASK_USER)
 hcp-enrollsvc-mgmt_ARGS_DOCKER_RUN := \
-	--env=DB_PREFIX="$(venrolldb_DEST)" \
 	-p 5000:5000
 
 # "hcp-enrollsvc-repl" is the read-only complement to "hcp-enrollsvc-mgmt". It
@@ -88,7 +97,6 @@ hcp-enrollsvc-repl_run_COMMAND := /run_repl.sh
 hcp-enrollsvc-repl_run_PROFILE := async
 hcp-enrollsvc-repl_run_MSGBUS := $(MSGBUS)
 hcp-enrollsvc-repl_ARGS_DOCKER_RUN := \
-	--env=DB_PREFIX="$(venrolldb_DEST)" \
 	-p 9418:9418
 
 # VOLUME to hold software/virtual TPM state

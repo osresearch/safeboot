@@ -5,7 +5,7 @@
 
 . /common.sh
 
-expect_user
+expect_db_user
 
 echo "Starting $0" >&2
 echo "  - Param1=$1 (ekpubhash)" >&2

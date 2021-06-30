@@ -12,10 +12,22 @@
 
 set -e
 
+# As explained in mgmt.Dockerfile, we rely on /etc/environment to pass in all
+# HCP settings that matter, because priv-sep and sudo compel us not to let
+# callers (URL handlers in the flask web app) game the environment of the
+# callees (enrollment functions). However, that only gets sourced by non-root
+# shells, and we want those settings (and everything in this file) to apply the
+# same way when root. We code the Dockerfile to put the same settings in
+# another file that we source here when running as root;
+if [[ `whoami` == "root" ]]; then
+	source /etc/environment.root
+fi
+
 echo "Running '$0'" >&2
 echo "Settings passed in;" >&2
 echo "   DB_PREFIX=$DB_PREFIX" >&2
-echo "    USERNAME=$USERNAME" >&2
+echo "     DB_USER=$DB_USER" >&2
+echo "  FLASK_USER=$FLASK_USER" >&2
 echo " DB_IN_SETUP=$DB_IN_SETUP" >&2
 
 # DB_PREFIX must be passed in, fail otherwise
@@ -24,9 +36,15 @@ if [[ -z "$DB_PREFIX" || ! -d "$DB_PREFIX" ]]; then
 	exit 1
 fi
 
-# Ditto for $USERNAME
-if [[ -z "$USERNAME" || ! -d "/home/$USERNAME" ]]; then
-	echo "Error, USERNAME (\"$USERNAME\") is not a valid user" >&2
+# Ditto for $DB_USER
+if [[ -z "$DB_USER" || ! -d "/home/$DB_USER" ]]; then
+	echo "Error, DB_USER (\"$DB_USER\") is not a valid user" >&2
+	exit 1
+fi
+
+# Ditto for $FLASK_USER
+if [[ -z "$FLASK_USER" || ! -d "/home/$FLASK_USER" ]]; then
+	echo "Error, FLASK_USER (\"$FLASK_USER\") is not a valid user" >&2
 	exit 1
 fi
 
@@ -44,12 +62,6 @@ echo "     REPO_PATH=$REPO_PATH" >&2
 echo "       EK_PATH=$EK_PATH" >&2
 echo " REPO_LOCKPATH=$REPO_LOCKPATH" >&2
 
-function drop_privs {
-	# The su'd command will need to source this file also, so we only
-	# preserve the caller environment, not things we've derived
-	su --whitelist-environment DB_PREFIX,USERNAME,DB_IN_SETUP -c "$1 $2 $3 $4 $5" - $USERNAME
-}
-
 function expect_root {
 	if [[ `whoami` != "root" ]]; then
 		echo "Error, running as \"`whoami`\" rather than \"root\"" >&2
@@ -57,11 +69,31 @@ function expect_root {
 	fi
 }
 
-function expect_user {
-	if [[ `whoami` != "$USERNAME" ]]; then
-		echo "Error, running as \"`whoami`\" rather than \"$USERNAME\"" >&2
+function expect_db_user {
+	if [[ `whoami` != "$DB_USER" ]]; then
+		echo "Error, running as \"`whoami`\" rather than \"$DB_USER\"" >&2
 		exit 1
 	fi
+}
+
+function expect_flask_user {
+	if [[ `whoami` != "$FLASK_USER" ]]; then
+		echo "Error, running as \"`whoami`\" rather than \"$FLASK_USER\"" >&2
+		exit 1
+	fi
+}
+
+function drop_privs_db {
+	# The only thing we need to whitelist is DB_IN_SETUP (used by
+	# setup_enrolldb.sh to suppress common.h's test for an existing db).
+	# As such, we
+	# don't have to whitelist anything here either, even though it's not a
+	# privilege issue in this case.
+	su --whitelist-environment DB_IN_SETUP -c "$1 $2 $3 $4 $5" - $DB_USER
+}
+
+function drop_privs_flask {
+	su -c "$1 $2 $3 $4 $5" - $FLASK_USER
 }
 
 function repo_cmd_lock {

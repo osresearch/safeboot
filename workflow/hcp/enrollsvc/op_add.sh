@@ -2,7 +2,7 @@
 
 . /common.sh
 
-expect_user
+expect_db_user
 
 # EXCEPTION: pretty much nothing we do requires safeboot scripts, especially as
 # the non-root user. The enrollment process is the exception, so I'm explicitly

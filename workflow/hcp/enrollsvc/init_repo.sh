@@ -2,7 +2,7 @@
 
 . /common.sh
 
-expect_user
+expect_db_user
 
 mkdir $REPO_PATH
 cd $REPO_PATH

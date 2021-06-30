@@ -18,7 +18,7 @@ echo "  - prefix: $DB_PREFIX"
 # assumes the backgrounded service is ready before it actually is. This could
 # probably be fixed by dy doing a tail_wait on our own output to pick up the
 # telltale signs from the child process that the service is listening.
-(drop_privs /usr/lib/git-core/git-daemon \
+(drop_privs_db /usr/lib/git-core/git-daemon \
 	--reuseaddr --verbose \
 	--listen=0.0.0.0 \
 	--base-path=$DB_PREFIX \

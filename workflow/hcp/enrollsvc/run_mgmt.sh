@@ -16,7 +16,7 @@ echo "Running 'enrollsvc-mgmt' service"
 # assumes the backgrounded service is ready before it actually is. This could
 # probably be fixed by dy doing a tail_wait on our own output to pick up the
 # telltale signs from the child process that the service is listening.
-(drop_privs /flask_wrapper.sh) &
+(drop_privs_flask /flask_wrapper.sh) &
 THEPID=$!
 disown %
 echo "Backgrounded (pid=$THEPID)"

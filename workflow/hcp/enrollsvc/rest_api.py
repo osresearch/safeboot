@@ -2,11 +2,11 @@ import flask
 from flask import request, abort
 import subprocess
 import json
-import sys
+import os, sys
+from stat import *
 from markupsafe import escape
 from werkzeug.utils import secure_filename
 import tempfile
-import os
 
 app = flask.Flask(__name__)
 app.config["DEBUG"] = True
@@ -52,6 +52,24 @@ def home():
 </form>
 '''
 
+# The $DB_USER account creates and manipulates the enrollment DB and performs
+# enrollment functions. These are represented by "add", "query", "delete", and
+# "find" operations, implemented as minimal bash scripts of the form
+# "/op_<verb>.sh", that perform parameter checks and defer nearly all real work
+# to safeboot, git, and jq.
+#
+# We enforce privilege separation by running this flask app as the $FLASK_USER
+# account, which has no direct access to any enrollment state. Specific sudo
+# rules allow the $FLASK_USER to invoke the 4 /op_<verb>.sh scripts as
+# $DB_USER, and this is why the primary purpose of the /op_<verb>.sh scripts is
+# to perform argument-validation. (The sudo configuration ensures a fresh
+# environment across this call interface, preventing a compromised flask
+# handler from influencing the scripts other than by the arguments it passes.)
+#
+# This is the sudo preamble to pass to subprocess.run(), the actual script name
+# and arguments follow this, and are appended by each handler.
+sudoargs=['sudo','-u',os.environ.get('DB_USER')]
+
 @app.route('/v1/add', methods=['POST'])
 def my_add():
     if 'ekpub' not in request.files:
@@ -59,11 +77,19 @@ def my_add():
     if 'hostname' not in request.form:
         return { "error": "hostname not in request" }
     f = request.files['ekpub']
+    h = request.form['hostname']
+    # Create a temporary directory (for the ek.pub file), and make it world
+    # readable+executable. The /op_add.sh script runs behind sudo, as another
+    # user, and it needs to be able to read the ek.pub.
     tf = tempfile.TemporaryDirectory()
+    s = os.stat(tf.name)
+    os.chmod(tf.name, s.st_mode | S_IROTH | S_IXOTH)
+    # Sanitize the user-supplied filename, and join it to the temp directory,
+    # this is where the ek.pub file gets saved and is the path passed to the
+    # op_add.sh script.
     p = os.path.join(tf.name, secure_filename(f.filename))
     f.save(p)
-    h = request.form['hostname']
-    c = subprocess.run(['/op_add.sh', p, h])
+    c = subprocess.run(sudoargs + ['/op_add.sh', p, h])
     return {
         "returncode": c.returncode
     }
@@ -73,7 +99,7 @@ def my_query():
     if 'ekpubhash' not in request.args:
         return { "error": "ekpubhash not in request" }
     h = request.args['ekpubhash']
-    c = subprocess.run(['/op_query.sh', h],
+    c = subprocess.run(sudoargs + ['/op_query.sh', h],
                        stdout=subprocess.PIPE, text=True)
     if (c.returncode != 0):
         abort(500)
@@ -82,8 +108,8 @@ def my_query():
 
 @app.route('/v1/delete', methods=['POST'])
 def my_delete():
-    c = subprocess.run(['/op_delete.sh',
-                       request.form['ekpubhash']],
+    h = request.form['ekpubhash']
+    c = subprocess.run(sudoargs + ['/op_delete.sh', h],
                        stdout=subprocess.PIPE, text=True)
     if (c.returncode != 0):
         abort(500)
@@ -94,8 +120,8 @@ def my_delete():
 
 @app.route('/v1/find', methods=['GET'])
 def my_find():
-    c = subprocess.run(['/op_find.sh',
-                       request.args['hostname_suffix']],
+    h = request.args['hostname_suffix']
+    c = subprocess.run(sudoargs + ['/op_find.sh', h],
                        stdout=subprocess.PIPE, text=True)
     if (c.returncode != 0):
         abort(500)
