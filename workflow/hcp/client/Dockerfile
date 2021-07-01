@@ -1,4 +1,5 @@
 RUN apt-get install -y python3-yaml python3-distutils python3-cryptography
+RUN apt-get install -y file
 ARG HOSTIDX
 ARG SUBMODULES
 ARG DIR

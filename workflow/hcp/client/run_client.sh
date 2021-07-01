@@ -51,9 +51,40 @@ echo "$PREF ping seems fine"
 export TPM2TOOLS_TCTI=swtpm:host=$TPMHOST,port=$TPMPORT1
 tpm2_pcrread
 
-# Now try an actual attestation...
-echo "Trying an attestation..."
-./sbin/tpm2-attest attest http://$SERVER:8080 > foobar
+# Now keep trying to get a successful attestation. It may take a few seconds
+# for our TPM enrollment to propagate to the attestation server, so it's normal
+# for this to fail at least once.
+counter=0
+while true
+do
+	echo "Trying an attestation..."
+	(./sbin/tpm2-attest attest http://$SERVER:8080 > foobar) || itfailed=1
+	if [[ -s foobar ]]; then
+		echo "FOOBAR: output file is non-empty"
+		ls -l foobar
+		FOO=`file foobar`
+		echo "FOOBAR: 'file' reports $FOO"
+		(echo "$FOO" | grep "POSIX tar archive") && istarball=1
+		echo "FOOBAR: istarball=$istarball"
+		if [[ -n "$itfailed" && -n "$istarball" ]]; then
+			echo "FOOBAR: SMOKING GUN!!"
+			unset itfailed
+		fi
+	fi
+	if [[ -z "$itfailed" ]]; then
+		echo "Success!"
+		break
+	fi
+	((counter++)) || true
+	echo "Failure #$counter"
+	if [[ $counter -gt 10 ]]; then
+		echo "Giving up"
+		exit 1
+	fi
+	echo "Sleeping 5 seconds before retrying"
+	sleep 5
+done
+
 echo "Result looks like this;"
 tar xvf foobar
 

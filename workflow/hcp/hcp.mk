@@ -227,7 +227,7 @@ define declare_host_and_tpm
 endef
 
 # Now create a slew of host/tpm pairs
-$(foreach i,$(shell seq 1 4),$(eval $(call declare_host_and_tpm,$i)))
+$(foreach i,$(shell seq 1 1),$(eval $(call declare_host_and_tpm,$i)))
 
 # Digest and process the above definitions (generate a Makefile and source it
 # back in) before continuing. In that way, we can build subsequent definitions
