@@ -32,45 +32,38 @@ cd $DIR
 
 echo "$PREF starting"
 
-# Check that the network and the server is there
-echo "$PREF waiting for server to advertise"
-./tail_wait.pl $MSGBUS_SERVER "$PREF_SERVER attestation server running"
-echo "$PREF heard from the server"
-
-# Likewise verify that the swtpm is alive
-echo "$PREF waiting for swtpm$HOSTIDX to advertise"
-./tail_wait.pl $MSGBUS_SWTPM "$PREF_SWTPM TPM running"
-echo "$PREF heard from the swtpm"
-
-# As we haven't yet plugged in the real attestation protocol, replace it with a
-# single client-to-server ping!
-ping -c 1 $SERVER
-echo "$PREF ping seems fine"
-
-# Do some stuff that uses the TPM
 export TPM2TOOLS_TCTI=swtpm:host=$TPMHOST,port=$TPMPORT1
-tpm2_pcrread
+
+# Bypass some stuff unless explicitly enabled
+if [[ -n "$CLIENT_EXTRA_STEPS" ]]; then
+
+	# Check that the network and the server is there
+	echo "$PREF waiting for server to advertise"
+	./tail_wait.pl $MSGBUS_SERVER "$PREF_SERVER attestation server running"
+	echo "$PREF heard from the server"
+
+	# Check that the swtpm is alive
+	echo "$PREF waiting for swtpm$HOSTIDX to advertise"
+	./tail_wait.pl $MSGBUS_SWTPM "$PREF_SWTPM TPM running"
+	echo "$PREF heard from the swtpm"
+
+	# Ping the attestation server
+	ping -c 1 $SERVER
+	echo "$PREF ping seems fine"
+
+	# Exercise the swtpm a bit
+	tpm2_pcrread
+fi
 
 # Now keep trying to get a successful attestation. It may take a few seconds
 # for our TPM enrollment to propagate to the attestation server, so it's normal
-# for this to fail at least once.
+# for this to fail a couple of times before succeeding.
 counter=0
 while true
 do
 	echo "Trying an attestation..."
-	(./sbin/tpm2-attest attest http://$SERVER:8080 > foobar) || itfailed=1
-	if [[ -s foobar ]]; then
-		echo "FOOBAR: output file is non-empty"
-		ls -l foobar
-		FOO=`file foobar`
-		echo "FOOBAR: 'file' reports $FOO"
-		(echo "$FOO" | grep "POSIX tar archive") && istarball=1
-		echo "FOOBAR: istarball=$istarball"
-		if [[ -n "$itfailed" && -n "$istarball" ]]; then
-			echo "FOOBAR: SMOKING GUN!!"
-			unset itfailed
-		fi
-	fi
+	unset itfailed
+	./sbin/tpm2-attest attest http://$SERVER:8080 > secrets || itfailed=1
 	if [[ -z "$itfailed" ]]; then
 		echo "Success!"
 		break
@@ -85,7 +78,9 @@ do
 	sleep 5
 done
 
-echo "Result looks like this;"
-tar xvf foobar
+echo "Extracting the attestation output;"
+tar xvf secrets || (echo "Hmmm, tar reports some kind of error." &&
+	echo "Copying to safeboot/sbin for inspection" &&
+	cp secrets ./sbin)
 
 echo "$PREF ending"
