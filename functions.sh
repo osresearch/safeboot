@@ -311,6 +311,89 @@ mount_by_uuid() {
 	esac
 }
 
+# Convert a bare RSA public key (2048 bits) in PEM format to TPM2B_PUBLIC
+# format.
+#
+# We don't yet have a good tool for this conversion.  See
+# https://github.com/tpm2-software/tpm2-tools/issues/2779
+#
+# So this is a hack.
+
+pem2tpm2bpublic() {
+	local pemfile ekpolicy
+	local attrs
+
+	if [[ $1 = *.pem ]]; then
+		pemfile=$1
+	else
+		cp "$1" "${1}.pem"
+		pemfile=${1}.pem
+	fi
+
+	# This is the policy on the EKs produced by swtpm.  It may be different
+	# on other TPMs.
+	ekpolicy=${3:-837197674484b3f81a90cc8d46a5d724fd52d76e06520b64f2a1da1b331469aa}
+
+	attrs='fixedtpm|fixedparent|sensitivedataorigin|adminwithpolicy|restricted|decrypt'
+
+	tpm2 flushcontext --transient-object
+	tpm2 flushcontext --loaded-session
+
+	# Try loading the EK using a feature in newer tpm2-tools.
+	#
+	# The hash of the resulting EKpub will match IFF we have the right
+	# ${ekpolicy}.
+	echo "$ekpolicy" | hex2bin > "${pemfile}.policy"
+	if tpm2 loadexternal				\
+		--key-alg rsa2048:aes128cfb		\
+		--policy "${pemfile}.policy"		\
+		--attributes "$attrs"			\
+		--hierarchy n				\
+		--public "$pemfile"			\
+		--key-context "${1}.ctx"		\
+	   && tpm2 readpublic				\
+			--output="$2"			\
+			--object-context="${1}.ctx"; then
+		rm "${pemfile}.policy"
+		return 0
+	fi
+
+	# This is the TPM2B_PUBLIC of some random 2048 RSA EKpub.
+	#
+	# We'll overwrite the 2048 bit RSA key at the end with the key from the
+	# PEM.
+	xxd -p -r > "$2" <<EOF
+013a0001000b000300b20020837197674484b3f81a90cc8d46a5d724fd52
+d76e06520b64f2a1da1b331469aa00060080004300100800000000000100
+d5c9e6201735bf4e3b6a4355f67aee0fbe8a22b5ee446693a33d15a6d05a
+4c411ed4f61d013c1fe96fdd8dd44862522c5f51a304b346d7f081421f4c
+d0cbec55f8ec57ab632bf023e584388be2b957512fa3df6bff3a51e92201
+95e38ad3f837f6941582ee968d9a936e29240f1a7018a81e39d8e38e8826
+f761160c9aed97800b2cd8ebe0eaa6eef3716232be0efe29f7a1f84256b3
+2fc6c3803201edcf8d0ce33e4e1fe22a61cdd05752beaee094c1ca4ff981
+25e20c200802da94771760bf7e481518fb438a9f98a5ed9286cc014836ca
+bab6d2b19200d7fd105d69c74528ea37d1b8f17964c93695ecead0bbfd14
+27e6bc2f7ee8bbb94638266e05f953a1
+EOF
+	tpm2 flushcontext --transient-object
+	tpm2 flushcontext --loaded-session
+	# Load the public key with the wrong attributes (see
+	# https://github.com/tpm2-software/tpm2-tools/issues/2779)
+	tpm2 loadexternal		\
+		--key-alg rsa		\
+		--attributes 'decrypt'	\
+		--hierarchy n		\
+		--public "$pemfile"	\
+		--key-context "${1}.ctx"
+	# Get the modulus of the loaded public key and overwrite the one from
+	# the TPM2B_PUBLIC hard-coded above:
+	tpm2 readpublic --object-context "${1}.ctx"		\
+	| grep '^rsa:'						\
+	| cut -d\  -f2						\
+	| xxd -p -r						\
+	| dd of="$2" seek=$((316 - 256)) bs=1 count=256 2>/dev/null
+}
+
 _rand() {
 	if ${USE_TPM2_RAND:-true}; then
 		tpm2 getrandom "${1:-32}" 2>/dev/null || openssl rand "${1:-32}"
