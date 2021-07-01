@@ -1,0 +1,180 @@
+#!/bin/bash
+#
+# Generate a keytab for the host
+
+set -euo pipefail
+shopt -s extglob
+
+PROG=${0##*/}
+if [[ $0 = /* ]]; then
+	BASEDIR=${0%/*}
+elif [[ $0 = */* ]]; then
+	BASEDIR=$PWD/${0%/*}
+else
+	BASEDIR=$PWD
+fi
+
+# Keytab gen methods:
+#
+#	HKD		-> use httpkadmind with a Kerberos credential
+#	HKD-IMPERSONATE	-> use a CA cred and PKINIT to impersonate host to HKD
+#	KADMIN		-> use local kadmin (only if this is a primary KDC)
+#	KADMIND		-> use remote kadmin with a Kerberos credential
+
+GENKEYTAB_METHOD=HKD-IMPERSONATE
+GENKEYTAB_HKD_URI=
+GENKEYTAB_REALM=
+
+# For HKD and KADMIND methods
+[[ -n ${GENKEYTAB_CCNAME:-} ]]	\
+&& export KRB5CCNAME="$GENKEYTAB_CCNAME"
+
+curl_opts=(
+		--silent
+		--globoff
+		--user :
+		--negotiate
+)
+
+: "${SAFEBOOT_ENROLL_CONF:=/etc/safeboot-enroll.conf}"
+# shellcheck disable=SC1090
+[[ -n $SAFEBOOT_ENROLL_CONF && -f $SAFEBOOT_ENROLL_CONF ]] \
+&& . "${SAFEBOOT_ENROLL_CONF}"
+
+# shellcheck disable=SC1090
+. "$BASEDIR/../functions.sh"
+
+die() { echo >&2 "Error: $PROG" "$@" ; exit 1 ; }
+warn() { echo >&2 "$@" ; }
+
+cd "$1"
+outdir=$2
+hostname=$3
+shift 3
+
+# Cheap hostname validation
+[[ $hostname = +([-a-z0-9]).+([-a-z0-9_.]) ]] || die "invalid hostname"
+[[ $hostname = +([-a-z0-9_.]) ]] || die "invalid hostname"
+[[ $hostname = *..* ]] && die "invalid hostname"
+
+
+if [[ -z $GENKEYTAB_REALM ]]; then
+	domain=${hostname}
+	while [[ $domain = *.*.* ]]; do
+		domain=${domain#*.}
+		if [[ -n ${GENCERT_DOMAIN_REALM[$domain]:-} ]]; then
+			GENKEYTAB_REALM=${GENCERT_DOMAIN_REALM[$domain]}
+			break
+		fi
+		if ((${#GENCERT_DOMAIN_REALM[@]} > 0)); then
+			die "Could not determine domain name for $hostname"
+		fi
+		if (($(dig -t srv "_kerberos._udp.$domain" +short|wc -l) > 0)); then
+			GENKEYTAB_REALM=${domain^^?}
+			break
+		fi
+	done
+	[[ -n $GENKEYTAB_REALM ]]	\
+	|| die "Could not determine realm name for $hostname"
+fi
+
+case "$GENKEYTAB_METHOD" in
+KADMIN)
+	kadmin -l -r "$GENKEYTAB_REALM"					\
+		add_new_key						\
+		--random-key						\
+		${GENKEYTAB_ANK_ARGS[0]:+"${GENKEYTAB_ANK_ARGS[@]}"}	\
+		"host/$hostname"
+	kadmin -l -r "$GENKEYTAB_REALM"					\
+		ext_keytab						\
+		--keytab FILE:keytab					\
+		--random-key						\
+		"host/$hostname";;
+KADMIND)
+	kadmin -r "$GENKEYTAB_REALM"					\
+		add_new_key						\
+		--random-key						\
+		${GENKEYTAB_ANK_ARGS[0]:+"${GENKEYTAB_ANK_ARGS[@]}"}	\
+		"host/$hostname"
+	kadmin -r "$GENKEYTAB_REALM"					\
+		ext_keytab						\
+		--keytab FILE:keytab					\
+		--random-key						\
+		"host/$hostname";;
+HKD)
+	# Get CSRF token
+	curl								\
+		"${curl_opts[@]}"					\
+		--output junk						\
+		--request POST						\
+		--data-binary @/dev/null				\
+		-D headers						\
+		"${GENKEYTAB_HKD_URI}?spn=host/$hn&create=true"
+	csrf_token=$(sed -e 's/\r//' headers | grep ^X-CSRF-Token:)
+	rm -f headers junk
+	curl								\
+		"${curl_opts[@]}"					\
+		--output keytab						\
+		--request POST						\
+		--data-binary @/dev/null				\
+		-D headers						\
+		-H "$csrf_token"					\
+		"${GENKEYTAB_HKD_URI}?spn=host/$hn&create=true"
+	grep '^HTTP/1.1 200' headers >/dev/null				\
+	|| die "Could not create host principal"
+	rm headers
+	: ;;
+HKD-IMPERSONATE)
+	# If we ran gencert, use that cert
+	if [[ -f cert-key.pem && -f cert.pem ]]; then
+		delcert=false
+	else
+		gencert "$PWD" "$outdir" "$hostname" >/dev/null
+		delcert=true
+	fi
+	if [[ ! -f cert-key.pem || ! -f cert.pem ]]; then
+		echo "skip: Could not get PKINIT certificate for impersonation"
+	fi
+	kinit									\
+		${GENKEYTAB_KINIT_ARGS[0]:+"${GENKEYTAB_KINIT_ARGS[@]}"}	\
+		--cache keytab-cc						\
+		--pk-user PEM-FILE:cert.pem,cert-key.pem			\
+		"host/$hostname@$GENKEYTAB_REALM"
+	export KRB5CCNAME="${PWD}/keytab-cc"
+	# Get CSRF token
+	curl								\
+		"${curl_opts[@]}"					\
+		--output junk						\
+		--request POST						\
+		--data-binary @/dev/null				\
+		-D headers						\
+		"${GENKEYTAB_HKD_URI}?spn=host/$hn&create=true"
+	csrf_token=$(sed -e 's/\r//' headers | grep ^X-CSRF-Token:)
+	rm -f headers junk
+	curl								\
+		--output keytab						\
+		--request POST						\
+		--data-binary @/dev/null				\
+		-D headers						\
+		-H "$csrf_token"	\
+		"${GENKEYTAB_HKD_URI}?spn=host/$hn&create=true"
+	grep '^HTTP/1.1 200' headers >/dev/null				\
+	|| die "Could not create host principal"
+	rm headers
+	rm keytab-cc
+	if ! ktutil -k keytab list; then
+		if [[ $(file keytab || true) = *ASCII* ]]; then
+			echo "Could not get keytab:" 1>&2
+			cat keytab 1>&2
+			echo "skip: Could not get keytab: $(cat keytab)"
+		else
+			echo "Could not get keytab" 1>&2
+			echo "skip: Could not get keytab: $(cat keytab)"
+		fi
+		rm keytab
+	fi
+	$delcert && rm cert-key.pem cert.pem
+	: ;;
+esac
+
+echo "sensitive keytab"
