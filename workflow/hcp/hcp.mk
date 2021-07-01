@@ -328,8 +328,6 @@ hcp-test:
 		(echo "Error, stale 'sbin/secrets' file - move or delete before retrying" && \
 		exit 1)
 	$(SUBMAKE) start-enrollsvc start-attestsvc start-host
-	# It's necessary to stop-client first, because it needs to have run to
-	# completion before anything else can be torn down.
 	$(SUBMAKE) $(foreach i,$(list-hcp-hosttpm),stop-client$i)
 	$(SUBMAKE) stop-enrollsvc stop-attestsvc stop-host
 	$Qecho "Simple attest complete"
