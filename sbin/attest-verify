@@ -63,7 +63,7 @@ def verify(quote, quote_valid):
 
 	# default policy is to reject any invalid quotes
 	if quote_valid != "True":
-		logging.warning(f"{ekhash=}: rejecting invalid quote")
+		logging.warning(f"ekhash={ekhash}: rejecting invalid quote")
 		return -1
 
 	if os.path.exists(os.path.join(ekdir, 'phase2')):
@@ -77,16 +77,16 @@ def verify(quote, quote_valid):
 		with open(os.path.join(ekdir, "pcrs")) as pcrs_file:
 			valid_pcrs = yaml.safe_load(pcrs_file)
 		if valid_pcrs is None:
-			logging.warning(f"{ekhash=}: rejecting unknown machine")
+			logging.warning(f"ekhash={ekhash}: rejecting unknown machine")
 			return -1
 
 		if not pcr_validate(valid_pcrs['pcrs'], quote['pcrs']):
-			logging.warning(f"{ekhash=}: rejecting bad PCRs")
+			logging.warning(f"ekhash={ekhash}: rejecting bad PCRs")
 			return -1
 
 	# the eventlog meets the policy requirements
 	# so output the secret for encoding by the attestation server
-	logging.info(f"{ekhash=}: sending secrets")
+	logging.info(f"ekhash={ekhash}: sending secrets")
 
 	sub = subprocess.run(["tar", "cf", "-", "-C", ekdir, "."],
 		stdout=sys.stdout,

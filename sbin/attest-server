@@ -80,7 +80,7 @@ class AttestServer(SimpleHTTPRequestHandler):
 		# Other PCRs may have values, which is the responsibility
 		# of the verifier to check.
 		if alg not in quote['pcrs']:
-			logging.warning(f"{ekhash=}: quote does not have hash {alg}")
+			logging.warning(f"ekhash={ekhash}: quote does not have hash {alg}")
 		quote_pcrs = quote['pcrs'][alg]
 
 		# XXX We need a way to configure whether the eventlog is optional
@@ -93,15 +93,15 @@ class AttestServer(SimpleHTTPRequestHandler):
 				if pcr_index in quote_pcrs:
 					quote_pcr = quote_pcrs[pcr_index]
 					if quote_pcr != eventlog_pcr:
-						logging.warning(f"{ekhash=}: {pcr_index=} {quote_pcr=} != {eventlog_pcr=}")
+						logging.warning(f"ekhash={ekhash}: pcr_index={pcr_index} quote_pcr={quote_pcr} != eventlog_pcr={eventlog_pcr}")
 						quote_valid = False
 					else:
-						logging.info(f"{ekhash=}: {pcr_index=} {quote_pcr=} good")
+						logging.info(f"ekhash={ekhash}: pcr_index={pcr_index} quote_pcr={quote_pcr} good")
 
 		if quote_valid:
-			logging.info(f"{ekhash=}: so far so good")
+			logging.info(f"ekhash={ekhash}: so far so good")
 		else:
-			logging.warning(f"{ekhash=}: not good at all")
+			logging.warning(f"ekhash={ekhash}: not good at all")
 
 		# the quote, eventlog and PCRS are consistent, so ask the verifier to
 		# process the eventlog and decide if the eventlog meets policy for
