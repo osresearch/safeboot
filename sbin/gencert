@@ -1,0 +1,100 @@
+#!/bin/bash
+#
+# Generate a certificate (and private key) for a host being enrolled.
+
+set -euo pipefail
+shopt -s extglob
+
+PROG=${0##*/}
+if [[ $0 = /* ]]; then
+	BASEDIR=${0%/*}
+elif [[ $0 = */* ]]; then
+	BASEDIR=$PWD/${0%/*}
+else
+	BASEDIR=$PWD
+fi
+
+GENCERT_CRED=PEM-FILE:/etc/safeboot/gencert-ca.pem
+GENCERT_REALM=
+GENCERT_KEY_BITS=2048
+GENCERT_INCLUDE_SAN_PKINIT=true
+GENCERT_INCLUDE_SAN_DNSNAME=false
+GENCERT_EKUS=()
+declare -A GENCERT_DOMAIN_REALM
+
+: "${SAFEBOOT_ENROLL_CONF:=/etc/safeboot-enroll.conf}"
+# shellcheck disable=SC1090
+[[ -n $SAFEBOOT_ENROLL_CONF && -f $SAFEBOOT_ENROLL_CONF ]] \
+&& . "${SAFEBOOT_ENROLL_CONF}"
+
+# shellcheck disable=SC1090
+. "$BASEDIR/../functions.sh"
+
+die() { echo "skip: $*"; echo >&2 "Error: $PROG" "$@" ; exit 1 ; }
+warn() { echo >&2 "$@" ; }
+
+cd "$1"
+outdir=$2
+hostname=$3
+shift 3
+
+if [[ -z $GENCERT_REALM ]]; then
+	domain=${hostname}
+	while [[ $domain = *.*.* ]]; do
+		domain=${domain#*.}
+		if [[ -n ${GENCERT_DOMAIN_REALM[$domain]:-} ]]; then
+			GENCERT_REALM=${GENCERT_DOMAIN_REALM[$domain]}
+			break
+		fi
+		if ((${#GENCERT_DOMAIN_REALM[@]} > 0)); then
+			die "Could not determine realm name for $hostname"
+		fi
+		if (($(dig -t srv "_kerberos._udp.$domain" +short|wc -l) > 0)); then
+			GENCERT_REALM=${domain^^?}
+			break
+		fi
+	done
+	[[ -n $GENCERT_REALM ]]	\
+	|| die "Could not determine realm name for $hostname"
+fi
+
+sans=()
+
+${GENCERT_INCLUDE_SAN_PKINIT}					\
+&& sans+=(--pk-init-principal="host/$hostname@$GENCERT_REALM")
+
+${GENCERT_INCLUDE_SAN_DNSNAME}					\
+&& sans+=(--hostname="$hostname")
+
+ekus=()
+if ((${#GENCERT_EKUS[@]} > 0)); then
+	for eku in "${GENCERT_EKUS[@]}"; do
+		ekus+=(--eku="$eku")
+	done
+fi
+
+# Generate the private key (and a CSR, which is kind of unnecessary, but...)
+trap 'rm -f cert-req.der cert-key.pem' EXIT
+hxtool request-create						\
+	--subject=''						\
+	--generate-key=rsa					\
+	--key-bits="$GENCERT_KEY_BITS"				\
+	--key="PEM-FILE:$PWD/cert-key.pem"			\
+	cert-req.der						\
+|| die "Could not generate RSA key!"
+# Format and sign the end-entity certificate
+hxtool issue-certificate					\
+	--type=pkinit-client					\
+	--ca-certificate="$GENCERT_CRED"			\
+	--subject=						\
+	"${sans[@]}"						\
+	"${ekus[@]}"						\
+	--ku=digitalSignature					\
+	--lifetime=10y						\
+	--req="PKCS10:cert-req.der"				\
+	--certificate=PEM-FILE:cert.pem				\
+|| die "skip: Could not issue PKINIT certificate for impersonation!"
+
+grep -q PRIVATE cert.pem && die "Private key in cert file?!"
+trap true EXIT
+echo "sensitive cert-key.pem cert.pem"
