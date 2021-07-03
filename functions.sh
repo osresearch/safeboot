@@ -10,6 +10,7 @@ export LC_ALL=C
 die_msg=""
 die() { echo "$die_msg""$*" >&2 ; exit 1 ; }
 warn() { echo "$@" >&2 ; }
+error() { echo "$@" >&2 ; return 1 ; }
 debug() { [ "$VERBOSE" = 1 ] && echo "$@" >&2 ; }
 
 
