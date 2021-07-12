@@ -82,18 +82,21 @@ class AttestServer(SimpleHTTPRequestHandler):
 		if alg not in quote['pcrs']:
 			logging.warning(f"{ekhash=}: quote does not have hash {alg}")
 		quote_pcrs = quote['pcrs'][alg]
-		eventlog_pcrs = quote['eventlog-pcrs'][alg]
 
-		for pcr_index in eventlog_pcrs:
-			eventlog_pcr = eventlog_pcrs[pcr_index]
+		# XXX We need a way to configure whether the eventlog is optional
+		if quote['eventlog-pcrs'] != None:
+			eventlog_pcrs = quote['eventlog-pcrs'][alg]
 
-			if pcr_index in quote_pcrs:
-				quote_pcr = quote_pcrs[pcr_index]
-				if quote_pcr != eventlog_pcr:
-					logging.warning(f"{ekhash=}: {pcr_index=} {quote_pcr=} != {eventlog_pcr=}")
-					quote_valid = False
-				else:
-					logging.info(f"{ekhash=}: {pcr_index=} {quote_pcr=} good")
+			for pcr_index in eventlog_pcrs:
+				eventlog_pcr = eventlog_pcrs[pcr_index]
+
+				if pcr_index in quote_pcrs:
+					quote_pcr = quote_pcrs[pcr_index]
+					if quote_pcr != eventlog_pcr:
+						logging.warning(f"{ekhash=}: {pcr_index=} {quote_pcr=} != {eventlog_pcr=}")
+						quote_valid = False
+					else:
+						logging.info(f"{ekhash=}: {pcr_index=} {quote_pcr=} good")
 
 		if quote_valid:
 			logging.info(f"{ekhash=}: so far so good")

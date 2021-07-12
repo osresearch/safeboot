@@ -9,30 +9,512 @@
 # - Client Key (CK): a host certificate for this system
 # - Other data
 
-BASEDIR="$(dirname $0)/.."
-OUTPREFIX="$BASEDIR/build/attest"
-die() { echo >&2 "$@" ; exit 1 ; }
+set -euo pipefail
+shopt -s extglob
+
+PROG=${0##*/}
+if [[ $0 = /* ]]; then
+	BASEDIR=${0%/*}
+elif [[ $0 = */* ]]; then
+	BASEDIR=$PWD/${0%/*}
+else
+	BASEDIR=$PWD
+fi
+
+# Make sure to export SAFEBOOT_ENROLL_CONF for external genprogs
+#
+# If one or more -C options given, use the first one for this (see getopts
+# loop below).
+export SAFEBOOT_ENROLL_CONF=/etc/safeboot-enroll.conf
+CONF=$SAFEBOOT_ENROLL_CONF
+configured=false
+
+EKPUB=/dev/stdin
+
+# Configuration variables
+DBDIR="$BASEDIR/build/attest"
+POLICY=
+ESCROW_POLICY=
+ESCROW_PUBS_DIR=
+TRANSPORT_METHOD=EK
+DEFAULT_EK_POLICY=
+declare -a GENPROGS
+GENPROGS=(genhostname genrootfskey)
+declare -A POLICIES
+
+# For the configure function (see below)
+declare -A vars
+vars[DBDIR]=scalar
+vars[POLICY]=scalar
+vars[ESCROW_POLICY]=scalar
+vars[ESCROW_PUBS_DIR]=scalar
+vars[TRANSPORT_METHOD]=scalar
+vars[DEFAULT_EK_POLICY]=scalar
+vars[CHECKOUT]=scalar
+vars[COMMIT]=scalar
+vars[GENPROGS]=array
+vars[POLICIES]=assoc
+
+configs() {
+	local var type
+
+	for type in scalar array assoc; do
+		printf '\t\tBash configuration variables (%s):\n' "$type"
+		for var in "${!vars[@]}"; do
+			[[ ${vars[$var]} = "$type" ]] && echo "$var"
+		done | sort | fmt -w 50 | sed 's/^/\t\t\t/'
+		echo
+	done
+}
+
+# shellcheck disable=SC1090
+. "$BASEDIR/../functions.sh"
+
+die() { echo >&2 "Error: $PROG" "$@" ; exit 1 ; }
 warn() { echo >&2 "$@" ; }
-tpm2() { "$BASEDIR/bin/tpm2" "$@" ; }
 
-hostname="$1"
+if [[ -n ${TPM2TOOLS_TCTI:-} ]]; then
+	# This is used via declare -n:
+	# shellcheck disable=SC2034
+	known_policy_pcr11=$("$BASEDIR/tpm2-policy" -A tpm2 policypcr --pcr-list=sha256:11)
+else
+	# This is used via declare -n:
+	# shellcheck disable=SC2034
+	known_policy_pcr11=7fdad037a921f7eec4f97c08722692028e96888f0b970dc7b3bb6a9c97e8f988
+fi
 
+genhostname() {
+	if [[ -s $outdir/hostname ]]; then
+		if [[ $(cat "${outdir}/hostname") = "${hostname}" ]]; then
+			echo "skip"
+			return 0;
+		fi
+
+		info "Recording secondary hostname: $hostname"
+		echo "$hostname" > "${1}/hostname-${hostname:0:80}"
+		echo "public hostname-${hostname:0:80}"
+		return 0
+	fi
+
+	info "Recording primary hostname: $hostname"
+	echo "$hostname" > "${1}/hostname"
+	echo "public hostname"
+}
+
+genrootfskey() {
+	if [[ -s ${outdir}/rootfs.key.enc ]]; then
+		echo "skip"
+		return 0
+	fi
+
+	info "Creating a secret filesystem key for enrolled system"
+	openssl rand 64 > "${1}/rootfs.key" \
+	|| die "$0: unable to create disk encryption key"
+	echo "sensitive rootfs.key"
+}
+
+gentest0() {
+	if [[ -s ${outdir}/test0.enc ]]; then
+		echo "skip"
+		return 0
+	fi
+	dd if=/dev/urandom of="${1}/test0" bs=512 count=1 2>/dev/null
+	sha256 < "${1}/test0" > "${1}/test0pub"
+	echo "sensitive test0 test0pub"
+}
+
+gentest1() {
+	local suffix=$RANDOM
+	echo test4$suffix > "${1}/test4-$suffix"
+	echo test4pub > "${1}/test4pub-$suffix"
+	echo "public test4-$suffix test4pub-$suffix"
+}
+
+gentest2() {
+	echo "skip"
+}
+
+configure() {
+	local var varname val
+
+	[[ -n ${1:-} && $1 = *=* ]] || die "Not a configuration assignment: $1"
+	varname=${1%%=*}
+	var=${varname%%[[]*}
+	val=${1#*=}
+	[[ -n ${vars[$var]:-} ]] || die "Not a configuration variable: $var"
+	typeset -n v=$varname
+	case "${vars[$var]}" in
+	scalar)	v=$val;;
+	assoc)	v=$val;;
+	array)	if [[ $varname = *\[* ]]; then v="$val"; else v+=("$val"); fi;;
+	*)	die "Not a configuration variable: $var";;
+	esac
+}
+
+usage() {
+	((${1:-1} == 0)) || exec 1>&2
+	pager=cat
+	if [[ -t 0 && -t 1 && -t 2 ]]; then
+		if [[ -z ${PAGER:-} ]] && type less >/dev/null 2>&1; then
+			pager=less
+		elif [[ -z ${PAGER:-} ]] && type more >/dev/null 2>&1; then
+			pager=more
+		elif [[ -n ${PAGER:-} ]]; then
+			pager=$PAGER
+		fi
+	fi
+	$pager <<EOF
+Usage: $PROG [OPTIONS] HOSTNAME [DIR] < EKPUB
+       $PROG [OPTIONS] -I EKPUB HOSTNAME [DIR]
+
+  Enrolls the {EKPUB} as {HOSTNAME} in the attestation database used by
+  {tpm2-attest} and {attest-server}.  The enrolled device is provisioned
+  with credentials and metadata by configured {genprog}s, with secrets
+  encrypted to the {EKPUB}.
+
+  If {EKPUB} is already enrolled as {HOSTNAME}, then any missing
+  credentials and/or metadata will be added.  This makes enrollment
+  idempotent.
+
+  If {-a} is given, the {HOSTNAME} will be added as a secondary hostname
+  for {EKPUB} if already enrolled.
+
+  If {-r} is given, the existing enrollment for {EKPUB} is replaced.
+
+  Note that though credentials are encrypted, the attestation database
+  should be considered sensitive, as its ecrypted secrets should not be
+  furnished to clients except super-encrypted as part of a trusted state
+  attestation protocol.
+
+  Options:
+
+    -h			This message
+    -v			Verbose
+    -x			Trace
+
+    -a			Add to existing enrollment of this EKpub
+    -r			Replace the current enrollment of this EKpub
+    -I EKPUB		EKpub file (default: $EKPUB)
+
+  Configuration options:
+
+    -C CONF		Config file (default: $CONF).
+    -V VAR=VAL		Scalar configuration parameter assignment.
+    -V VAR=VAL		Add value to array configuration parameter.
+    -V VAR[k]=VAL	Set associative ("dict") configuration parameter.
+
+$(configs)
+
+		ESCROW_PUBS_DIR should be a directory containing files named:
+		    NAME.pem	-> RSA public keys
+		    NAME.pub	-> TPM EKpub
+		    NAME.policy	-> policy to use when escrowing to NAME.pub
+
+		GENPROGS should be an array of secret or metadata generators
+		for enrolled systems (default: ${GENPROGS[*]}).
+
+		Each {genprog} may have additional configuration variables that
+		all may be set via configuration files or {-V SETTING}.
+
+		POLICY is the default policy for secrets generated by
+		{genprog}s.
+		POLICIES key names should be {genprog} names minus any
+		"gen" prefix.  Values should be policyDigest values,
+		names of hard-coded policies, or names of executables
+		(default: POLICIES[rootkey]=pcr11).
+
+		TRANSPORT_METHOD should be EK or TK (default: EK).
+
+  NOTE: Until https://github.com/tpm2-software/tpm2-tools/issues/2761 is
+	closed, {$PROG} may require a TPM (simulated will suffice) for
+	policyDigest computations of policies to be used for encrypting
+	sensitive data.  Specify all policies as policyDigest values in
+	hex to avoid this problem.
+
+  \${CONF} must be a bash script that will be sourced.
+  \${DBDIR}/attest-enroll.conf will also be sourced, if it exists.
+
+  If \${DBDIR} is not configured, then both \${CHECKOUT} and \${COMMIT}
+  must be configured.  \${CHECKOUT}, if given, will be run early and its
+  output will be a directory in which {$PROG} will do its work.
+  \${COMMIT}, if given, will be run when {$PROG} is done to save its
+  work.  Both, \${CHECKOUT} and \${COMMIT}, are called with these
+  arguments:
+	\${ekhash} \${hostname} \${DBDIR}
+
+  {genprog}s will be called in the order they are given, with the following
+  arguments:
+
+    TMP-OUTPUT-DIR ENROLL-DIR HOSTNAME
+
+  and are expected to a) create one or more files in TMP-OUTPUT-DIR, b) output:
+
+    sensitive FILENAME1 [FILENAME2 ..].
+
+  or
+
+    public FILENAME1 [FILENAME2 ..].
+
+  or
+
+    skip [REASON]
+
+  E.g.,
+
+    sensitive SOMEPRIVKEY
+
+    sensitive SOMEPRIVKEY.PEM SOMEPUBKEY.PEM SOMECERT.PEM
+
+    public SOME-META-DATA-HERE
+
+    skip NOT NEEDED
+
+  The FILENAMEs are of files in the TMP-OUTPUT-DIR.  Any sensitive FILENAME1
+  file will be encrypted and escrowed; all other files will be copied to the
+  enrollment area for the given EKpub.
+
+  Exit status:
+
+   - 0	Success
+   - 1  Error
+EOF
+	exit "${1:-1}"
+}
+
+add=false
+debug=false
+outdir=
+replace=false
+VERBOSE=0
+while getopts +:C:I:V:adhrvx opt; do
+case "$opt" in
+C)	# Read given configuration
+	# shellcheck disable=SC1090
+	. "$OPTARG"
+	if ! $configured; then
+		# Save the first given config so that genprogs can see it
+		export SAFEBOOT_ENROLL_CONF="$OPTARG"
+		configured=true
+	fi
+	CONF='';;
+I)	EKPUB=$OPTARG;;
+V)	if ! $configured && [[ -f $SAFEBOOT_ENROLL_CONF ]]; then
+		. "$SAFEBOOT_ENROLL_CONF"
+		configured=true
+	fi
+	configure "$OPTARG";;
+a)	add=true;;
+d)	debug=true;;
+h)	usage 0;;
+r)	replace=true;;
+v)	((VERBOSE++)) || true;;
+x)	set -vx;;
+*)	usage;;
+esac
+done
+shift $((OPTIND - 1))
+(($# == 1 || $# == 2)) || usage
+hostname=$1
+outdir=${2:-}
+shift
+
+# Read default configuration if none given
+# shellcheck disable=SC1090
+if [[ -n ${CONF:-} && -f ${CONF} ]]; then
+	. "${CONF}"
+	if ! $configured; then
+		export SAFEBOOT_ENROLL_CONF="$CONF"
+		configured=true
+	fi
+fi
+[[ -z ${DBDIR:-} && ( -z ${CHECKOUT:-} || -z ${COMMIT:-} ) ]]	\
+&& die "Missing DBDIR setting and either or both of CHECKOUT and COMMIT"
+# shellcheck disable=SC1090
+if [[ -n ${DBDIR:-} && -f ${DBDIR:-}/attest-enroll.conf ]]; then
+	. "${DBDIR}/attest-enroll.conf"
+	if ! $configured; then
+		export SAFEBOOT_ENROLL_CONF="$CONF"
+		configured=true
+	fi
+fi
+[[ ${TRANSPORT_METHOD:-} = @(TK|EK) ]]	\
+|| die "TRANSPORT_METHOD must be either 'TK' or 'EK'"
+[[ -z $ESCROW_PUBS_DIR || -d $ESCROW_PUBS_DIR ]] \
+|| die "ESCROW_PUBS_DIR -- must be a directory or not given"
+
+# XXX This policy is for the EK method.
+#
+# FIXME We could make policies for EK/TK have the same digest by using
+#       TPM2_PolicyOR:
+#
+#       tpm2 policy... -L ...
+#       tpm2 policyor  -L ... sha256:$(tpm2 policycommandcode ...),$(tpm2 policycommandcode ...)
+((${#POLICIES[@]} == 0))	\
+&& POLICIES[rootfskey]="7fdad037a921f7eec4f97c08722692028e96888f0b970dc7b3bb6a9c97e8f988"
+
+# Normalize policies
+for policy_name in "${!POLICIES[@]}"; do
+	p=${POLICIES[$policy_name]:-}
+	[[ -n $p ]] || continue
+	if ((${#p} == 64)) && [[ $p = +([0-9a-fA-F]) ]]; then
+		continue;
+	fi
+	if [[ $p = [a-zA-Z]+([a-zA-Z0-9_-]) ]]; then
+		declare -n var="known_policy_$p"
+		if [[ -n ${var:-} ]]; then
+			POLICIES[$policy_name]=$var
+			unset -n var
+			continue
+		fi
+		unset -n var
+	fi
+	if [[ $p = /* && -x $p ]]; then
+		POLICIES[$policy_name]=$("$p" "$TRANSPORT_METHOD")
+	elif [[ $p = /* && -f $p ]]; then
+		sz=$(stat -c %s "$p")
+		if ((sz == 32)); then
+			p=$(xxd -p < "$p")
+		else
+			# shellcheck disable=SC2162,SC2034
+			read p2 junk < "$p"
+			((${#p2} != 64)) \
+			|| die "Policy $p is not a policy digest"
+			[[ $p2 = +([0-9a-fA-F]) ]] \
+			|| die "Policy $p is not a policy digest"
+			POLICIES[$policy_name]=$p2
+		fi
+	fi
+done
+
+tmp=
+success=false
+cleanup() {
+	if ((VERBOSE > 1)); then
+		(
+		[[ -n $outdir && -d $outdir ]] && sha256sum "${outdir}/"*
+		sha256sum "$tmp"/*
+		) | sort
+	fi
+
+	if $debug; then
+		echo "LEAVING TEMP DIR ALONE: $tmp" 1>&2
+		exit 0;
+	fi
+	[[ -n $tmp ]] && rm -rf "$tmp";
+	if ! $success; then
+		warn "Failed to enroll $hostname"
+	fi
+}
 tmp="$(mktemp -d)"
-cleanup() { rm -rf "$tmp" ; }
 trap cleanup EXIT
 
+info() {
+	((VERBOSE == 0)) || echo info: "$@" 1>&2
+}
 
-cat - > "$tmp/ek.pub" \
-|| die "$0: unable to read ek.pub from stdin"
+# escrow SRC-FILE-NAME [DST-FILE-NAME]
+escrow() {
+	local src="$1"
+	local dst="$2"
+	local aname k policy
 
+	[[ -z $ESCROW_PUBS_DIR ]] && return 0
+	for k in "${ESCROW_PUBS_DIR}"/*.pem "${ESCROW_PUBS_DIR}"/*.pub; do
+		aname=${k##*/}
+		[[ $aname = [*].??? ]] && continue
+		if [[ $aname = *.pub ]]; then
+			if [[ -f ${aname%.pub}.policy ]]; then
+				policy=${ESCROW_PUBS_DIR}/${aname%.pub}.policy
+			else
+				policy="${ESCROW_POLICY:-}"
+			fi
+			info "Escrowing secret ${src} to TPM $k"
+			tpm2-send -f -P "$policy" \
+				"$k" "${tmp}/${src}" \
+				"${outdir}/escrow-${aname}-${dst}" \
+				|| die "$0: unable to escrow secret with EK"
+		else
+			info "Escrowing secret $src as $dst to bare RSA pubkey $k"
+			openssl rsautl \
+				-encrypt \
+				-pubin \
+				-inkey "$k" \
+				-in "${tmp}/${src}" \
+				-out "${outdir}/escrow-${aname}-${dst}" \
+				|| die "$0: unable to escrow secret with bare public key"
+		fi
+	done
+}
+
+# Encrypt $1 and place the resulting ciphertext in ${2}.symkeyenc and ${2}.enc.
+#
+# Creates a symmetric key in ${1}-symkey that the caller may escrow and must
+# remove.
+#
+# ${2}.enc is encrypted in the ${1}-symkey using AES-128 keyed with the
+# randomly generated key (${1}-symkey), and MAC'ed with HMAC-SHA256.  See
+# functions.sh:aead_encrypt() for details.
+#
+# ${2}.symkeyenc is encrypted using the specified $TRANSPORT_METHOD.
+encrypt_util() {
+	local genprog="$1"
+	shift
+
+	local symkey="${1}-symkey"
+	local policy="${POLICIES[${genprog#gen}]:-${POLICY:-}}"
+
+	_rand 32 > "$symkey"
+	aead_encrypt "$1" "$symkey" "${2}.enc"
+
+	info "Encrypting secret $1 to enrollee with policy $policy"
+	tpm2-send					\
+		-f					\
+		-P "$policy"				\
+		-M "$TRANSPORT_METHOD"			\
+		"$EKPUB" "$symkey" "${2}.symkeyenc"
+	echo "$policy" > "${2}.policy"
+}
+
+# Encrypt GENPROG_NAME FILE0
+encrypt() {
+	local genprog=$1
+	shift
+
+	[[ -f $outdir/${1}.symkeyenc && -f $outdir/${1}.enc ]] \
+	&& return 0
+
+	# Encrypt and escrow
+	encrypt_util "$genprog" "${tmp}/$1" "${outdir}/${1}"
+	escrow "${1}-symkey" "${1}.symkeyenc"
+	shift
+}
+
+cat "$EKPUB" > "$tmp/ekpub" \
+|| die "$0: unable to read EKpub from stdin"
+exec </dev/null
+
+# Normalize EKpub into TPM2B_PUBLIC form
+# TODO: Support EKcert
+case "$(file -b --mime-type "$tmp/ekpub")" in
+text/plain)
+	# This is a PEM file, most likely
+	pem2tpm2bpublic "$tmp/ekpub" "$tmp/ek.pub" "${DEFAULT_EK_POLICY:-}";;
+
+application/octet-stream)
+	cp "$tmp/ekpub" "$tmp/ek.pub";;
+
+*)	die "Given EKpub is not in a supported format: $(file -b --mime-type "$tmp/ekpub")";;
+esac
+EKPUB="$tmp/ek.pub"
 
 #
 # Verify that the EK meets our specifications
 #
+# TODO: Support EKcert.
+#
 tpm2 print \
 	-t TPM2B_PUBLIC \
-	"$tmp/ek.pub" \
-| tee "$tmp/ek.txt" \
+	"$tmp/ek.pub" > "$tmp/ek.txt" \
 || die "$0: unable to parse EK"
 
 grep -q "value: fixedtpm.*sensitivedataorigin.*restricted" "$tmp/ek.txt" \
@@ -41,76 +523,102 @@ grep -q "value: fixedtpm.*sensitivedataorigin.*restricted" "$tmp/ek.txt" \
 grep -q "authorization policy: 837197..." "$tmp/ek.txt" \
 || warn "$0: EK has wrong authorization policy, attestation will likely fail"
 
-
 #
 # Figure out where to put this enrolled key
 #
-ekhash="$(sha256sum $tmp/ek.pub | cut -f1 -d' ' )"
-ekprefix="$(echo $ekhash | cut -c1-2)"
+ekhash="$(sha256sum "$tmp/ek.pub" | cut -f1 -d' ' )"
+ekprefix=${ekhash:0:2}
 
-if [ -z "$hostname" ] ; then
-	hostname="$(echo $ekhash | cut -c1-8)"
-	warn "$0: using default hostname $hostname"
+if [[ -z "$hostname" ]] ; then
+	hostname="$(echo "$ekhash" | cut -c1-8)"
+	warn "$PROG: using default hostname $hostname"
 fi
 
+# Invoke checkout hook
+[[ -z ${CHECKOUT:-} ]] \
+|| outdir=$("$CHECKOUT" "$ekhash" "$hostname" "$DBDIR")
+[[ -z $outdir ]] \
+&& outdir="$DBDIR/$ekprefix/$ekhash"
+
 # Create the output directory and install files into it
-outdir="$OUTPREFIX/$ekprefix/$ekhash"
-mkdir -p "$outdir" || die "$outdir: unable to create output directory"
+#
+# If we end up doing nothing at all then we'll fail.  We rely on that in
+# tests/test-enroll.sh.  We use the {did_something} variable to keep track of
+# this.
+mkdir -p "${outdir%/*}" || die "unable to mkdir ${outdir%/*}"
+if [[ -d $outdir ]] && $replace; then
+	[[ -d "${outdir}-" ]] && rm -rf "${outdir}-"
+	info "Replacing enrolled state for $ekhash"
+	mv "$outdir" "${outdir}-" || die "could not rename previous enrollment"
+	did_something=true
+elif [[ -d $outdir && -f ${outdir}/hostname &&
+        $(cat ${outdir}/hostname) != "$hostname" ]]; then
+
+	$add || die "already enrolled: $ekhash"
+
+	info "Adding secondary hostname to enrollment for $ekhash"
+	did_something=true
+elif [[ -d $outdir && -f ${outdir}/hostname ]]; then
+	info "Possibly adding missing items to enrolled state for $ekhash"
+	did_something=false
+else
+	info "Creating enrollment state for $ekhash"
+	did_something=true
+fi
+mkdir -p "$outdir" || die "unable to create output directory $outdir"
 
 cp "$tmp/ek.pub" "$outdir/ek.pub" \
-|| die "$0: unable to copy EK public key to output directory $outdir"
+|| die "unable to copy EK public key to output directory $outdir"
 
-#
-# Generate a device specific RSA key and create a TPM2 duplicate structure
-# so that only the destination device can use it with their TPM
-#
-openssl genrsa -out "$tmp/tk-priv.pem" \
-|| die "$0: unable to create TK private key"
+info "Generating secrets and metadata"
+for genprog in "${GENPROGS[@]}"; do
+	info "Running GENPROG $genprog"
 
-openssl rsa \
-	-pubout \
-	-in "$tmp/tk-priv.pem" \
-	-out "$outdir/tk.pem" \
-|| die "$0: unable to create TK public key"
+	# We want to split the output of genprog on spaces:
+	# shellcheck disable=SC2046
+	set -- $("$genprog" "$tmp" "$outdir" "$hostname")
 
-# HACK: hard code the policy that PCR11 == 0 for the TK
-echo 'fd32fa22c52cfc8e1a0c29eb38519f87084cab0b04b0d8f020a4d38b2f4e223e' \
-| xxd -p -r > "$tmp/policy.dat" \
-|| die "$0: unable to create TK policy"
+	if (($# > 0)) && [[ $1 = skip ]]; then
+		shift
+		info "GENPROG $genprog skipped${1:+": "}$*"
+		continue
+	fi
+	if (($# < 2)) ||
+	   [[ $1 != @(sensitive|public) ||
+	      ! -f $tmp/$2 ]]; then
+		warn "GENPROG $genprog output is unexpected: $*; skipping"
+		continue
+	fi
+	kind=$1
+	shift
+	if [[ $kind = sensitive ]]; then
+		# Encrypt file, escrow, and place into output dir.
+		info "Encrypting secret file from $genprog: $1"
+		encrypt "$genprog" "$1"
+		did_something=true
+		shift
+	fi
 
-tpm2 duplicate \
-	--tcti none \
-	-U "$outdir/ek.pub" \
-	-G rsa \
-	-L "$tmp/policy.dat" \
-	-k "$tmp/tk-priv.pem" \
-	-u "$outdir/tk.pub" \
-	-r "$outdir/tk.dpriv" \
-	-s "$outdir/tk.seed" \
-|| die "$0: unable to duplicate TK into TPM for EK"
+	# Copy any remaining files
+	while (($# > 0)); do
+		if [[ -f ${outdir}/$1 ]]; then
+			info "Replacing public file $1"
+			mv -f "${outdir}/$1" "${outdir}/${1}-"
+		else
+			info "Installing public file $1"
+		fi
+		cp -f "${tmp}/$1" "${outdir}/${1}"
+		did_something=true
+		shift
+	done
 
-#
-# TODO: escrow the TK
-#
-
-# encrypt the disk encryption key with the seed key so that only the destination
-# machine can decrypt it using a TPM duplicate key
-openssl rand 64 > "$tmp/rootfs.key" \
-|| die "$0: unable to create disk encryption key"
-
-openssl rsautl \
-	-encrypt \
-	-pubin \
-	-inkey "$outdir/tk.pem" \
-	-in "$tmp/rootfs.key" \
-	-out "$outdir/rootfs.enc" \
-|| die "$0: unable to encrypt disk key with TK"
-
+done
 
 #
 # Build the cloud-init data for this host
 #
-cat > "$outdir/user-data" <<EOF
+if [[ ! -s $outdir/user-data ]]; then
+	cat > "$outdir/user-data" <<EOF
 #cloud-config
 hostname: $hostname
 chpasswd:
@@ -119,8 +627,26 @@ chpasswd:
     root:password
     ubuntu:password
 EOF
+	did_something=true
+fi
 
-echo '{"instance-id": "iid-local01"}' > "$outdir/meta-data"
+if [[ ! $outdir/meta-data ]]; then
+	echo '{"instance-id": "iid-local01"}' > "$outdir/meta-data"
+	did_something=true
+fi
 
+if [[ -z ${COMMIT:-} ]]; then
+	# Update hostname "index"
+	mkdir -p "$DBDIR/hostname2ekpub"
+	echo "$ekhash" > "$DBDIR/hostname2ekpub/$hostname"
+fi
 
-warn "$hostname: enrolled $ekhash"
+if $did_something; then
+	if [[ -n ${COMMIT:-} ]]; then
+		"$COMMIT" "$ekhash" "$outdir" "$hostname" "$DBDIR"
+	fi
+	info "$hostname: enrolled $ekhash"
+	success=true
+else
+	die "Already enrolled and nothing to add to enrollment"
+fi

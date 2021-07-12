@@ -56,6 +56,7 @@ systems, etc.
 * [Source code](https://github.com/osresearch/safeboot)
 * [`safeboot` subcommands](safeboot.md)
 * [`tpm2-attest` subcommands](tpm2-attest.md)
+* [`attest-enroll`](attest-enroll.md)
 
 ## Status
 
