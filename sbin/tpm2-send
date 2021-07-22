@@ -179,7 +179,7 @@ function wkname_tpm {
 		attrs='adminwithpolicy|sign'
 		has_policy=true
 	elif (($# > 0)); then
-		make_policyDigest "$command_code" "$@" 1>&2
+		make_policyDigest "${d}/sesswk" "${d}/policy" "$command_code" "$@" 1>&2
 		attrs='adminwithpolicy|sign'
 		has_policy=true
 
@@ -251,7 +251,7 @@ TK)	info "Generating TK"
 
 	args=()
 	if (($# > 0)); then
-		make_policyDigest "$command_code" "$@" 1>&2
+		make_policyDigest "${d}/sesstk" "${d}/policy" "$command_code" "$@" 1>&2
 		args=("--policy=${d}/policy")
 	fi
 

@@ -16,15 +16,25 @@ shopt -s extglob
 function usage {
 	((${1:-1} > 0)) && exec 1>&2
 	cat <<EOF
-Usage: $PROG [-o FILE] [-A | -D] POLICY-CMD [ARGS [\\; ...]]
+Usage: $PROG [options] POLICY
+       $PROG [options] -e SESSION POLICY
 
-  The first form computes the policyDigest of the given policy.
+  The first form computes the policyDigest of the given {POLICY}.
 
-  Policies arguments should be of the form:
+  The second form executes the policyDigest in a policy session saved in
+  {SESSION} (a file).
+
+  A {POLICY} starts with an optional TPM 2.0 command-code (e.g., TPM2_CC_Sign),
+  and the rest is a sequence of {tpm2 policy*} command-lines separated by ';':
 
        $PROG ... tpm2 policy... args... \\; tpm2 policy args...
 
   but without any {--session}|{-S} nor {--policy}|{-L} options.
+
+  For alternations use {tpm2 policyor} with each alternative given as a sub-
+  {POLICY} surrounded with '(' and ')':
+
+       $PROG ... tpm2 policyor '(' tpm2 policy... ';' ... ')' '(' ... ') ...
 
   If -A is given then {tpm2 policycommandcode} will be added at the end for
   enabling TPM2_ActivateCredential().
@@ -32,29 +42,55 @@ Usage: $PROG [-o FILE] [-A | -D] POLICY-CMD [ARGS [\\; ...]]
   If -D is given then {tpm2 policycommandcode} will be added at the end for
   enabling TPM2_RSA_Decrypt().
 
+  Options:
+
+   -h	    This message.
+   -v	    Verbose.
+   -x	    Trace.
+
+   -e SESS  Create a policy session {SESS} and execute the {POLICY} in that
+	    session.
+   -f	    Force (overwrite FILE).
+   -o FILE  Where to put the SHA-256 policyDigest (hex-encoded).
+   -p FILE  Where to put the SHA-256 policyDigest (binary).
+   -A	    Add {tpm2 policycommandcode TPM2_CC_ActivateCredential}.
+   -D	    Add {tpm2 policycommandcode TPM2_CC_RSA_Decrypt}.
+
   E.g.:
 
       $ # Require that PCR 11 be unextended
       $ $PROG tpm2 policypcr -l "sha256:11"
+
+      $ # Allow signing and credential activation only
+      $ $PROG tpm2 policyor '(' tpm2 policycommandcode TPM2_CC_Sign ')' \\
+				  '(' tpm2 policycommandcode TPM2_CC_ActivateCredential ')'
 EOF
 	exit "${1:-1}"
 }
+
+(($# == 0)) && usage 0
 
 # shellcheck disable=SC1090
 . "$BASEDIR/../functions.sh"
 
 out=
 force=false
+policy=
+session=
+VERBOSE=0
 activate=false
 rsa_decrypt=false
 command_code=
-while getopts +:ADhefo:x opt; do
+while getopts +:ADhe:fo:p:vx opt; do
 case "$opt" in
 A)	activate=true;;
 D)	rsa_decrypt=true;;
+e)	session=$OPTARG;;
 h)	usage 0;;
 f)	force=true;;
 o)	out=$OPTARG;;
+p)	policy=$OPTARG;;
+v)	((++VERBOSE));;
 x)	set -vx;;
 *)	usage;;
 esac
@@ -70,7 +106,18 @@ d=
 trap 'rm -rf "$d"' EXIT
 d=$(mktemp -d)
 
-policyDigest=$(make_policyDigest $command_code "$@")
+: "${policy:="${d}/policy"}"
+if [[ -n $session ]]; then
+	(($# > 0)) && [[ $1 = [0-9] && -n $command_code ]]		\
+	&& die "-A and -D are not allowed when using alternations"
+
+	# exec_policy will create the policy session
+	exec_policy "$session" "$policy" $command_code "$@"
+	exit 0
+fi
+
+session="${d}/session"
+policyDigest=$(make_policyDigest "$session" "$policy" $command_code "$@")
 [[ -z $out ]] || ! $force >| "$out"
 [[ -z $out ]] ||   $force > "$out"
 echo "$policyDigest"

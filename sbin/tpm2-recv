@@ -80,6 +80,9 @@ for i in dpriv pub seed; do
 done
 $use_tk || command_code=TPM2_CC_ActivateCredential
 
+# Don't pass a command-code to exec_policy if the policy refers to one
+[[ "$*" = *TPM2_CC_* ]] && command_code=''
+
 # Get the EK handle
 tpm2 flushcontext --transient-object
 tpm2 flushcontext --loaded-session
@@ -90,8 +93,9 @@ tpm2 createek					\
 	--public "${d}/ek.pub"			\
 || die "tpm2: unable to create ek object"
 
-# Make policyDigest
-(($# > 0)) && make_policyDigest "$command_code" "$@"
+# Make policyDigest (needed for EK method, when loading the WK)
+(($# > 0)) && ! $use_tk							\
+&& make_policyDigest "${d}/session" "${d}/policy" $command_code "$@"
 
 # Create empty auth session for EK
 tpm2 flushcontext --transient-object
@@ -103,13 +107,9 @@ tpm2 policysecret --session "${d}/sessionek.ctx" --object-context endorsement
 function auth {
 	tpm2 flushcontext --transient-object
 	tpm2 flushcontext --loaded-session
-	tpm2 startauthsession			\
-		--session "${d}/session.ctx"	\
-		--policy-session
-	# exec_policy will {die} if we fail to satisfy the policy
-	exec_policy "$command_code" "$@"
+	exec_policy "${d}/session.ctx" "${d}/policy.dat" $command_code "$@"
 	tpm2 flushcontext --transient-object
-	tpm2 flushcontext --loaded-session
+	rm -f "${d}/policy.dat"
 }
 
 if $use_tk; then
