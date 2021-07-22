@@ -91,7 +91,7 @@ tpm2 createek					\
 || die "tpm2: unable to create ek object"
 
 # Make policyDigest
-(($# > 0)) && make_policyDigest "$command_code" "$@"
+(($# > 0)) && make_policyDigest "${d}/session" "${d}/policy" "$command_code" "$@"
 
 # Create empty auth session for EK
 tpm2 flushcontext --transient-object
@@ -107,7 +107,7 @@ function auth {
 		--session "${d}/session.ctx"	\
 		--policy-session
 	# exec_policy will {die} if we fail to satisfy the policy
-	exec_policy "$command_code" "$@"
+	exec_policy "${d}/session.ctx" "${d}/policy.dat" "$command_code" "$@"
 	tpm2 flushcontext --transient-object
 	tpm2 flushcontext --loaded-session
 }

@@ -16,15 +16,21 @@ shopt -s extglob
 function usage {
 	((${1:-1} > 0)) && exec 1>&2
 	cat <<EOF
-Usage: $PROG [-o FILE] [-A | -D] POLICY-CMD [ARGS [\\; ...]]
+Usage: $PROG [options] [-o FILE] [-A | -D] POLICY
 
-  The first form computes the policyDigest of the given policy.
+  The first form computes the policyDigest of the given {POLICY}.
 
-  Policies arguments should be of the form:
+  A {POLICY} starts with an optional TPM 2.0 command-code (e.g., TPM2_CC_Sign),
+  and the rest is a sequence of {tpm2 policy*} command-lines separated by ';':
 
        $PROG ... tpm2 policy... args... \\; tpm2 policy args...
 
   but without any {--session}|{-S} nor {--policy}|{-L} options.
+
+  For alternations use {tpm2 policyor} with each alternative given as a sub-
+  {POLICY} surrounded with '(' and ')':
+
+       $PROG ... tpm2 policyor '(' tpm2 policy... ';' ... ')' '(' ... ') ...
 
   If -A is given then {tpm2 policycommandcode} will be added at the end for
   enabling TPM2_ActivateCredential().
@@ -32,13 +38,30 @@ Usage: $PROG [-o FILE] [-A | -D] POLICY-CMD [ARGS [\\; ...]]
   If -D is given then {tpm2 policycommandcode} will be added at the end for
   enabling TPM2_RSA_Decrypt().
 
+  Options:
+
+   -h	    This message.
+   -v	    Verbose.
+   -x	    Trace.
+
+   -f	    Force (overwrite FILE).
+   -o FILE  Where to put the SHA-256 policyDigest (hex-encoded).
+   -A	    Add {tpm2 policycommandcode TPM2_CC_ActivateCredential}.
+   -D	    Add {tpm2 policycommandcode TPM2_CC_RSA_Decrypt}.
+
   E.g.:
 
       $ # Require that PCR 11 be unextended
       $ $PROG tpm2 policypcr -l "sha256:11"
+
+      $ # Allow signing and credential activation only
+      $ $PROG tpm2 policyor '(' tpm2 policycommandcode TPM2_CC_Sign ')' \\
+				  '(' tpm2 policycommandcode TPM2_CC_ActivateCredential ')'
 EOF
 	exit "${1:-1}"
 }
+
+(($# == 0)) && usage 0
 
 # shellcheck disable=SC1090
 . "$BASEDIR/../functions.sh"
@@ -49,13 +72,15 @@ activate=false
 rsa_decrypt=false
 session_context=
 command_code=
-while getopts +:ADhefo:x opt; do
+VERBOSE=0
+while getopts +:ADhefo:vx opt; do
 case "$opt" in
 A)	activate=true;;
 D)	rsa_decrypt=true;;
 h)	usage 0;;
 f)	force=true;;
 o)	out=$OPTARG;;
+v)	((++VERBOSE));;
 x)	set -vx;;
 *)	usage;;
 esac
@@ -71,7 +96,7 @@ d=
 trap 'rm -rf "$d"' EXIT
 d=$(mktemp -d)
 
-policyDigest=$(make_policyDigest $command_code "$@")
+policyDigest=$(make_policyDigest "${d}/session" "${d}/policy" $command_code "$@")
 [[ -z $out ]] || ! $force >| "$out"
 [[ -z $out ]] ||   $force > "$out"
 echo "$policyDigest"

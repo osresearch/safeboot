@@ -10,7 +10,7 @@ die() { echo "${PROG:+${PROG}: }$die_msg""$*" >&2 ; exit 1 ; }
 warn() { echo "$@" >&2 ; }
 error() { echo "$@" >&2 ; return 1 ; }
 info() { ((${VERBOSE:-0})) && echo "$@" >&2 ; return 0 ; }
-debug() { ((${VERBOSE:-0})) && echo "$@" >&2 ; return 0 ; }
+debug() { ((${VERBOSE:-0}>1)) && echo "$@" >&2 ; return 0 ; }
 
 
 ########################################
@@ -64,6 +64,7 @@ PCR_DEFAULT=0000000000000000000000000000000000000000000000000000000000000000
 
 TPM2="$(command -v tpm2 || true)"
 [[ -z $TPM2 ]] && warn "tpm2 program not found! things will probably break"
+[[ $TPM2 = tpm2 ]] && TPM2="command tpm2"
 
 # if the TPM2 resource manager is running, talk to it.
 # otherwise use a direct connection to the TPM
@@ -77,10 +78,10 @@ fi
 
 
 tpm2() {
-	if ((${VERBOSE:-0})); then
-		/usr/bin/time -f '%E %C' "$TPM2" "$@"
+	if ((${VERBOSE:-0} > 2)); then
+		/usr/bin/time -f '%E %C' ${TPM2#command } "$@"
 	else
-		"$TPM2" "$@"
+		$TPM2 "$@"
 	fi
 }
 
@@ -495,45 +496,184 @@ aead_decrypt() {
 	fi
 }
 
-# Execute a policy given as arguments.
+indent() {
+	local depth=$((${depth:-0} + 1))
+
+	while ((depth > 0)); do printf '    '; ((depth--)); done
+}
+
+# exec_policy [ALTERNATIVES] SESSIONCTX POLICYDAT POLICY...
 #
-# The first argument may be a command code; if given, then {tpm2}
-# {policycommandcode} will be added to the given policy.  The rest must be
-# {tpm2_policy*} or {tpm2} {policy*} commands w/o any {--session}|{-c} or
-# {--policy}|{-L} arguments, and multiple commands may be given separate by
+# {ALTERNATIVES} is zero, one, or more integers 0 through 9 that are indices of
+# policy alternations in the {POLICY} that are to be executed.
+#
+# If alternatives to take are given then the SESSIONCTX must be for a policy
+# session.
+#
+# {SESSIONCTX} is the name of a saved session context file.
+#
+# {POLICYDAT} is the name of a file into which to write the POLICY's digest.
+#
+# {POLICY} is a policy definition (see below).
+#
+# If {SESSIONCTX} is a policy session and {POLICY} contains alternations then
+# {ALTERNATIVES} MUST be given.
+# 
+# Conversely, if {SESSIONCTX} is a trial session then {ALTERNATIVES} MUST NOT
+# be given.
+#
+# {POLICY} starts with an optional command-code and is followed by
+# {tpm2 policy*} command-lines as arguments, w/o any {--session}|{-c} or
+# {--policy|-L} arguments.  Multiple policy commands may be given, separated by
 # {';'}.
 #
-# E.g.,
+#	[TPM2_CC_*] tpm2 policy* ... ';' tpm2 policy* ... ';' ...
 #
-#	exec_policy TPM2_CC_ActivateCredential "$@"
-#	exec_policy tpm2 policypcr ... ';' tpm2 policysigned ...
-function exec_policy {
+# {tpm2 policyor} command-lines are special: the alternatives must be given as
+# separate arguments, either as a {POLICY} in parenthesis, or as policy
+# digests:
+#
+#	exec_policy sess pol tpm2 policyor '(' POLICY0 ')' '(' POLICY1 ')' ...
+#	exec_policy sess pol tpm2 policyor $digest0 $digest1 ...
+#	exec_policy sess pol tpm2 policyor '(' POLICY0 ')' $digest1...
+#
+# The output of this function is the digest of the {POLICYDAT} as it stands at
+# the end of {POLICY} execution.
+#
+# Simple policy example (no alternation):
+#
+#	tpm2_flushall
+#	tpm2 startauthsession --session sp
+#	exec_policy sp p TPM2_CC_ActivateCredential ';'		\
+#	    tpm2 policysecret --object-context endorsement
+#
+# Complex example (alternation):
+#
+#	# Compute digest of a policy that allows signing and decryption to
+#	# applications with access to the endorsement hierarchy:
+#	tpm2_flushall
+#	tpm2 startauthsession --session sp
+#	exec_policy sp p						\
+#	    tpm2 policyor						\
+#		'(' tpm2 policycommandcode TPM2_CC_Sign ')'		\
+#		'(' tpm2 policycommandcode TPM2_CC_RSA_Decrypt ')' ';'	\
+#		tpm2 policysecret --object-context endorsement
+#
+#	# Execute the same policy to sign:
+#	tpm2_flushall
+#	tpm2 startauthsession --session sp --policy-session
+#	exec_policy 1 sp p						\
+#	    tpm2 policyor						\
+#		'(' tpm2 policycommandcode TPM2_CC_Sign ')'		\
+#		'(' tpm2 policycommandcode TPM2_CC_RSA_Decrypt ')' ';'	\
+#		tpm2 policysecret --object-context endorsement
+#
+#	# Execute the same policy to decrypt:
+#	tpm2_flushall
+#	tpm2 startauthsession --session sp --policy-session
+#	exec_policy 1 sp p						\
+#	    tpm2 policyor						\
+#		'(' tpm2 policycommandcode TPM2_CC_Sign ')'		\
+#		'(' tpm2 policycommandcode TPM2_CC_RSA_Decrypt ')' ';'	\
+#		tpm2 policysecret --object-context endorsement
+exec_policy() {
+	local -a alternatives
+	local depth=0 session policy
+
+	# Use a dynamic variable to keep track of alternativs.
+	alternatives=()
+	while (($# > 0)) && [[ $1 = @([0-9]) ]]; do
+		alternatives+=("$1")
+		shift
+	done
+
+	session=$1
+	policy=$2
+	shift 2
+	tpm2_flushsome
+	debug "$(indent)Running: exec_policy_helper $*"
+	exec_policy_helper "$@"
+}
+
+# subexp_length POLICY..
+#
+# Returns the number of arguments making up a policy expression.  The caller
+# will presumably shift those into an array and exec that sub-policy.
+subexp_length() {
+	local -n nv="$1"
+	local i depth=0 startswithparen=false
+	shift
+
+	nv=0
+	for i in "$@"; do
+		((++nv))
+		if [[ $i = '(' ]]; then
+			((nv == 1)) && startswithparen=true
+			((++depth))
+		elif [[ $i = ')' ]]; then
+			((depth--)) || true
+			if ((depth == 0)) && $startswithparen; then
+				return 0;
+			fi
+		fi
+		((depth < 0)) && die "Missing open parenthesis in policy expression: $*"
+		((depth == 0)) && [[ $i = ';' ]] && return 0
+	done
+	((depth == 0)) || die "Missing close parenthesis in policy expression: $*"
+	return 0;
+}
+
+# exec_policy_helper POLICY...
+exec_policy_helper() {
 	local command_code=''
 	local add_commandcode=true
 	local has_policy=false
+	local subexp_length
 	local -a cmd
 
-	if (($# > 0)) && [[ -z $1 || $1 = TPM2_CC_* ]]; then
+	(($# == 0)) && return 0
+
+	tpm2_flushsome
+	if [[ -z $1 || $1 = TPM2_CC_* ]]; then
 		command_code=$1
 		shift
 	fi
 	while (($# > 0)); do
-		has_policy=true
 		cmd=()
-		while (($# > 0)) && [[ $1 != ';' ]]; do
-			cmd+=("$1")
-			if ((${#cmd[@]} == 1)) && [[ ${cmd[0]} = tpm2_* ]]; then
-				cmd+=(	--session "${d}/session.ctx"
-					--policy "${d}/policy")
-			elif ((${#cmd[@]} == 2)) && [[ ${cmd[0]} = tpm2 ]]; then
-				cmd+=(	--session "${d}/session.ctx"
-					--policy "${d}/policy")
+		subexp_length=0
+		has_policy=true
+		subexp_length subexp_length "$@"
+		if ((subexp_length > 0)) && [[ $1 = tpm2_* ]]; then
+			if [[ $1 = tpm2_policyor ]]; then
+				cmd=(exec_policyOR_helper)
+			else
+				cmd=("$1" --session "$session"
+					  --policy "$policy")
 			fi
+			((subexp_length--)) || true
 			shift
-		done
-		(($# > 0)) && shift
+		elif ((subexp_length > 1)) && [[ $1 = tpm2 ]]; then
+			if [[ $2 = policyor ]]; then
+				cmd=(exec_policyOR_helper)
+			else
+				cmd=("$1" "$2" --session "$session"
+					       --policy "$policy")
+			fi
+			((subexp_length -= 2)) || true
+			shift 2
+		fi
+
+		# Build ONE tpm2 policy* command-line (or exec_policyOR_helper)
+		cmd+=("${@:1:$subexp_length}")
+		shift $subexp_length
+		if [[ ${cmd[0]} = exec_policyOR_helper ]]; then
+			add_commandcode=false
+		fi
+		(($# > 0)) && [[ $1 = ';' ]] && shift
+
 		# Run the policy command in the temp dir.  It -or the last command- must
 		# leave a file there named 'policy'.
+		info "$(indent)Running: (AND) ${cmd[*]}"
 		"${cmd[@]}" 1>&2					\
 		|| die "unable to execute policy command: ${cmd[*]}"
 		[[ ${cmd[0]} = tpm2 ]] && ((${#cmd[@]} == 1))		\
@@ -544,32 +684,125 @@ function exec_policy {
 		&& add_commandcode=false
 	done
 	if $has_policy && $add_commandcode && [[ -n $command_code ]]; then
+		info "$(indent)Running: (AND) tpm2 policycommandcode --session $session --policy $policy $command_code"
 		tpm2 policycommandcode			\
-			--session "${d}/session.ctx"	\
-			--policy "${d}/policy"		\
+			--session "$session"	\
+			--policy "$policy"	\
 			"$command_code" 1>&2		\
 		|| die "unable to execute policy command: tpm2 policycommandcode $command_code"
 	fi
-	xxd -p -c 100 "${d}/policy"
+	if ((depth == 0)); then
+		xxd -p -c 100 "$policy"
+	else
+		echo "$(xxd -p -c 100 "$policy")"
+	fi
 }
 
-# Compute the policyDigest of a given policy by executing it in a trial
-# session.
+exec_policyOR_helper() {
+	local npolicies=0
+	local subexp_length alt
+	local altsession='' altpolicy=''
+	local -a policyDigests
+	local -a policies
+	local -a cmd
+
+	# The alternative to take, if any
+	alt=${alternatives[$depth]:-"-1"}
+	policyDigests=()
+	policies=()
+	cmd=()
+
+	while (($# > 0)); do
+		tpm2_flushsome
+		if [[ $1 = ';' ]]; then
+			break
+		fi
+		subexp_length=0
+		altsession="${session}-${depth}-${npolicies}"
+		altpolicy="${policy}-${depth}-${npolicies}"
+		policies+=("$altpolicy")
+		((++depth))
+		if [[ $1 = '(' ]]; then
+			if ((alt == npolicies)); then
+				# Execute this sub-policy in the main, policy
+				# session
+				debug "$(indent)Using policy session $session"
+				altsession=$session
+			else
+				# Execute this sub-policy in a trial session
+				debug "$(indent)Starting trial session $altsession"
+				tpm2 startauthsession		\
+					--session "$altsession"
+			fi
+			# Count the number of arguments for this
+			# sub-expression.  (Includes the two parens.)
+			subexp_length subexp_length "$@"
+			shift # open paren
+			((subexp_length -= 2)) || true # open and close parens
+
+			# Build command-line
+			cmd=(exec_policy_helper "${@:1:$subexp_length}")
+			shift $subexp_length
+			shift # close paren
+
+			# Run it
+			debug "$(indent)Running: (OR) ${cmd[*]}"
+			session="$altsession"	\
+			policy="$altpolicy"	\
+			"${cmd[@]}"
+
+			# Cleanup
+			((alt == npolicies)) || rm -f "$altsession"
+		elif [[ ${#1} == 64 && $1 = +([0-9a-fA-F]) ]]; then
+			# Alternative given as SHA-256 digest
+			echo "$1" | xxd -p -r > "${policy}-${depth}-$npolicies"
+			shift
+		elif [[ -f $1 ]] && (($(stat -c %s "$1") == 32)); then
+			# Alternative given as policy SHA-256 digest (binary) file
+			cp "$1" "${policy}-${depth}-$npolicies"
+			shift
+		else
+			die "Invalid policyor alternative"
+		fi
+		policyDigests+=("$(xxd -p -c 100 "$altpolicy")")
+		((++npolicies))
+		((depth--))
+	done
+	IFS=",$IFS"
+	set -- "${policies[*]}"
+	IFS="${IFS#,}"
+	info "$(indent)ORing: ${policyDigests[*]}"
+	info "$(indent)Running: tpm2 policyor --session $session --policy $policy sha256:$1"
+	tpm2 policyor --session "$session"	\
+		      --policy  "$policy"	\
+		      sha256:"$1"
+	rm -f "${policies[@]}"
+}
+
+# make_policyDigest SESSIONCTX POLICYDAT POLICY
+#
+# Compute the policyDigest of a given {POLICY} by executing it in a trial
+# session.  See {exec_policy} for details on {POLICY}.
 function make_policyDigest {
 	tpm2 flushcontext --transient-object
 	tpm2 flushcontext --loaded-session
-	tpm2 startauthsession --session "${d}/session.ctx"
+	tpm2 startauthsession --session "$1"
+	rm -f "$2"
 	exec_policy "$@"
 }
 
 # A well-known private key just for the TPM2_MakeCredential()-based encryption
 # of secrets to TPMs.  It was generated with:
-#  openssl genpkey -genparam                               \
-#                  -algorithm EC                           \
-#                  -out "${d}/ecp.pem"                     \
-#                  -pkeyopt ec_paramgen_curve:secp384r1    \
+#  openssl genpkey -genparam					\
+#                  -algorithm EC				\
+#                  -out ecp.pem					\
+#                  -pkeyopt ec_paramgen_curve:secp384r1		\
 #                  -pkeyopt ec_param_enc:named_curve
-#  openssl genpkey -paramfile "${d}/ecp.pem"
+#  openssl genpkey -paramfile ecp.pem
+#
+#  This key is NEVER used for signing or key exchange (therefore also not for
+#  encryption).  It is only ever used for constructing activation objects whose
+#  cryptographic names will be bound by TPM2_MakeCredential() into its outputs.
 function wkpriv {
 	cat <<"EOF"
 -----BEGIN PRIVATE KEY-----
