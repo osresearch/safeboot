@@ -1,8 +1,15 @@
-# attest-enroll
+---
+title: "attest-enroll: enrolling a device for TPM2 remote attestation"
+summary: >-
+  `attest-enroll` registers a system into the safeboot
+  remote attestation system using the device's TPM's endorsement key
+  as a long term device identity.
+image: "images/tpm-header.jpg"
+---
 
 This script, [`sbin/attest-enroll`](/sbin/attest-enroll) implements
-enrollment of a device using its TPM's Endorsement Key's public key
-(`EKpub`).
+enrollment of a device into the attestation system using the device's
+TPM's Endorsement Key's public key (`EKpub`).
 
 It takes as arguments an `EKpub` or the `EKpub`'s public key in PEM
 form, and a desired `hostname`, and it creates the enrollment state for
@@ -116,7 +123,7 @@ The small secret will then be encrypted to the `TK`'s public key
 using `TPM2_RSA_Decrypt()` to decrypt the small secret encrypted to the
 `TKpub`.
 
-### Encryption of Larger Secrets
+## Encryption of Larger Secrets
 
 In all cases, regardless of a secret's size, we use
 [`sbin/tpm2-send`](/sbin/tpm2-send) to encrypt an ephemeral, random
