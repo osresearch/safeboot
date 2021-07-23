@@ -47,7 +47,6 @@ out=
 force=false
 activate=false
 rsa_decrypt=false
-session_context=
 command_code=
 while getopts +:ADhefo:x opt; do
 case "$opt" in

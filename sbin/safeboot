@@ -530,7 +530,7 @@ pcrs-sign() {
 			seek=1 \
 			bs=32 \
 			2>/dev/null \
-		|| die "$TPM/pcrs.bin: unable to update PCR2"
+		|| die "$TMP/pcrs.bin: unable to update PCR2"
 	fi
 
 	warn "$linux: PE hash $linux_hash"
@@ -549,7 +549,7 @@ pcrs-sign() {
 			seek=2 \
 			bs=32 \
 			2>/dev/null \
-		|| die "$TPM/pcrs.bin: unable to update PCR4"
+		|| die "$TMP/pcrs.bin: unable to update PCR4"
 	fi
 
 	# Add a "normal" entry for PCR 14, which ensures that the TPM
