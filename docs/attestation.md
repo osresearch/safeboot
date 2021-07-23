@@ -1,5 +1,5 @@
 ---
-title: "tpm2-attest: TPM2 Remote Attestation"
+title: "tpm2-attest: Simple TPM2 Remote Attestation"
 summary: >-
   tpm2-attest is a simple way to have an untrusted Linux machine
   generate signed TPM quotes, validate those quotes and endorsement keys
@@ -41,20 +41,18 @@ attestation.
 ## tl;dr
 
 * Enroll:
-
-   - extract `EKpub`, pick a device name
-   - run [`attest-enroll`](attest-enroll.md) (typically via an HTTP
+    - extract `EKpub`, pick a device name
+    - run [`attest-enroll`](attest-enroll.md) (typically via an HTTP
      API) with that `EKpub` and name
 
 * Attest:
-
-   - Client: `tpm2-attest > quote.tar`
-   - Client: Send `quote.tar` to server (typically via an HTTP API)
-   - Server: `tpm2-attest verify quote.tar | attest-verify` to verify the client's state
-   - Server: `tpm2-attest seal quote.tar < enrolled-secrets.tar > cipher.bin`
-   - Server: Send `cipher.bin` to client
-   - Client: `tpm2-attest unseal < cipher.bin > enrolled-secrets.tar`
-   - Client: use `tpm2-recv` to decrypt long-term secrets in `enrolled-secrets.tar`
+    - Client: `tpm2-attest > quote.tar`
+    - Client: Send `quote.tar` to server (typically via an HTTP API)
+    - Server: `tpm2-attest verify quote.tar | attest-verify` to verify the client's state
+    - Server: `tpm2-attest seal quote.tar < enrolled-secrets.tar > cipher.bin`
+    - Server: Send `cipher.bin` to client
+    - Client: `tpm2-attest unseal < cipher.bin > enrolled-secrets.tar`
+    - Client: use `tpm2-recv` to decrypt long-term secrets in `enrolled-secrets.tar`
 
 ---------------------
 
@@ -101,9 +99,7 @@ The enrolled state consists of secrets encrypted to the client's
 
 * Client creates an Attestation Key (`AK`), quotes all the PCRs and
   current time, and sends its `EKpub`, `AKpub`, quote, and eventlog
-  to the server.
-
-  This is done with
+  to the server.  This is done with
 
   ```
   tpm2-attest quote $nonce $pcrs > quote.tar
@@ -113,7 +109,6 @@ The enrolled state consists of secrets encrypted to the client's
   `AKpub` as the activation object, the `EKpub` as the key to encrypt
   to, and an AES-256 session key, and sends back the output as well
   as the enrolled state encrypted in that AES-256 session key.
-
   This is done with
 
   ```
