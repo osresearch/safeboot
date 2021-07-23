@@ -117,6 +117,17 @@ invalidated since the version counter will be incremented.
 Right now only a single crypt disk is supported.
 
 
+## sign
+Usage:
+```
+safeboot sign exe [exe.signed]
+```
+
+Sign an EFI executable with the safeboot keys.
+
+This is the raw command; you might want to use `safeboot linux-sign` or
+`safeboot recovery-sign` instead.
+
 ## unify-kernel
 Usage:
 ```
