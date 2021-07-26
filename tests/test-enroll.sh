@@ -49,7 +49,7 @@ cat > "${d}/attest-enroll.conf" <<EOF
 DBDIR=${d}/db
 POLICY=7fdad037a921f7eec4f97c08722692028e96888f0b970dc7b3bb6a9c97e8f988
 ESCROW_POLICY=
-TRANSPORT_METHOD=EK
+TRANSPORT_METHOD=WK
 GENPROGS+=(gentest0)
 ESCROW_PUBS_DIR=${d}/escrowpubs
 POLICIES[rootfskey]=pcr11
