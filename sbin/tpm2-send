@@ -39,7 +39,7 @@ Usage: $PROG EK-PUB SECRET OUT		 # Null policy
   Options:
 
 	-h		This help message.
-	-M EK|TK	Method to use for encryption to TPM (default: EK).
+	-M WK|TK	Method to use for encryption to TPM (default: WK).
 	-P POLICY	Use the named policy or policyDigest.
 	-f		Overwrite {OUT}.
 	-x		Trace this script.
@@ -65,14 +65,14 @@ Usage: $PROG EK-PUB SECRET OUT		 # Null policy
 
   The two methods of encryption to a TPM are:
 
-   - EK		Uses {TPM2_MakeCredential()} to encrypt an AES key to
+   - WK		Uses {TPM2_MakeCredential()} to encrypt an AES key to
 		the target's EKpub.
 
 		The target uses {TPM2_ActivateCredential()} to decrypt
 		the AES key.
 
-		A well-known key is used as the activation object, and
-		the given policy is associated with it.
+		A well-known key ("WK") is used as the activation object,
+		and the given policy is associated with it.
 		This method produces a single file named {OUT}.
 
    - TK		Uses {TPM2_Duplicate()} to encrypt an RSA private key to
@@ -100,7 +100,7 @@ EOF
 . "$BASEDIR/../functions.sh"
 
 force=false
-method=EK
+method=WK
 policy=
 policyDigest=
 while getopts +:hfxM:P: opt; do
@@ -121,9 +121,9 @@ function err {
 }
 
 case "$method" in
-EK)	command_code=TPM2_CC_ActivateCredential;;
+WK)	command_code=TPM2_CC_ActivateCredential;;
 TK)	command_code=TPM2_CC_RSA_Decrypt;;
-*)	err "METHOD must be \"EK\" or \"TK\"";;
+*)	err "METHOD must be \"WK\" or \"TK\"";;
 esac
 if [[ -n $policy ]] && (($# > 3)); then
 	echo "Error: -P and policy commands are mutually exclusive" 1>&2
@@ -229,7 +229,7 @@ function wkname {
 }
 
 case "$method" in
-EK)	info "Computing WKname"
+WK)	info "Computing WKname"
 	wkname=$(wkname "$@")				\
 	|| die "unable to compute the MakeCredential activation object's cryptographic name"
 	info "Encrypting to EKpub using TPM2_MakeCredential"

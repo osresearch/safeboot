@@ -19,7 +19,7 @@ Usage: $PROG CIPHERTEXT OUT [POLICY-CMD [ARGS] [;] ...]
 
   If {CIPHERTEXT}.tk.pem, {CIPHERTEXT}.tk.dpriv, {CIPHERTEXT}.tk.pub,
   and {CIPHERTEXT}.tk.seed exist, then the "TK" method of encryption is
-  assumed.  Otherwise the "EK" method of encryption is assumed.
+  assumed.  Otherwise the "WK" method of encryption is assumed.
 
   See {tpm2-send} for details of the two encryption-to-TPM methods
   supported.
@@ -93,7 +93,7 @@ tpm2 createek					\
 	--public "${d}/ek.pub"			\
 || die "tpm2: unable to create ek object"
 
-# Make policyDigest (needed for EK method, when loading the WK)
+# Make policyDigest (needed for WK method, when loading the WK)
 (($# > 0)) && ! $use_tk							\
 && make_policyDigest "${d}/session" "${d}/policy" $command_code "$@"
 

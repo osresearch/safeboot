@@ -36,7 +36,7 @@ DBDIR="$BASEDIR/build/attest"
 POLICY=
 ESCROW_POLICY=
 ESCROW_PUBS_DIR=
-TRANSPORT_METHOD=EK
+TRANSPORT_METHOD=WK
 DEFAULT_EK_POLICY=
 declare -a GENPROGS
 GENPROGS=(genhostname genrootfskey)
@@ -223,7 +223,7 @@ $(configs)
 		names of hard-coded policies, or names of executables
 		(default: POLICIES[rootkey]=pcr11).
 
-		TRANSPORT_METHOD should be EK or TK (default: EK).
+		TRANSPORT_METHOD should be WK or TK (default: WK).
 
   NOTE: Until https://github.com/tpm2-software/tpm2-tools/issues/2761 is
 	closed, {$PROG} may require a TPM (simulated will suffice) for
@@ -337,14 +337,14 @@ if [[ -n ${DBDIR:-} && -f ${DBDIR:-}/attest-enroll.conf ]]; then
 		configured=true
 	fi
 fi
-[[ ${TRANSPORT_METHOD:-} = @(TK|EK) ]]	\
+[[ ${TRANSPORT_METHOD:-} = @(TK|WK) ]]	\
 || die "TRANSPORT_METHOD must be either 'TK' or 'EK'"
 [[ -z $ESCROW_PUBS_DIR || -d $ESCROW_PUBS_DIR ]] \
 || die "ESCROW_PUBS_DIR -- must be a directory or not given"
 
-# XXX This policy is for the EK method.
+# XXX This policy is for the WK method.
 #
-# FIXME We could make policies for EK/TK have the same digest by using
+# FIXME We could make policies for WK/TK have the same digest by using
 #       TPM2_PolicyOR:
 #
 #       tpm2 policy... -L ...

@@ -93,14 +93,14 @@ Decryption is implemented by [`sbin/tpm2-recv`](/sbin/tpm2-recv).
 
 Two methods are possible for encryption to a target TPM's `EKpub`:
 
- - the "EK" method (our name for it)
+ - the "WK" method (our name for it)
  - the "TK" method (our name for it)
 
 Both methods support setting a policy on the ciphertext such that any
 application using the target's TPM to decrypt it must first execute and
 satisfy that policy.
 
-The "EK" method uses `TPM2_MakeCredential()` via tpm2-tools' `tpm2
+The "WK" method uses `TPM2_MakeCredential()` via tpm2-tools' `tpm2
 makecredential` command, using the `none` TCTI (i.e., implemented in
 software).  The target's `EKpub` is used as the `handle` input parameter
 to `TPM2_MakeCredential()`.  A well-known key (`WK`), and the desired policy
