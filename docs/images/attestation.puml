@@ -1,0 +1,28 @@
+@startuml
+participant TPM as T
+participant Client as C
+participant Server as S
+title Safeboot attestation protocol
+activate C
+C  -->  T: TPM2_Quote(AK, set-of-all-PCRs,\n\t\t     timestamp = gettimeofday())
+activate T
+T  -->  C: quote = \n Signed_AK({hash-of-PCRs,\n\t\t     misc, timestamp})
+deactivate T
+C   ->  S: HTTP POST w/ tarball as req-body:\n {EKpub, [EKcert], AKpub,\n  PCRs, eventlog, timestamp,\n  quote}
+deactivate C
+|||
+activate S
+S   ->  C: check that timestamp is recent;\ndata = Lookup(EKpub);\n\nif EKcert\n\tValidate(EKcert);\nelse if EKcert_required\n\tfail();\n\nvalidate(PCRs, eventlog);\nvalidate(quote);\n\nsession_key = genkey();\nstuff = Encrypt(session_key,\n\t\t\t tarball(data.secrets))\n\n/* Software, not TPM: */\n(credentialBlob, secret) = \n TPM2_MakeCredential(EKpub, AKpub,\n\t\t\t\t     session_key);\nPOST response body:\n tarball(credentialBlob, secret, stuff)
+note over S
+TPM2_MakeCredential() is
+a software operation
+end note
+deactivate S
+activate C
+C  -->  T: TPM2_ActivateCredential(AKhandle,\n\t\t\t\t\tEKhandle,\n\t\t\t\t\tcredentialBlob,\n\t\t\t\t\tsecret);
+activate T
+T  -->  C: certInfo
+deactivate T
+C   ->  C: session_key = certInfo;\nsecrets = Decrypt(session_key, stuff);\nvalidate_signatures(secrets);
+deactivate C
+@enduml
