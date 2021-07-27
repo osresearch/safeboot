@@ -1,0 +1,21 @@
+@startuml
+participant Client as C
+participant EnrollmentServer as S
+title Safeboot off-line enrollment protocol
+activate C
+note right of C
+If a browser, fetch the enrollment page
+end note
+C   ->  S: GET /
+deactivate C
+activate S
+S   ->  C: <HTML with forms>
+deactivate S
+activate C
+C   ->  S: POST /v1/add\n\treq-body: {EKpub, hostname} (as HTML form)
+|||
+deactivate C
+activate S
+S   ->  C: e = Lookup(EKpub)\ne2 = Lookup(hostname)\nif (e || e2) && e != e2\n\treturn 409; /* conflict */\n\n/* create and/or update enrolled entry */\nif !e\n\te = create(EKpub, hostname);\nif !e\n\treturn 503;\n\n/* create enrolled assets / add missing assets */\nif !add_missing_assets(e)\n\treturn 503;\nreturn 200;
+deactivate S
+@enduml
