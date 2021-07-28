@@ -24,8 +24,13 @@ Usage: $PROG [options] POLICY
   The second form executes the policyDigest in a policy session saved in
   {SESSION} (a file).
 
-  A {POLICY} starts with an optional TPM 2.0 command-code (e.g., TPM2_CC_Sign),
-  and the rest is a sequence of {tpm2 policy*} command-lines separated by ';':
+  A {POLICY} is either a single argument naming a non-empty file that
+  contains the actual {POLICY}, or it is multiple arguments defining a
+  policy as follows.
+
+  A {POLICY} starts with an optional TPM 2.0 command-code (e.g.,
+  TPM2_CC_Sign), and the rest is a sequence of {tpm2 policy*} command-lines
+  separated by ';':
 
        $PROG ... tpm2 policy... args... \\; tpm2 policy args...
 
@@ -107,6 +112,29 @@ trap 'rm -rf "$d"' EXIT
 d=$(mktemp -d)
 
 : "${policy:="${d}/policy"}"
+
+# Pop the alternatives
+declare -a alternatives
+alternatives=()
+while (($#)) && [[ $1 = [0-9] ]]; do
+	alternatives+=("$1")
+	shift
+done
+
+if (($# == 1)) && [[ -f $1 ]]; then
+	# This idiom is to avoid having to disable SC2046: Quote this to
+	# prevent word splitting, which `set -- $(cat "$1")` raises.
+	policy_file=$1
+	shift
+	declare -a line
+	while read -a line -r; do
+		set -- "$@" "${line[@]}"
+	done < "$policy_file"
+fi
+
+# Put the alternatives back in
+set -- "${alternatives[@]}" "$@"
+
 if [[ -n $session ]]; then
 	(($# > 0)) && [[ $1 = [0-9] && -n $command_code ]]		\
 	&& die "-A and -D are not allowed when using alternations"
