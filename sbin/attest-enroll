@@ -41,6 +41,7 @@ DEFAULT_EK_POLICY=
 declare -a GENPROGS
 GENPROGS=(genhostname genrootfskey)
 declare -A POLICIES
+POLICIES=()
 
 # For the configure function (see below)
 declare -A vars
