@@ -307,6 +307,7 @@ shellcheck:
 		sbin/tpm2-recv \
 		sbin/tpm2-policy \
 		initramfs/*/* \
+		tests/test-enroll.sh \
 	; do \
 		shellcheck $$file functions.sh ; \
 	done
