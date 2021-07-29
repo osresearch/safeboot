@@ -6,7 +6,15 @@
 export LC_ALL=C
 
 die_msg=""
-die() { echo "${PROG:+${PROG}: }$die_msg""$*" >&2 ; exit 1 ; }
+die() {
+	local e=1;
+	if [[ ${1:-} = +([0-9]) ]]; then
+		e=$1
+		shift
+	fi
+	echo "${PROG:+${PROG}: }$die_msg""$*" >&2
+	exit "$e"
+}
 warn() { echo "$@" >&2 ; }
 error() { echo "$@" >&2 ; return 1 ; }
 info() { ((${VERBOSE:-0})) && echo "$@" >&2 ; return 0 ; }
@@ -579,4 +587,36 @@ vymljYVDyrUriOet8zPB/9tq9XJ7A54qsVkaVufAuEJ6GIvD4xUZ27manMosJADS
 aW2TLJkwxecRh2eTwPtSx2U32M2/yHeuWRV/0juiIozefPsTAlHAi3E=
 -----END PRIVATE KEY-----
 EOF
+}
+
+# verify_sig PUBKEY_FILE BODYHASH_FILE SIG_FILE
+verify_sig() {
+	local pubkey="$1"
+	local body="$2"
+	local sig="$3"
+
+	(($# >= 3 && $# <= 4))
+	shift $#
+
+	# Verify the signature using a raw public key, or a certificate
+	# shellcheck disable=2094
+	openssl pkeyutl -verify					\
+			-pubin					\
+			-inkey "$pubkey"			\
+			-in <(sha256 < "$body" | hex2bin)	\
+			-sigfile "$sig"				\
+	||
+	openssl pkeyutl -verify					\
+			-certin					\
+			-inkey "$pubkey"			\
+			-in <(sha256 < "$body" | hex2bin)	\
+			-sigfile "$sig"				\
+	||
+	openssl dgst -verify "$pubkey"				\
+		     -keyform pem				\
+		     -sha256					\
+		     -signature "$sig"				\
+		     "$body"					\
+	||
+	die "could not verify signature on $body with $pubkey"
 }

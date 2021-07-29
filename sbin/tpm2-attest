@@ -16,10 +16,16 @@
 [[ $_ != "$0" ]] || set -e -o pipefail
 export LC_ALL=C
 
+# https://bosker.wordpress.com/2012/02/12/bash-scripters-beware-of-the-cdpath/
+unset CDPATH
+
+# Find the directory that contains functions.sh
+TOP="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && cd .. && pwd )"
+
 : "${PREFIX:=}"
 : "${DIR:=/etc/safeboot}"
 
-. "$PREFIX$DIR/functions.sh"
+. "$TOP/functions.sh"
 
 if [ -r "$PREFIX$DIR/safeboot.conf" ]; then
 	. $PREFIX$DIR/safeboot.conf
@@ -31,7 +37,15 @@ if [ -r "$PREFIX$DIR/local.conf" ]; then
 fi
 
 # Apply $PREFIX to files and use default value
-CERT=$PREFIX${CERT:-$DIR/cert.pem}
+[[ -n ${CERT:-} && ${CERT} != /* ]]	\
+&& CERT=$PREFIX$DIR/$CERT
+[[ -n ${ENROLL_SIGN_ANCHOR:-} && ${ENROLL_SIGN_ANCHOR} != /* ]]	\
+&& ENROLL_SIGN_ANCHOR=$PREFIX$DIR/$ENROLL_SIGN_ANCHOR
+[[ -z ${ENROLL_SIGN_ANCHOR:-} && -f $PREFIX$DIR/anchor.pem ]] \
+&& ENROLL_SIGN_ANCHOR=$PREFIX$DIR/anchor.pem
+[[ -z ${ENROLL_SIGN_ANCHOR:-} && -f $PREFIX$DIR/enroll-signer.pem ]] \
+&& ENROLL_SIGN_ANCHOR=$PREFIX$DIR/enroll-signer.pem
+: "${CERT:=$PREFIX$DIR/cert.pem}"
 : "${QUOTE_MAX_AGE:=30}"
 
 # RSA EK NVRAM handle
@@ -320,6 +334,7 @@ attest()
 		"$SERVER" \
 	|| die "attestation failed"
 
+	# shellcheck disable=SC2119
 	unseal < "$TMP/cipher.tar" \
 	|| die "unsealing failed"
 }
@@ -751,6 +766,7 @@ if and only if the EK matches and the AK is one that it generated.
 usage+="$unseal_usage"
 commands+="|unseal"
 
+# shellcheck disable=SC2120
 unseal()
 {
 	show_help "$1" "$unseal_usage"
@@ -785,6 +801,64 @@ unseal()
 	rm -f "$TMP/secret.key"
 }
 
+########################################
+
+verify_unsealed_usage='
+## verify_unsealed
+Usage:
+```
+tpm2-attest verify_unsealed DIR
+```
+
+Assets returned by successful remote attestation should be signed.  This
+command validates the signatures on those assets.
+'
+usage+="$verify_unsealed_usage"
+commands+="|verify-unsealed"
+
+verify-unsealed()
+{
+	show_help "$1" "$verify_unsealed_usage"
+	(($# == 1)) || die "No arguments expected.$verify_unsealed_usage"
+
+	# We must either know a priori an anchor for the signer's certificate,
+	# or we must know the signature key.
+	[[ -n ${ENROLL_SIGN_ANCHOR:-} ]]	\
+	|| die "neither enrollment server public key certificate nor anchor configured"
+
+	cd "$1" || die "Not a directory: $1"
+
+	# Validate the signer's certificate
+	# shellcheck disable=SC2094
+	if [[ -n ${ENROLL_SIGN_ANCHOR:-} ]]			\
+	   && ! cmp "$ENROLL_SIGN_ANCHOR" signer.pem; then
+		openssl verify -CAfile "${ENROLL_SIGN_ANCHOR}"	\
+			       -show_chain			\
+			       -untrusted signer.pem		\
+			       < signer.pem			\
+		|| die 5 "Could not validate enrolled asset signing key certificate"
+	fi
+
+	# Verify all the signatures
+	for i in *.sig; do
+		verify_sig signer.pem "${i%.sig}" "$i"
+	done
+
+	# Make sure we also got a signed manifest (whose signature we've
+	# already validated)
+	[[ -s manifest ]]	\
+	|| die 2 "missing manifest"
+	[[ -s manifest.sig ]]	\
+	|| die 3 "missing manifest signature"
+
+	# Verify the manifest
+	shopt -s extglob
+	if ! cmp <(sort  < manifest) <(sha256sum !(manifest).sig | sort); then
+		diff -U15 <(sort  < manifest) <(sha256sum !(manifest).sig)
+		die 4 "Manifest does not match signed artifacts"
+	fi
+
+}
 
 ########################################
 
@@ -1073,7 +1147,7 @@ else
 			exit 0
 			;;
 		#$commands)
-		commands|quote|attest|verify-and-seal|verify|seal|unseal|ek-verify|quote-verify|eventlog-verify|ek-sign|ek-crt|eventlog)
+		commands|quote|attest|verify-and-seal|verify|seal|unseal|verify-unsealed|ek-verify|quote-verify|eventlog-verify|ek-sign|ek-crt|eventlog)
 			$command "$@"
 			;;
 		*)
