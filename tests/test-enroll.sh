@@ -12,7 +12,7 @@ fi
 
 TOP=${TOP%/*}
 
-# shellcheck source=functions.sh
+# shellcheck disable=SC1091
 . "$TOP/functions.sh"
 
 #PATH=$TOP/sbin:$TOP/swtpm/src/swtpm:$PATH
