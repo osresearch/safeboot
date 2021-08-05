@@ -64,31 +64,17 @@ sequenceDiagram
     participant Client
     participant Server as Attestation Server
     participant DB as Attestation Database
-    TPM->>Client: EKpub, Ephemeral AK
-    Client->>TPM: Time since epoch
-    TPM->>Client: Quote of all PCRs and time, signed with AK
-    Note right of Client: Extract eventlog
-    Client->>Server: EKpub<br/> AK<br/> Quote<br/> eventlog
-    Note right of Server: Validate signature on Quote
-    Note right of Server: Validate eventlog matches quote
-    Note right of Server: Validate time stamp is recent
+    TPM->>Client: EK, AK, Quote
+    Client->>Server: EK, AK, Quote, eventlog
     Server->>DB: Hash EKpub, eventlog
-    Note left of DB: Validate policy on eventlog and PCRs
-    DB->>Server: TK (encrypted with EK)<br/> Attestation data (encrypted with TK)
-    Note right of Server: Create ephemeral credential key CK
-    Note right of Server: Encrypt TK (encrypted with EK) with CK
-    Note right of Server: makecredential with EK+AK and CK (no TPM required)
-    Server->>Client: Credential blob (CK, encrypted with the EK and tied to the AK)<br/> TK encrypted with EK and credential key<br/> Attestation data (encrypted with TK)
+    DB->>Server: TK and encrypted data
+    Server->>Client: reply.tar: CK, TK, data
     Client->>TPM: activatecredential with AK
-    Note right of TPM: validate AK, decrypt with EK
-    TPM->>Client: Unsealed CK
-    Note right of Client: Decrypt TK (encrypted with EK) with CK
-    Client->>TPM: Load TK (encrypted with EK)
-    TPM->>Client: TK context
-    Client->>TPM: TK policy<br> Attestation data encrypted with TK
-    Note right of TPM: validate TK policy<br>Decrypt data with TK
-    TPM->>Client: Decrypted attestation data
-    Client->>Server: Optionally report success
+    TPM->>Client: Decrypted CK
+    Client->>TPM: Load TK
+    Client->>TPM: TK Encrypted data
+    TPM->>Client: Decrypted data
+    Client->>Server: Success 
 ```
 
 The protocol requires a one round-trip between the local machine
@@ -128,7 +114,7 @@ sequenceDiagram
     Admin->>Server: client 'EKpub'<br/> `EKcert`<br/> hostname<br/> Other data
     Note right of Server: validate `EKpub` against `EKcert`<br/> Generate TK
     Server->>DB: `EKpub`<br/> hostname<br/> `TK` (encrypted with `EK`)
-    Note right of DB: Indexed by `sha256(EKpub)`
+    Note left of DB: Indexed by `sha256(EKpub)`
 ```
 
 * An administrator, or the client itself, sends the client's `EKpub`
@@ -143,14 +129,43 @@ The enrolled state consists of secrets encrypted to the client's
 
 ### Attestation
 
+```mermaid
+sequenceDiagram
+    participant TPM
+    participant Client
+    participant Server as Attestation Server
+    TPM->>Client: EKpub, Ephemeral AK
+    Client->>TPM: Time since epoch
+    TPM->>Client: Quote of all PCRs and time, signed with AK
+    Note right of Client: Extract eventlog
+    Client->>Server: quote.tar:<br/>EKpub and cert<br/> AK<br/> Quote (signed with AK)<br/> eventlog
+```
 
 * Client creates an Attestation Key (`AK`), quotes all the PCRs and
   current time, and sends its `EKpub`, `AKpub`, quote, and eventlog
   to the server.  This is done with
 
   ```
-  tpm2-attest quote $nonce $pcrs > quote.tar
+  tpm2-attest quote > quote.tar
   ```
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Server as Attestation Server
+    participant DB as Attestation Database
+    Client->>Server: quote.tar
+    Note right of Server: Validate signature on Quote
+    Note right of Server: Validate eventlog matches quote
+    Note right of Server: Validate time stamp is recent
+    Server->>DB: Hash EKpub, eventlog
+    Note left of DB: Validate policy on eventlog and PCRs
+    DB->>Server: TK (encrypted with EK)<br/> Attestation data (encrypted with TK)
+    Note right of Server: Create ephemeral credential key CK
+    Note right of Server: Encrypt TK (encrypted with EK) with CK
+    Note right of Server: makecredential with EK+AK and CK (no TPM required)
+    Server->>Client: reply.tar:<br/>Credential blob<br/>(CK, encrypted with the EK / AK)<br/> TK encrypted with EK and credential key<br/> Attestation data (encrypted with TK)
+```
 
 * The server checks the quote, calls `TPM2_MakeCredential()` with the
   `AKpub` as the activation object, the `EKpub` as the key to encrypt
@@ -162,6 +177,23 @@ The enrolled state consists of secrets encrypted to the client's
   tpm2-attest verify | attest-verify | tpm2-attest seal
   ```
 
+```mermaid
+sequenceDiagram
+    participant TPM
+    participant Client
+    participant Server as Attestation Server
+    Server->>Client: reply.tar
+    Client->>TPM: activatecredential with AK
+    Note right of TPM: validate AK, decrypt with EK
+    TPM->>Client: Unsealed CK
+    Note right of Client: Decrypt TK (encrypted with EK) with CK
+    Client->>TPM: Load TK (encrypted with EK)
+    TPM->>Client: TK context
+    Client->>TPM: TK policy<br> Attestation data encrypted with TK
+    Note right of TPM: validate TK policy<br>Decrypt data with TK
+    TPM->>Client: Decrypted attestation data
+    Client->>Server: Optionally report success
+```
 The client recovers the AES-256 session key using
 `TPM2_ActivateCredential()` and then decrypts the secrets in its
 enrolled state.  This is done with:
