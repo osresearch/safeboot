@@ -34,7 +34,11 @@ markdown_extensions:
   - pymdownx.magiclink
   - pymdownx.mark
   - pymdownx.smartsymbols
-  - pymdownx.superfences
+#  - pymdownx.superfences:
+#      custom_fences:
+#        - name: mermaid
+#          class: mermaid
+#          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tasklist:
       custom_checkbox: true
   - pymdownx.tilde
@@ -42,6 +46,7 @@ markdown_extensions:
 plugins:
   - search # necessary for search to work
   - git-revision-date-localized
+  - mermaid2
 nav:
   - Overview: 'index.md'
   - Installation: 'install.md'
