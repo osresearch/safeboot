@@ -80,23 +80,29 @@ fi
 
 case "$GENKEYTAB_METHOD" in
 KADMIN)
-	kadmin -l -r "$GENKEYTAB_REALM"					\
+	kadmin								\
+		--local							\
+		--realm="$GENKEYTAB_REALM"				\
 		add_new_key						\
 		--random-key						\
 		${GENKEYTAB_ANK_ARGS[0]:+"${GENKEYTAB_ANK_ARGS[@]}"}	\
 		"host/$hostname"
-	kadmin -l -r "$GENKEYTAB_REALM"					\
+	kadmin								\
+		--local							\
+		--realm="$GENKEYTAB_REALM"				\
 		ext_keytab						\
 		--keytab FILE:keytab					\
 		--random-key						\
 		"host/$hostname";;
 KADMIND)
-	kadmin -r "$GENKEYTAB_REALM"					\
+	kadmin								\
+		--realm="$GENKEYTAB_REALM"					\
 		add_new_key						\
 		--random-key						\
 		${GENKEYTAB_ANK_ARGS[0]:+"${GENKEYTAB_ANK_ARGS[@]}"}	\
 		"host/$hostname"
-	kadmin -r "$GENKEYTAB_REALM"					\
+	kadmin								\
+		--realm="$GENKEYTAB_REALM"					\
 		ext_keytab						\
 		--keytab FILE:keytab					\
 		--random-key						\
@@ -109,7 +115,7 @@ HKD)
 		--request POST						\
 		--data-binary @/dev/null				\
 		-D headers						\
-		"${GENKEYTAB_HKD_URI}?spn=host/$hn&create=true"
+		"${GENKEYTAB_HKD_URI}?spn=host/$hostname&create=true"
 	csrf_token=$(sed -e 's/\r//' headers | grep ^X-CSRF-Token:)
 	rm -f headers junk
 	curl								\
@@ -119,7 +125,7 @@ HKD)
 		--data-binary @/dev/null				\
 		-D headers						\
 		-H "$csrf_token"					\
-		"${GENKEYTAB_HKD_URI}?spn=host/$hn&create=true"
+		"${GENKEYTAB_HKD_URI}?spn=host/$hostname&create=true"
 	grep '^HTTP/1.1 200' headers >/dev/null				\
 	|| die "Could not create host principal"
 	rm headers
@@ -148,7 +154,7 @@ HKD-IMPERSONATE)
 		--request POST						\
 		--data-binary @/dev/null				\
 		-D headers						\
-		"${GENKEYTAB_HKD_URI}?spn=host/$hn&create=true"
+		"${GENKEYTAB_HKD_URI}?spn=host/$hostname&create=true"
 	csrf_token=$(sed -e 's/\r//' headers | grep ^X-CSRF-Token:)
 	rm -f headers junk
 	curl								\
@@ -157,7 +163,7 @@ HKD-IMPERSONATE)
 		--data-binary @/dev/null				\
 		-D headers						\
 		-H "$csrf_token"	\
-		"${GENKEYTAB_HKD_URI}?spn=host/$hn&create=true"
+		"${GENKEYTAB_HKD_URI}?spn=host/$hostname&create=true"
 	grep '^HTTP/1.1 200' headers >/dev/null				\
 	|| die "Could not create host principal"
 	rm headers
