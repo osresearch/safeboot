@@ -1,0 +1,117 @@
+#!/bin/bash
+#
+# Get a keytab using a certificate
+
+set -euo pipefail
+shopt -s extglob
+umask 077
+
+PROG=${0##*/}
+BASEDIR=$(dirname "$( dirname "$(readlink -f "${BASH_SOURCE[0]}")" )")
+
+declare -A GETCERT_DOMAIN_REALM
+KEYTAB=FILE:/etc/krb5.keytab
+GETKEYTAB_HKD_URI=
+GETKEYTAB_REALM=
+CERT_KEY=
+CERT=
+
+curl_opts=(
+	--silent
+	--globoff
+	--user :
+	--negotiate
+)
+
+: "${PREFIX:=}"
+: "${DIR:=/etc/safeboot}"
+SAFEBOOT_CONF=${PREFIX}${DIR}/safeboot.conf
+# shellcheck disable=SC1090
+[[ -n $SAFEBOOT_CONF && -f $SAFEBOOT_CONF ]]	\
+&& . "${SAFEBOOT_CONF}"
+
+# shellcheck disable=SC1090
+. "$BASEDIR/../functions.sh"
+
+: "${CERT_KEY:=${PREFIX}${DIR}/cert-key.pem}"
+: "${CERT:=${PREFIX}${DIR}/cert.pem}"
+
+[[ -f $CERT_KEY &&  -f $CERT ]]			\
+|| die "Could not get PKINIT certificate for impersonation"
+
+hostname=$(hostname)
+
+if [[ -z $GETKEYTAB_REALM ]]; then
+	domain=${hostname}
+	while [[ $domain = *.*.* ]]; do
+		domain=${domain#*.}
+		if [[ -n ${GETCERT_DOMAIN_REALM[$domain]:-} ]]; then
+			GETKEYTAB_REALM=${GETCERT_DOMAIN_REALM[$domain]}
+			break
+		fi
+		if ((${#GETCERT_DOMAIN_REALM[@]} > 0)); then
+			die "Could not determine domain name for $hostname"
+		fi
+		if (($(dig -t srv "_kerberos._udp.$domain" +short|wc -l) > 0)); then
+			GETKEYTAB_REALM=${domain^^?}
+			break
+		fi
+	done
+	[[ -n $GETKEYTAB_REALM ]]	\
+	|| die "Could not determine realm name for $hostname"
+fi
+
+check_keytab() {
+	[[ -n ${1:-} && -s $1 ]]			\
+	&& ktutil -k "$1" list >/dev/null		\
+	&& kinit --anonymous "$GETCERT_DOMAIN_REALM"	\
+		 gss-token "host@$hostname"		\
+	| KRB5_KTNAME="$1" gss-token -r
+}
+
+if check_keytab "$KEYTAB"; then
+	warn "Already have a valid keytab"
+	exit 0
+fi
+
+d=
+trap 'cd /; rm -rf "$d";' EXIT
+d=$(mktemp -d)
+cd "$d"
+
+# Get a TGT using PKINIT
+kinit									\
+	${GETKEYTAB_KINIT_ARGS[0]:+"${GETKEYTAB_KINIT_ARGS[@]}"}	\
+	--cache cc							\
+	--pk-user "FILE:${CERT},${CERT_KEY}"				\
+	"host/$hostname@$GETKEYTAB_REALM"				\
+|| die "Could not get TGT for host/$hostname@$GETKEYTAB_REALM with PKINIT with FILE:${CERT},${CERT_KEY}"
+
+# Get CSRF token
+export KRB5CCNAME="${d}/cc"
+curl								\
+	"${curl_opts[@]}"					\
+	--output junk						\
+	--request POST						\
+	--data-binary @/dev/null				\
+	-D headers						\
+	"${GETKEYTAB_HKD_URI}?spn=host/$hostname&create=true"
+csrf_token=$(sed -e 's/\r//' headers | grep ^X-CSRF-Token:)
+rm -f headers junk
+curl								\
+	"${curl_opts[@]}"					\
+	--output keytab						\
+	--request POST						\
+	--data-binary @/dev/null				\
+	-D headers						\
+	-H "$csrf_token"					\
+	"${GETKEYTAB_HKD_URI}?spn=host/$hostname&create=true"
+grep '^HTTP/1.1 200' headers >/dev/null				\
+|| die "Could not create service principal host/$hostname@$GETKEYTAB_REALM"
+rm headers
+kdestroy -c "FILE:${d}/cc"
+check_keytab "FILE:$PWD/keytab"					\
+|| die "Keytab fetched did not work"
+[[ -f ${KEYTAB#FILE:} ]]					\
+&& mv -f "${KEYTAB#FILE:}" "${KEYTAB#FILE:}-"
+cp keytab "${KEYTAB#FILE:}"
