@@ -18,6 +18,15 @@ fi
 set -euo pipefail
 shopt -s extglob
 
+# shellcheck disable=SC2034
+declare -A lopts=(
+	[help]=h
+	[method]=M:
+	[policy]=P:
+	[force]=f:
+	[trace]=x
+)
+
 # shellcheck disable=SC2209
 function usage {
 	((${1:-1} > 0)) && exec 1>&2

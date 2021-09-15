@@ -1,0 +1,93 @@
+#!/bin/bash
+
+PROG=${0##*/}
+# shellcheck disable=SC1090 disable=SC1091
+. ./env
+
+set -euo pipefail
+shopt -s extglob
+
+TMPDIR=$PWD
+[[ -n ${TPM2_POLICY_SESSION:-} ]]	\
+|| die "TPM2_POLICY_SESSION is not set"
+[[ ${TPM2_POLICY_SESSION} != */* ||
+   ${TPM2_POLICY_SESSION} = ${PWD}/* ]]	\
+|| die "TPM2_POLICY_SESSION does not exist"
+[[ -s ${TPM2_POLICY_SESSION} ]]		\
+|| die "TPM2_POLICY_SESSION does not exist"
+
+# shellcheck disable=SC2209
+function usage {
+	((${1:-1} > 0)) && exec 1>&2
+	pager=cat
+	if [[ -t 0 && -t 1 && -t 2 ]]; then
+		if [[ -z ${PAGER:-} ]] && type less >/dev/null 2>&1; then
+			pager=less
+		elif [[ -z ${PAGER:-} ]] && type more >/dev/null 2>&1; then
+			pager=more
+		elif [[ -n ${PAGER:-} ]]; then
+			pager=$PAGER
+		fi
+	fi
+        $pager <<EOF
+Usage: $PROG [options]
+
+  {$PROG} is a wrapper around {tpm2 policyauthorizenv}.
+
+  See {${BASEDIR}/sbin/tpm2-policy}.
+
+  Options:
+
+   -h | --help			This help message.
+   -x | --trace			Trace this script.
+   -C | --hierarchy OBJECT
+   -P | --auth AUTH
+   --cphash FILE
+
+  Input files are limited to files in the current directory.
+EOF
+	exit "${1:-1}"
+}
+
+# shellcheck disable=SC1090 disable=SC1091
+. "$BASEDIR/functions.sh"
+
+# shellcheck disable=SC2034
+declare -A lopts=(
+	[help]=''
+	[trace]=''
+	[hierarchy]=:
+	[auth]=:
+	[cphash]=:
+)
+
+declare -a args=(--policy "$TPM2_POLICY" --session "$TPM2_POLICY_SESSION")
+
+while getopts_long lopts +:hxC:P: opt "$@"; do
+# opt is set in getopts_long
+# shellcheck disable=SC2154
+case "$opt" in
+h|help)			usage 0;;
+x|trace)		set -vx;;
+C|hierarchy|cphash)	args+=(-"${OPTOPT}$opt" "$OPTARG");;
+P|auth)
+	case "$OPTARG" in
+	str:*)	args+=(-"${OPTOPT}$opt" "$OPTARG");;
+	hex:*)	args+=(-"${OPTOPT}$opt" "$OPTARG");;
+	file:*)	[[ $OPTARG = */* ]]		\
+		&& die "Cannot reference input files outside the current directory"
+		args+=(-"${OPTOPT}$opt" "$OPTARG");;
+	*)	die "AUTH values must start with str:, hex:, or file:";;
+	esac;;
+c|key-context|n|name)
+	[[ $OPTARG = */* ]]	\
+	&& die "Cannot reference output files outside the current directory"
+	args+=(-"${OPTOPT}$opt" "$OPTARG");;
+
+*)	usage;;
+esac
+done
+shift $((OPTIND - 1))
+
+# Finally:
+tpm2_policyauthorizenv "${args[@]}" "$@"
