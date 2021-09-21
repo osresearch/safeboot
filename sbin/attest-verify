@@ -60,6 +60,9 @@ def verify(quote, quote_valid):
 	ekdir = os.path.join(db_path, 'ekpubhash', ekhash[0:2], ekhash[0:6], ekhash[0:32])
 	if not os.path.exists(ekdir):
 		ekdir = os.path.join(db_path, ekhash[0:2], ekhash)
+		if not os.path.exists(ekdir):
+			logging.warning(f"{ekhash=}: can't find matching enrollment")
+			return -1
 
 	# default policy is to reject any invalid quotes
 	if quote_valid != "True":
