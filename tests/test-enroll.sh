@@ -92,12 +92,14 @@ start_swtpm() {
 	# We try our best.
 	mkdir "${d}/tpm$port"
 	swtpm socket						\
+		--daemon					\
 		--tpm2						\
 		--tpmstate dir="${d}/tpm$port"			\
+		--pid file="${d}/tpm${port}/.pid"		\
 		--server type="tcp,bindaddr=0.0.0.0,port=$port"	\
 		--ctrl type="tcp,bindaddr=0.0.0.0,port=$cport"	\
-		--flags startup-clear				&
-	swtpmpids+=($!)
+		--flags startup-clear
+	swtpmpids+=("$(cat "${d}/tpm${port}/.pid")")
 	TCTIs[$1]="swtpm:host=localhost,port=$port"
 }
 
