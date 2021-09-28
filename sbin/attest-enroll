@@ -433,6 +433,7 @@ done
 
 tmp=
 success=false
+swtpm_pid=
 cleanup() {
 	if ((VERBOSE > 1)); then
 		(
@@ -440,6 +441,14 @@ cleanup() {
 		sha256sum "$tmp"/*
 		) | sort
 	fi
+
+	(
+		[[ -n $swtpm_pid ]]	\
+		&& kill -0 "$swtpm_pid"	\
+		&& kill "$swtpm_pid"
+	) 2>/devnull			\
+	|| true
+	unset TPM2TOOLS_TCTI
 
 	if $debug; then
 		echo "LEAVING TEMP DIR ALONE: $tmp" 1>&2
@@ -452,6 +461,28 @@ cleanup() {
 }
 tmp="$(mktemp -d)"
 trap cleanup EXIT
+
+# We might need a TPM for what should be software-only things...
+start_swtpm() {
+	local -i tries port
+	((port= 10240 + ( ($$ % (32768 - 10240) ) ) ))
+	mkdir "${tmp}/swtpm"
+
+	for ((tries=0; tries < 3; tries++, port+=2)); do
+		swtpm socket --tpm2							\
+			     --daemon							\
+			     --tpmstate dir="${tmp}/swtpm"				\
+			     --pid file="${tmp}/.pid"					\
+			     --server type="tcp,bindaddr=127.0.0.1,port=$port"		\
+			     --ctrl type="tcp,bindaddr=127.0.0.1,port=$((port+1))"	\
+			     --flags startup-clear					\
+		&& { swtpm_pid=$(cat "${tmp}/.pid"); break; }
+	done
+
+	[[ -n $swtpm_pid ]]	\
+	|| die "Could not start a software TPM"
+	export TPM2TOOLS_TCTI="swtpm:host=127.0.0.1,port=$port"
+}
 
 info() {
 	((VERBOSE == 0)) || echo info: "$@" 1>&2
@@ -574,6 +605,8 @@ sign() {
 			-in <(sha256 < "$1" | hex2bin)		\
 			-out "${1}.sig"
 }
+
+start_swtpm
 
 cat "$EKPUB" > "$tmp/ekpub" \
 || die "$0: unable to read EKpub from stdin"
