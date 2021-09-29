@@ -446,7 +446,7 @@ cleanup() {
 		[[ -n $swtpm_pid ]]	\
 		&& kill -0 "$swtpm_pid"	\
 		&& kill "$swtpm_pid"
-	) 2>/devnull			\
+	) 2>/dev/null			\
 	|| true
 	unset TPM2TOOLS_TCTI
 
