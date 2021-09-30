@@ -20,6 +20,31 @@ error() { echo "$@" >&2 ; return 1 ; }
 info() { ((${VERBOSE:-0})) && echo "$@" >&2 ; return 0 ; }
 debug() { ((${VERBOSE:-0})) && echo "$@" >&2 ; return 0 ; }
 
+safeboot_dir() {
+	[[ -n $1 ]]	\
+	|| die "Internal error in caller of safeboot_dir"
+	case "$1" in
+	bin)	echo "$TOP/bin";;
+	lib)	echo "$TOP/lib";;
+	etc)	if [[ $TOP = /usr ]]; then
+			echo "/etc/safeboot"
+		elif [[ -d $TOP/etc/safeboot ]]; then
+			echo "$TOP/etc/safeboot"
+		elif [[ -d $TOP/etc && -f $TOP/etc/safeboot.conf ]]; then
+			echo "$TOP/etc"
+		else
+			die "Cannot find 'etc' directory for Safeboot"
+		fi
+	*)	die "Internal error in caller of safeboot_dir"
+	esac
+}
+safeboot_file() {
+	[[ -n $1 && -n $2 ]]	\
+	|| die "Internal error in caller of safeboot_file"
+	safeboot_dir "$1" > /dev/null
+	local dir="$(safeboot_dir "$1")"
+	echo "${dir}/$2"
+}
 
 ########################################
 #

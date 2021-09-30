@@ -1,13 +1,20 @@
 #!/bin/bash
 
 PROG=${0##*/}
+BINDIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+TOP=$(dirname "$BINDIR")
 
-if [[ $0 = /* ]]; then
-        BASEDIR=${0%/*}
-elif [[ $0 = */* ]]; then
-        BASEDIR=$PWD/${0%/*}
+if [[ -s $TOP/lib/safeboot/functions.sh ]]; then
+	# shellcheck disable=SC1090 source=functions.sh
+	. "$TOP/lib/safeboot/functions.sh"
+	functions_sh=$TOP/lib/safeboot/functions.sh
+elif [[ -s $TOP/functions.sh ]]; then
+	# shellcheck disable=SC1090 source=functions.sh
+	. "$TOP/functions.sh"
+	functions_sh=$TOP/functions.sh
 else
-        BASEDIR=$PWD
+	echo "Unable to find Safeboot function library" 1>&2
+	exit 1
 fi
 
 set -euo pipefail -o noclobber
@@ -39,9 +46,6 @@ Usage: $PROG [-o FILE] [-A | -D] POLICY-CMD [ARGS [\\; ...]]
 EOF
 	exit "${1:-1}"
 }
-
-# shellcheck disable=SC1090
-. "$BASEDIR/../functions.sh"
 
 out=
 force=false
