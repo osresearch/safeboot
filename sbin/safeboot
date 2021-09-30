@@ -24,35 +24,49 @@
 set -e -o pipefail
 export LC_ALL=C
 
-: "${PREFIX:=}"
-: "${DIR:=/etc/safeboot}"
+BINDIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+TOP=$(dirname "$BINDIR")
 
-# shellcheck source=functions.sh
-. "$PREFIX$DIR/functions.sh"
-
-if [ -r "$PREFIX$DIR/safeboot.conf" ]; then
-	# shellcheck source=safeboot.conf
-	. $PREFIX$DIR/safeboot.conf
+if [[ -s $TOP/lib/safeboot/functions.sh ]]; then
+	# shellcheck source=functions.sh
+	. "$TOP/lib/safeboot/functions.sh"
+elif [[ -s $TOP/functions.sh ]]; then
+	# shellcheck source=functions.sh
+	. "$TOP/functions.sh"
 else
-	warn "$PREFIX$DIR/safeboot.conf not present; was it installed?"
-fi
-if [ -r "$PREFIX$DIR/local.conf" ]; then
-	# shellcheck source=local.conf
-	. $PREFIX$DIR/local.conf
+	echo "Unable to find Safeboot function library" 1>&2
+	exit 1
 fi
 
-# Apply $PREFIX to files and use default value
-CERT=$PREFIX${CERT:-$DIR/cert.pem}
-KERNEL=$PREFIX${KERNEL:-/boot/vmlinuz}
-INITRD=$PREFIX${INITRD:-/boot/initrd.img}
-EFIDIR=$PREFIX${EFIDIR:-/boot/efi/EFI}
+: "${PREFIX:=}"
+cf=$(safeboot_file etc safeboot.conf)
+if [[ -n $cf && -f $cf ]]; then
+	# shellcheck disable=SC1090
+	. "$cf"
+	export SAFEBOOT_CONF="$cf"
+else
+	warn "${cf:-/etc/safeboot/safeboot.conf} not present; was it installed?"
+fi
+cf=$(safeboot_file etc local.conf)
+if [[ -n $cf && -f $cf ]]; then
+	# shellcheck disable=SC1090
+	. "$cf"
+fi
+: "${DIR:="$(safeboot_dir etc)"}"
+
+setup
+
+: "${KERNEL:=/boot/vmlinuz}"
+: "${INITRD:=/boot/initrd.img}"
+: "${EFIDIR:=/boot/efi/EFI}"
+:   "${CERT:=$DIR/cert.pem}"
 
 if [ "$KEY" == "pkcs11:" ]; then
 	# KEY is a hardware token, use the yubikey engine
 	KEY_ENGINE="-e pkcs11"
 else
 	# KEY is a normal file, don't use an openssl engine
-	KEY=$PREFIX${KEY:-$DIR/cert.priv}
+	KEY=${KEY:-$DIR/cert.priv}
 	KEY_ENGINE=""
 fi
 
@@ -89,7 +103,7 @@ rootdev-check()
 	fi
 
 	if [ "$TEST_ROOTDEV" = 1 ]; then
-		warn "$PREFXI$DIR/local.conf: setting \$ROOTDEV=$ROOTDEV"
+		warn "$PREFIX$DIR/local.conf: setting \$ROOTDEV=$ROOTDEV"
 		echo "ROOTDEV=\"$ROOTDEV\"" >> $PREFIX$DIR/local.conf \
 		|| die "$PREFIX$DIR/local.conf: Unable to set \$ROOTDEV"
 		TEST_ROOTDEV=0
@@ -114,7 +128,7 @@ rootdev-check()
 	fi
 
 	if [ "$TEST_HASHDEV" = 1 ]; then
-		warn "$PREFXI$DIR/local.conf: setting \$HASHDEV=$HASHDEV"
+		warn "$PREFIX$DIR/local.conf: setting \$HASHDEV=$HASHDEV"
 		echo "HASHDEV=\"$HASHDEV\"" >> $PREFIX$DIR/local.conf \
 		|| die "$PREFIX$DIR/local.conf: Unable to set \$HASHDEV"
 		TEST_HASHDEV=0

@@ -20,21 +20,36 @@ export LC_ALL=C
 unset CDPATH
 
 # Find the directory that contains functions.sh
-TOP="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && cd .. && pwd )"
 
+BINDIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+TOP=$(dirname "$BINDIR")
+
+if [[ -s $TOP/lib/safeboot/functions.sh ]]; then
+	# shellcheck source=functions.sh
+	. "$TOP/lib/safeboot/functions.sh"
+elif [[ -s $TOP/functions.sh ]]; then
+	# shellcheck source=functions.sh
+	. "$TOP/functions.sh"
+else
+	echo "Unable to find Safeboot function library" 1>&2
+	exit 1
+fi
+
+cf=$(safeboot_file etc safeboot.conf)
+if [[ -n $cf && -f $cf ]]; then
+	# shellcheck disable=SC1090
+	. "$cf"
+	export SAFEBOOT_CONF="$cf"
+fi
+cf=$(safeboot_file etc local.conf)
+if [[ -n $cf && -f $cf ]]; then
+	# shellcheck disable=SC1090
+	. "$cf"
+fi
 : "${PREFIX:=}"
 : "${DIR:=/etc/safeboot}"
 
-. "$TOP/functions.sh"
-
-if [ -r "$PREFIX$DIR/safeboot.conf" ]; then
-	. $PREFIX$DIR/safeboot.conf
-else
-	warn "$PREFIX$DIR/safeboot.conf not present?"
-fi
-if [ -r "$PREFIX$DIR/local.conf" ]; then
-	. $PREFIX$DIR/local.conf
-fi
+setup
 
 # Apply $PREFIX to files and use default value
 [[ -n ${CERT:-} && ${CERT} != /* ]]	\

@@ -13,26 +13,35 @@ set -euo pipefail
 shopt -s extglob
 
 PROG=${0##*/}
-if [[ $0 = /* ]]; then
-	BASEDIR=${0%/*}
-elif [[ $0 = */* ]]; then
-	BASEDIR=$PWD/${0%/*}
+BINDIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+TOP=$(dirname "$BINDIR")
+
+if [[ -s $TOP/lib/safeboot/functions.sh ]]; then
+	# shellcheck source=functions.sh
+	. "$TOP/lib/safeboot/functions.sh"
+elif [[ -s $TOP/functions.sh ]]; then
+	# shellcheck source=functions.sh
+	. "$TOP/functions.sh"
 else
-	BASEDIR=$PWD
+	echo "Unable to find Safeboot function library" 1>&2
+	exit 1
 fi
 
 # Make sure to export SAFEBOOT_ENROLL_CONF for external genprogs
 #
 # If one or more -C options given, use the first one for this (see getopts
 # loop below).
-export SAFEBOOT_ENROLL_CONF=/etc/safeboot-enroll.conf
-CONF=$SAFEBOOT_ENROLL_CONF
+cf=$(safeboot_file etc safeboot.conf)
+if [[ -n $cf && -f $cf ]]; then
+	export SAFEBOOT_ENROLL_CONF=/etc/safeboot/enroll.conf
+	CONF=$SAFEBOOT_ENROLL_CONF
+fi
 configured=false
 
 EKPUB=/dev/stdin
 
 # Configuration variables
-DBDIR="$BASEDIR/build/attest"
+DBDIR="$TOP/build/attest"
 POLICY=
 ESCROW_POLICY=
 ESCROW_PUBS_DIR=
@@ -80,9 +89,6 @@ configs() {
 		echo
 	done
 }
-
-# shellcheck disable=SC1090
-. "$BASEDIR/../functions.sh"
 
 die() { echo >&2 "Error: $PROG" "$@" ; exit 1 ; }
 warn() { echo >&2 "$@" ; }

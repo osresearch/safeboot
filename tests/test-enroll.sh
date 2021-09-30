@@ -99,6 +99,7 @@ start_swtpm() {
 		--ctrl type="tcp,bindaddr=0.0.0.0,port=$cport"	\
 		--flags startup-clear				&
 	swtpmpids+=("$!")
+	sleep 1
 	TCTIs[$1]="swtpm:host=localhost,port=$port"
 }
 
