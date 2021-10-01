@@ -69,19 +69,8 @@ policy_pcr11_unext=(tpm2 policypcr '--pcr-list=sha256:11')
 declare -A TCTIs
 start_port=9880
 start_swtpm() {
-	local tries=0
-
-	while ((tries < 3)) && lsof -i ":${start_port}" >/dev/null; do
-		((++tries))
-		((++start_port))
-	done
 	local port=$start_port
 	((++start_port))
-
-	while ((tries < 3)) && lsof -i ":${start_port}" >/dev/null; do
-		((++tries))
-		((++start_port))
-	done
 	local cport=$((start_port))
 	((++start_port))
 
