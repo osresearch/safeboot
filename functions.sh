@@ -32,6 +32,8 @@ safeboot_dir() {
 			echo "$TOP/etc/safeboot"
 		elif [[ -d $TOP/etc && -f $TOP/etc/safeboot.conf ]]; then
 			echo "$TOP/etc"
+		elif [[ -d $TOP && -f $TOP/safeboot.conf ]]; then
+			echo "$TOP"
 		elif [[ -d /etc/safeboot ]]; then
 			echo "$TOP/etc"
 		else
