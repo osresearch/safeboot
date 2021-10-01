@@ -1,0 +1,93 @@
+#!/bin/bash
+
+PROG=${0##*/}
+# shellcheck disable=SC1090 disable=SC1091
+. ./env
+
+set -euo pipefail
+shopt -s extglob
+
+TMPDIR=$PWD
+
+# shellcheck disable=SC2209
+function usage {
+	((${1:-1} > 0)) && exec 1>&2
+	pager=cat
+	if [[ -t 0 && -t 1 && -t 2 ]]; then
+		if [[ -z ${PAGER:-} ]] && type less >/dev/null 2>&1; then
+			pager=less
+		elif [[ -z ${PAGER:-} ]] && type more >/dev/null 2>&1; then
+			pager=more
+		elif [[ -n ${PAGER:-} ]]; then
+			pager=$PAGER
+		fi
+	fi
+        $pager <<EOF
+Usage: $PROG [options] AUTH
+
+  {$PROG} is a wrapper around {tpm2 load}.
+
+  See {${BASEDIR}/sbin/tpm2-policy}.
+
+  Options:
+
+   -h | --help				This help message.
+   -x | --trace				Trace this script.
+   -C | --parent-context OBJECT		Parent object.
+   -c | --key-context OBJECT		Saved object context file.
+   -P | --parent-auth AUTH
+   -r | --private FILE			Output of {tpm2 import}.
+   -u | --public FILE			Output of {tpm2 duplicate, readpublic}.
+   -n | --name FILE			File in which to save the name of the
+					loaded object.
+   --cphash FILE			Write cpHash of TPM2_Import() command.
+
+  Input and output files are limited to files in the current directory.
+EOF
+	exit "${1:-1}"
+}
+
+# shellcheck disable=SC1090 disable=SC1091
+. "$BASEDIR/functions.sh"
+
+# shellcheck disable=SC2034
+declare -A lopts=(
+	[help]=''
+	[trace]=''
+	[parent-context]=:
+	[key-context]=:
+	[parent-auth]=:
+	[private]=:
+	[public]=:
+	[name]=:
+	[cphash]=:
+)
+
+declare -a args=(--policy "$TPM2_POLICY" --session "$TPM2_POLICY_SESSION")
+
+while getopts_long lopts +:hxC:c:P:r:u:n: opt "$@"; do
+# opt is set in getopts_long
+# shellcheck disable=SC2154
+case "$opt" in
+h|help)		usage 0;;
+x|trace)	set -vx;;
+C|parent-context|c|key-context|r|private|u|public|n|name|cphash)
+		[[ $OPTARG = */* ]]	\
+		&& die "Cannot reference files outside the current directory"
+		args+=(-"${OPTOPT}$opt" "$OPTARG");;
+P|parent-auth)
+		case "$OPTARG" in
+		str:*)	args+=(-"${OPTOPT}$opt" "$OPTARG");;
+		hex:*)	args+=(-"${OPTOPT}$opt" "$OPTARG");;
+		file:*)	[[ $OPTARG = */* ]]		\
+			&& die "Cannot reference input files outside the current directory"
+			args+=(-"${OPTOPT}$opt" "$OPTARG");;
+		*)	die "Auth values must start with str: hex: or file:";;
+		esac;;
+*)		usage;;
+esac
+done
+shift $((OPTIND - 1))
+
+# Finally:
+tpm2_load "${args[@]}" "$@"

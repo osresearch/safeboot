@@ -1,0 +1,105 @@
+#!/bin/bash
+
+PROG=${0##*/}
+# shellcheck disable=SC1090 disable=SC1091
+. ./env
+
+set -euo pipefail
+shopt -s extglob
+
+TMPDIR=$PWD
+
+# shellcheck disable=SC2209
+function usage {
+	((${1:-1} > 0)) && exec 1>&2
+	pager=cat
+	if [[ -t 0 && -t 1 && -t 2 ]]; then
+		if [[ -z ${PAGER:-} ]] && type less >/dev/null 2>&1; then
+			pager=less
+		elif [[ -z ${PAGER:-} ]] && type more >/dev/null 2>&1; then
+			pager=more
+		elif [[ -n ${PAGER:-} ]]; then
+			pager=$PAGER
+		fi
+	fi
+        $pager <<EOF
+Usage: $PROG [options] AUTH
+
+  {$PROG} is a wrapper around {tpm2 import}.
+
+  See {${BASEDIR}/sbin/tpm2-policy}.
+
+  Options:
+
+   -h | --help				This help message.
+   -x | --trace				Trace this script.
+   -C | --parent-context OBJECT		New parent for imported object.
+   -U | --parent-public FILE		Parent's public part.
+   -s | --seed FILE			Output of {tpm2 duplicate}.
+   -u | --public FILE			Output of {tpm2 duplicate}.
+   -i | --input FILE			Output of {tpm2 duplicate}.
+   -r | --private FILE			Output for {tpm2 load}.
+   -g | --hash-algorithm ALGORITHM	Hash algorithm.
+   -G | --key-algorithm ALGORITHM	Key algorithm.
+   -a | --attributes ATTRIBUTES		Attributes for raw external key.
+   -L | --policy FILE			Policy for raw external key.
+   -k | --encryption-key
+   -P | --parent-auth AUTH
+   -p | --key-auth AUTH
+   --cphash FILE			Write cpHash of TPM2_Import() command.
+
+  Input and output files are limited to files in the current directory.
+EOF
+	exit "${1:-1}"
+}
+
+# shellcheck disable=SC1090 disable=SC1091
+. "$BASEDIR/functions.sh"
+
+# shellcheck disable=SC2034
+declare -A lopts=(
+	[help]=''
+	[trace]=''
+	[parent-context]=:
+	[parent-public]=:
+	[seed]=:
+	[private]=:
+	[public]=:
+	[input]=:
+	[hash-algorithm]=:
+	[key-algorithm]=:
+	[attributes]=:
+	[encryption-key]=:
+	[parent-auth]=:
+	[key-auth]=:
+	[cphash]=:
+)
+
+declare -a args=(--policy "$TPM2_POLICY" --session "$TPM2_POLICY_SESSION")
+
+while getopts_long lopts +:hxC:U:s:r:u:i:g:G:a:L:k:P:p: opt "$@"; do
+# opt is set in getopts_long
+# shellcheck disable=SC2154
+case "$opt" in
+h|help)		usage 0;;
+x|trace)	set -vx;;
+C|parent-context|U|parent-public|s|seed|r|private|u|public|k|encryption-key|cphash)
+		[[ $OPTARG = */* ]]	\
+			&& die "Cannot reference files outside the current directory"
+		args+=(-"${OPTOPT}$opt" "$OPTARG");;
+P|parent-auth|p|key-auth)
+		case "$OPTARG" in
+		str:*)	args+=(-"${OPTOPT}$opt" "$OPTARG");;
+		hex:*)	args+=(-"${OPTOPT}$opt" "$OPTARG");;
+		file:*)	[[ $OPTARG = */* ]]		\
+			&& die "Cannot reference input files outside the current directory"
+			args+=(-"${OPTOPT}$opt" "$OPTARG");;
+		*)	die "Auth values must start with str: hex: or file:";;
+		esac;;
+*)		usage;;
+esac
+done
+shift $((OPTIND - 1))
+
+# Finally:
+tpm2_import "${args[@]}" "$@"

@@ -1,13 +1,20 @@
 #!/bin/bash
 
 PROG=${0##*/}
+BINDIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+TOP=$(dirname "$BINDIR")
 
-if [[ $0 = /* ]]; then
-        BASEDIR=${0%/*}
-elif [[ $0 = */* ]]; then
-        BASEDIR=$PWD/${0%/*}
+if [[ -s $TOP/lib/safeboot/functions.sh ]]; then
+	# shellcheck disable=SC1090 source=functions.sh
+	. "$TOP/lib/safeboot/functions.sh"
+	functions_sh=$TOP/lib/safeboot/functions.sh
+elif [[ -s $TOP/functions.sh ]]; then
+	# shellcheck disable=SC1090 source=functions.sh
+	. "$TOP/functions.sh"
+	functions_sh=$TOP/functions.sh
 else
-        BASEDIR=$PWD
+	echo "Unable to find Safeboot function library" 1>&2
+	exit 1
 fi
 
 set -euo pipefail -o noclobber
@@ -16,61 +23,130 @@ shopt -s extglob
 function usage {
 	((${1:-1} > 0)) && exec 1>&2
 	cat <<EOF
-Usage: $PROG [-o FILE] [-A | -D] POLICY-CMD [ARGS [\\; ...]]
+Usage: $PROG [OPTIONS] POLICY [ARGS...]
 
-  The first form computes the policyDigest of the given policy.
+  Executes the {POLICY}, which must be a bash script to execute via restricted
+  bash.
 
-  Policies arguments should be of the form:
+  Options:
 
-       $PROG ... tpm2 policy... args... \\; tpm2 policy args...
+   -h | --help		This message.
+   -x | --trace		Trace this script.
+   -F | --file FILE	A file to make available to the policy script.
+			All such FILEs must have distinct basenames.
+   -P | --path ALTS	Execute the given alternation branches of the
+			EA policy.  The value should be a comma-
+			separated list of integers between 0 and 7.
+   -S | --session FILE	Use the given policy session, otherwise use a
+			trial session.
+   -L | --policy FILE	Leave the {policyDigest} (binary) in {FILE}.
+   -E | --existing	Use an existing session.
+			If {--existing} is not given then if the {--session}
+			file exists that will be an error.
+   -T | --trial		The session is a trial session.
 
-  but without any {--session}|{-S} nor {--policy}|{-L} options.
+  Policies should consist of a directory with:
 
-  If -A is given then {tpm2 policycommandcode} will be added at the end for
-  enabling TPM2_ActivateCredential().
+   - policy -- a restricted bash script implementing the policy
+   - any artifacts needed by the policy
 
-  If -D is given then {tpm2 policycommandcode} will be added at the end for
-  enabling TPM2_RSA_Decrypt().
+  Arguments are policy-specific.
 
-  E.g.:
+  Policies may only execute the external commands in the one directory in
+  {PATH}, which are:
 
-      $ # Require that PCR 11 be unextended
-      $ $PROG tpm2 policypcr -l "sha256:11"
+   - {verifysignature} -> wrapper for {tpm2_verifysignature}
+   - {loadexternal} -> wrapper for {tpm2_loadexternal}
+   - {policy*} -> wrappers for {tpm2_policy*}
+   - sha256sum
+   - stat
+   - xxd
+
+  The wrappers will not allow access to files outside {TMPDIR}.
+
+  TMPDIR will be set to a directory that the policy script can use for its
+  needs.  In particular, any key contexts loaded from policy artifacts, and any
+  tickets made by any of the wrapped tpm2 commands, must be placed in TMPDIR.
+
+  The current directory when running the policy script will be the {TMPDIR}.
 EOF
 	exit "${1:-1}"
 }
 
-# shellcheck disable=SC1090
-. "$BASEDIR/../functions.sh"
-
-out=
-force=false
-activate=false
-rsa_decrypt=false
-command_code=
-while getopts +:ADhefo:x opt; do
-case "$opt" in
-A)	activate=true;;
-D)	rsa_decrypt=true;;
-h)	usage 0;;
-f)	force=true;;
-o)	out=$OPTARG;;
-x)	set -vx;;
-*)	usage;;
-esac
-done
-shift $((OPTIND - 1))
-
-! $activate  || ! $rsa_decrypt || die "-A and -D are mutually exclusive"
-$activate    && command_code=TPM2_CC_ActivateCredential
-$rsa_decrypt && command_code=TPM2_CC_RSA_Decrypt
+# shellcheck disable=SC2034
+declare -A lopts=(
+   [help]=''
+   [trace]=''
+   [file]=:
+   [path]=:
+   [session]=:
+   [policy]=:
+   [existing]=''
+   [trial]=''
+)
 
 # Make a temp dir and remove it when we exit:
 d=
-trap 'rm -rf "$d"' EXIT
+trap 'cd /; rm -rf "$d"' EXIT
 d=$(mktemp -d)
+export TMPDIR="$d"
 
-policyDigest=$(make_policyDigest $command_code "$@")
-[[ -z $out ]] || ! $force >| "$out"
-[[ -z $out ]] ||   $force > "$out"
-echo "$policyDigest"
+existing=false
+alts=
+trial=false
+policy=
+session=
+while getopts_long lopts +:L:NP:S:Thx opt "$@"; do
+# shellcheck disable=SC2154
+case "$opt" in
+h|help)		usage 0;;
+x|trace)	set -vx;;
+F|file)		cp -f "$OPTARG" "$TMPDIR";;
+L|policy)	policy=$OPTARG;;
+E|existing)	existing=true;;
+P|path)		alts=$OPTARG; trial=false;;
+S|session)	session=$OPTARG;;
+T|trial)	trial=true;;
+*)		usage;;
+esac
+done
+shift $((OPTIND - 1))
+(($#)) || usage
+
+cd "$TMPDIR"
+
+# Save the current environment so it can be restored easily by the rbin
+# wrappers.  Make sure the env is not writable so that the restricted bash
+# script cannot write it.
+unset TPM2_POLICY_SESSION TPM2_POLICY_ALTERNATIVES TPM2_POLICY
+export PREFIX DIR
+(umask 0222; export -p > "${TMPDIR}/env")
+
+[[ -z ${session:-} ]] && session=${TMPDIR}/session
+if $existing; then
+	[[ -z ${session:-} || ! -s ${session:-} ]]	\
+	&& die "Session file exists"
+elif ! $existing; then
+	if $trial; then
+		tpm2 startauthsession --session "$session"
+	else
+		tpm2 startauthsession --session "$session"	\
+				      --policy-session
+	fi
+fi
+
+: "${policy:="$(mktemp)"}"
+TPM2_POLICY_SESSION=$session
+TPM2_POLICY_ALTERNATIVES=$alts
+TPM2_POLICY=${policy}
+export TPM2_POLICY TPM2_POLICY_SESSION TPM2_POLICY_ALTERNATIVES
+
+script=$1
+shift
+
+# Run restricted scripts with FD 4 set to /dev/null so they can redirect output
+# to /dev/null using 1>&4 and 2>&4.
+BASH_ENV="${BASEDIR}/functions.sh"	\
+PATH="$BASEDIR/rbin"			\
+/bin/rbash "${script}" "$@" 4<>/dev/null
+bin2hex < "$policy"

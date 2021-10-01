@@ -307,8 +307,10 @@ shellcheck:
 		sbin/tpm2-recv \
 		sbin/tpm2-policy \
 		initramfs/*/* \
+		rbin/* \
+		tests/test-enroll.sh \
 	; do \
-		shellcheck $$file functions.sh ; \
+		shellcheck -x $$file functions.sh ; \
 	done
 
 # Fetch several of the TPM certs and make them usable

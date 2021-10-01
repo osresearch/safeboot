@@ -6,12 +6,49 @@
 export LC_ALL=C
 
 die_msg=""
-die() { echo "${PROG:+${PROG}: }$die_msg""$*" >&2 ; exit 1 ; }
+die() {
+	local e=1;
+	if [[ ${1:-} = +([0-9]) ]]; then
+		e=$1
+		shift
+	fi
+	echo "${PROG:+${PROG}: }$die_msg""$*" >&2
+	exit "$e"
+}
 warn() { echo "$@" >&2 ; }
 error() { echo "$@" >&2 ; return 1 ; }
 info() { ((${VERBOSE:-0})) && echo "$@" >&2 ; return 0 ; }
 debug() { ((${VERBOSE:-0})) && echo "$@" >&2 ; return 0 ; }
 
+safeboot_dir() {
+	[[ -n $1 ]]	\
+	|| die "Internal error in caller of safeboot_dir"
+	case "$1" in
+	bin)	echo "$TOP/bin";;
+	lib)	echo "$TOP/lib";;
+	etc)	if [[ $TOP = /usr ]]; then
+			echo "/etc/safeboot"
+		elif [[ -d $TOP/etc/safeboot ]]; then
+			echo "$TOP/etc/safeboot"
+		elif [[ -d $TOP/etc && -f $TOP/etc/safeboot.conf ]]; then
+			echo "$TOP/etc"
+		elif [[ -d $TOP && -f $TOP/safeboot.conf ]]; then
+			echo "$TOP"
+		elif [[ -d /etc/safeboot ]]; then
+			echo "$TOP/etc"
+		else
+			die "Cannot find 'etc' directory for Safeboot"
+		fi;;
+	*)	die "Internal error in caller of safeboot_dir";;
+	esac
+}
+safeboot_file() {
+	[[ -n $1 && -n $2 ]]	\
+	|| die "Internal error in caller of safeboot_file"
+	safeboot_dir "$1" > /dev/null
+	local dir="$(safeboot_dir "$1")"
+	echo "${dir}/$2"
+}
 
 ########################################
 #
@@ -23,7 +60,6 @@ debug() { ((${VERBOSE:-0})) && echo "$@" >&2 ; return 0 ; }
 #
 ########################################
 
-TMP=
 TMP_MOUNT=n
 cleanup() {
 	if [[ $TMP_MOUNT = "y" ]]; then
@@ -33,8 +69,11 @@ cleanup() {
 	[[ -n $TMP ]] && rm -rf "$TMP"
 }
 
-trap cleanup EXIT
-TMP=$(mktemp -d)
+setup() {
+	TMP=
+	trap cleanup EXIT
+	TMP=$(mktemp -d)
+}
 
 mount_tmp() {
 	mount -t tmpfs none "$TMP" || die "Unable to mount temp directory"
@@ -579,4 +618,134 @@ vymljYVDyrUriOet8zPB/9tq9XJ7A54qsVkaVufAuEJ6GIvD4xUZ27manMosJADS
 aW2TLJkwxecRh2eTwPtSx2U32M2/yHeuWRV/0juiIozefPsTAlHAi3E=
 -----END PRIVATE KEY-----
 EOF
+}
+
+# verify_sig PUBKEY_FILE BODYHASH_FILE SIG_FILE
+verify_sig() {
+	local pubkey="$1"
+	local body="$2"
+	local sig="$3"
+
+	(($# >= 3 && $# <= 4))
+	shift $#
+
+	# Verify the signature using a raw public key, or a certificate
+	# shellcheck disable=2094
+	openssl pkeyutl -verify					\
+			-pubin					\
+			-inkey "$pubkey"			\
+			-in <(sha256 < "$body" | hex2bin)	\
+			-sigfile "$sig"				\
+	||
+	openssl pkeyutl -verify					\
+			-certin					\
+			-inkey "$pubkey"			\
+			-in <(sha256 < "$body" | hex2bin)	\
+			-sigfile "$sig"				\
+	||
+	openssl dgst -verify "$pubkey"				\
+		     -keyform pem				\
+		     -sha256					\
+		     -signature "$sig"				\
+		     "$body"					\
+	||
+	die "could not verify signature on $body with $pubkey"
+}
+
+# getopts_long lname optstring name [args...]
+#
+#   lname is the name of an associative array whose indices are long option
+#   names and whose values are either the empty string (no option argument),
+#   or ':' (the option requires an argument).
+#
+#   optstring is an optstring value for getopts
+#
+#   optname is the name of a variable in which to put the matched option
+#   name / letter.
+#
+#   args... is the arguments to parse.
+#
+# As with getopts, $OPTIND is set to the next argument to check at the
+# next invocation.  Unset OPTIND or set it to 1 to reset options
+# processing.
+#
+# As with getopts, "--" is a special argument that ends options
+# processing.
+#
+# Example:
+#
+#   declare -A long=([foo]=: [id]=: [silent]='')
+#   foo=none
+#   id=$USER
+#   silent=false
+#   while getopts_long long f:i:sx opt "$@"; do
+#   case "$opt" in
+#   foo|f) foo=$OPTARG;;
+#   id|i) id=$OPTARG;;
+#   silent|s) silent=true; [[ -n $OPTARG ]] && echo "Look ma: optional option arguments! --silent=$OPTARG";;
+#   x) set -vx;;
+#   *) echo "Usage: $0 [--foo FOO | -f FOO] [--id USER | -i USER] [--silent | -s] [-x] ARGS" 1>&2; exit 1;;
+#   esac
+#   done
+# 
+#   shift $((OPTIND-1))
+#   echo "foo=$foo id=$id silent=$silent; args: $#: $*"
+function getopts_long {
+	if (($# < 3)); then
+		printf 'bash: illegal use of getopts_long\n'
+		printf 'Usage: getopts_long lname optstring name [ARGS]\n'
+		printf '\t{lname} is the name of an associative array variable\n'
+		printf '\twhose keys are long option names and values are\n'
+		printf '\tthe empty string (no argument) or ":" (argument\n'
+		printf '\trequired).\n\n'
+		printf '\t{optstring} and {name} are as for the {getopts}\n'
+		printf '\tbash builtin.\n'
+		return 1
+	fi 1>&2
+	[[ ${1:-} != lopts ]] && local -n lopts="$1"
+	local optstr="$2"
+	[[ ${3:-} != opt ]] && local -n opt="$3"
+	local optvar="$3"
+	shift 3
+
+	# shellcheck disable=SC2034
+	OPTOPT=
+	OPTARG=
+	: "${OPTIND:=1}"
+	# shellcheck disable=SC2124
+	opt=${@:$OPTIND:1}
+	if [[ $opt = -- ]]; then
+		opt='?'
+		return 1
+	fi
+	if [[ $opt = --* ]]; then
+		# shellcheck disable=SC2034
+		OPTOPT='-'
+		local optval=false
+		opt=${opt#--}
+		if [[ $opt = *=* ]]; then
+			OPTARG=${opt#*=}
+			opt=${opt%%=*}
+			optval=true
+		fi
+		((++OPTIND))
+		if [[ ${lopts[$opt]+yes} != yes ]]; then
+			((OPTERR)) && printf 'bash: illegal long option %s\n' "$opt" 1>&2
+			opt='?'
+			return 0
+		fi
+		if [[ ${lopts[$opt]:-} = : ]]; then
+			if ! $optval; then
+				# shellcheck disable=SC2124
+				OPTARG=${@:$OPTIND:1}
+				((++OPTIND))
+			fi
+		fi
+		return 0
+	fi
+	if getopts "$optstr" "$optvar" "$@"; then
+		return 0
+	else
+		return $?
+	fi
 }

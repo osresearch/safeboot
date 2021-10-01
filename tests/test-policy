@@ -1,0 +1,65 @@
+#!/bin/bash
+
+PROG=${0##*/}
+
+set -euo pipefail
+shopt -s extglob
+
+die() { echo "Error: $*" 1>&2; exit 1; }
+
+[[ ${TMPDIR:-} ]]	\
+|| die "TMPDIR is not set"
+[[ ${TMPDIR:-} = "$PWD" ]]	\
+|| die "TMPDIR is not equal to \$PWD"
+[[ -n ${TPM2_POLICY_SESSION:-} ]]	\
+|| die "TPM2_POLICY_SESSION is not set"
+[[ ${TPM2_POLICY_SESSION} != */* ||
+   ${TPM2_POLICY_SESSION} = ${PWD}/* ]]	\
+|| die "TPM2_POLICY_SESSION does not exist"
+[[ -s ${TPM2_POLICY_SESSION} ]]		\
+|| die "TPM2_POLICY_SESSION does not exist"
+
+IFS=: read -a path <<<"$PATH"
+((${#path[@]} < 1 || ${#path[@]} > 2))			\
+&& die "PATH not set correctly (wrong number of paths)"
+((${#path[@]} == 1)) && [[ ${path[0]} != */rbin ]]	\
+&& die "PATH not set correctly (rbin missing)"
+((${#path[@]} == 2))					\
+&& [[ ${path[0]} != */rbin && ${path[1]} != */rbin ]]	\
+&& die "PATH not set correctly (rbin missing)"
+((${#path[@]} == 2))					\
+&& [[ ${path[0]} != "$PWD" && ${path[1]} != "$PWD" ]]	\
+&& die "PATH not set correctly (something other than \$PWD and rbin is present)"
+
+# shellcheck disable=SC2209
+function usage {
+	((${1:-1} > 0)) && exec 1>&2
+	local -a usage
+	readarray usage <<EOF
+Usage: $PROG
+
+  A test policy script.
+
+  Options:
+
+   -h | --help			This help message.
+   -x | --trace			Trace this script.
+
+  See {sbin/tpm2-policy}.
+EOF
+	printf '%s' "${usage[@]}"
+	exit "${1:-1}"
+}
+
+while getopts +:hx opt "$@"; do
+# shellcheck disable=SC2154
+case "$opt" in
+h)	usage 0;;
+x)	set -vx;;
+*)	usage;;
+esac
+done
+shift $((OPTIND - 1))
+
+for ((i=0; i < 32; i++)); do printf '\0'; done | writeartifact pcr11.dat
+policypcr --pcr-list=sha256:11 -f pcr11.dat

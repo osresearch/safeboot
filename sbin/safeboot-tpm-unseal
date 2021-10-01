@@ -32,6 +32,8 @@ for script in \
 	fi
 done
 
+setup
+
 # Override die to extend the boot mode PCR to indicate the failure
 die() {
 	echo >&2 "$@"

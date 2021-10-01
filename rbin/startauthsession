@@ -1,0 +1,79 @@
+#!/bin/bash
+
+PROG=${0##*/}
+# shellcheck disable=SC1090 disable=SC1091
+. ./env
+
+set -euo pipefail
+shopt -s extglob
+
+TMPDIR=$PWD
+unset TPM2_POLICY_SESSION
+
+# shellcheck disable=SC2209
+function usage {
+	((${1:-1} > 0)) && exec 1>&2
+	pager=cat
+	if [[ -t 0 && -t 1 && -t 2 ]]; then
+		if [[ -z ${PAGER:-} ]] && type less >/dev/null 2>&1; then
+			pager=less
+		elif [[ -z ${PAGER:-} ]] && type more >/dev/null 2>&1; then
+			pager=more
+		elif [[ -n ${PAGER:-} ]]; then
+			pager=$PAGER
+		fi
+	fi
+        $pager <<EOF
+Usage: $PROG [options] --session FILE
+
+  {$PROG} is a wrapper around {tpm2 startauthsession}.
+
+  See {${BASEDIR}/sbin/tpm2-policy}.
+
+  Options:
+
+   -h | --help				This help message.
+   -x | --trace				Trace this script.
+   -S | --session FILE
+   --policy-session
+EOF
+	exit "${1:-1}"
+}
+
+# shellcheck disable=SC1090 disable=SC1091
+. "$BASEDIR/functions.sh"
+
+# shellcheck disable=SC2034
+declare -A lopts=(
+	[help]=''
+	[trace]=''
+	[session]=:
+	[policy-session]=''
+)
+
+declare -a args=(--policy "$TPM2_POLICY" --session "$TPM2_POLICY_SESSION")
+
+session=
+while getopts_long lopts +:hxS: opt "$@"; do
+# opt is set in getopts_long
+# shellcheck disable=SC2154
+case "$opt" in
+h|help)		usage 0;;
+x|trace)	set -vx;;
+S|session)
+	[[ $OPTARG = */* ]]	\
+	&& die "Cannot reference output files outside the current directory"
+	args+=(-"${OPTOPT}$opt" "$OPTARG");;
+policy-session) args+=(-"${OPTOPT}$opt");;
+*)		usage;;
+esac
+done
+shift $((OPTIND - 1))
+
+[[ -z $session ]]	\
+&& die "A session file not given"
+[[ -s $session ]]	\
+&& die "Session already exists"
+
+# Finally:
+tpm2_startauthsession "${args[@]}" "$@"

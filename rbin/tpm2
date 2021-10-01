@@ -1,0 +1,85 @@
+#!/bin/bash
+
+PROG=${0##*/}
+# shellcheck disable=SC1090 disable=SC1091
+. ./env
+
+# shellcheck disable=SC2209
+function usage {
+	((${1:-1} > 0)) && exec 1>&2
+	pager=cat
+	if [[ -t 0 && -t 1 && -t 2 ]]; then
+		if [[ -z ${PAGER:-} ]] && type less >/dev/null 2>&1; then
+			pager=less
+		elif [[ -z ${PAGER:-} ]] && type more >/dev/null 2>&1; then
+			pager=more
+		elif [[ -n ${PAGER:-} ]]; then
+			pager=$PAGER
+		fi
+	fi
+        $pager <<EOF
+Usage: $PROG [options] ARGS
+
+  {$PROG} is a wrapper around {tpm2} for {${BASEDIR}/sbin/tpm2-policy}.  It
+  runs subcommands that are themselves wrappers around {tpm2} subcommands.
+
+  See {${BASEDIR}/sbin/tpm2-policy}.
+
+  Options:
+
+   -h | --help				This help message.
+   -x | --trace				Trace this script.
+EOF
+	exit "${1:-1}"
+}
+
+# shellcheck disable=SC1090 disable=SC1091
+. "$BASEDIR/functions.sh"
+
+# shellcheck disable=SC2034
+declare -A lopts=(
+	[help]=''
+	[trace]=''
+)
+
+while getopts_long lopts +:hx opt "$@"; do
+# opt is set in getopts_long
+# shellcheck disable=SC2154
+case "$opt" in
+h|help)			usage 0;;
+x|trace)		set -vx;;
+*)	usage;;
+esac
+done
+shift $((OPTIND - 1))
+$(($#)) || usage
+
+declare -A cmds=(
+	[flushcontext]=true
+	[import]=true
+	[load]=true
+	[loadexternal]=true
+	[policyauthorize]=true
+	[policyauthorizenv]=true
+	[policyauthvalue]=true
+	[policycommandcode]=true
+	[policycountertimer]=true
+	[policycphash]=true
+	[policyduplicationselect]=true
+	[policylocality]=true
+	[policynamehash]=true
+	[policynv]=true
+	[policynvwritten]=true
+	[policyor]=true
+	[policypassword]=true
+	[policypcr]=true
+	[policysecret]=true
+	[policysigned]=true
+	[policytemplate]=true
+	[policyticket]=true]=true
+	[startauthsession]=true
+	[verifysignature]=true
+)
+
+# Finally:
+"${cmds["$1"]:-false}" && "$@"

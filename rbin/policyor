@@ -1,0 +1,136 @@
+#!/bin/bash
+
+PROG=${0##*/}
+# shellcheck disable=SC1090 disable=SC1091
+. ./env
+
+set -euo pipefail
+shopt -s extglob
+
+TMPDIR=$PWD
+[[ -n ${TPM2_POLICY_SESSION:-} ]]	\
+|| die "TPM2_POLICY_SESSION is not set"
+[[ ${TPM2_POLICY_SESSION} != */* ||
+   ${TPM2_POLICY_SESSION} = ${PWD}/* ]]	\
+|| die "TPM2_POLICY_SESSION does not exist"
+[[ -s ${TPM2_POLICY_SESSION} ]]		\
+|| die "TPM2_POLICY_SESSION does not exist"
+
+# shellcheck disable=SC2209
+function usage {
+	((${1:-1} > 0)) && exec 1>&2
+	pager=cat
+	if [[ -t 0 && -t 1 && -t 2 ]]; then
+		if [[ -z ${PAGER:-} ]] && type less >/dev/null 2>&1; then
+			pager=less
+		elif [[ -z ${PAGER:-} ]] && type more >/dev/null 2>&1; then
+			pager=more
+		elif [[ -n ${PAGER:-} ]]; then
+			pager=$PAGER
+		fi
+	fi
+	$pager <<EOF
+Usage: $PROG POLICY_0 ';' POLICY_1 ';' ...
+       $PROG --raw POLICY_DIGEST_FILE_0 POLICY_DIGEST_FILE_1...
+
+  {$PROG} evaluates an alternation (TPM2_PolicyOr()) of the given policies.
+
+  Each {POLICY_i} is a policy script or restricted bin policy command wrapper,
+  and optional arguments.
+
+  Options:
+
+   -h | --help			This help message.
+   -x | --trace			Trace this script.
+
+  See {sbin/tpm2-policy}.
+EOF
+	exit "${1:-1}"
+}
+
+# shellcheck disable=SC1090 disable=SC1091
+. "$BASEDIR/functions.sh"
+
+declare -a alts
+alts=()
+if [[ -n ${TPM2_POLICY_ALTERNATIVES:-} ]]; then
+	set -f
+	alts+=($TPM2_POLICY_ALTERNATIVES)
+	set +f
+	this_alt=${alts[0]}
+	[[ $this_alt = [0-7] ]] \
+	|| die "Alternatives must be integers between 0 and 7, inclusive"
+	trial=false
+else
+	this_alt=-1
+	trial=true
+fi
+unset TPM2_POLICY_ALTERNATIVES
+
+join() { local IFS="$1"; printf '%s\n' "$*"; }
+
+# shellcheck disable=SC2034
+declare -A lopts=(
+	[help]=''
+	[trace]=''
+	[raw]=''
+)
+
+while getopts_long lopts +:hx opt "$@"; do
+# shellcheck disable=SC2154
+case "$opt" in
+h|help)		usage 0;;
+x|trace)	set -vx;;
+raw) 
+		tpm2 policyor --session "${TPM2_POLICY_SESSION}"	\
+			      --policy "$TPM2_POLICY"			\
+			      sha256:"$(join ',' "$@")"
+		exit 0;;
+*)		usage;;
+esac
+done
+shift $((OPTIND - 1))
+
+(($# > 0)) || usage
+
+unset TPM2_POLICY_ALTERNATIVES
+
+declare -a policies=()
+declare -a sessions=()
+cleanup() { rm -rf "${policies[@]}" "${sessions[@]}"; }
+trap cleanup EXIT
+
+let i=0
+declare -a cmd
+while (($#)); do
+	# Extract POLICY_i from the argv
+	cmd=()
+	while (($#)) && [[ $1 != ";" ]]; do
+		cmd+=("$1")
+		shift
+	done
+	(($#)) && [[ $1 != ";" ]] && shift
+
+	policy="digest-${TPM2_POLICY_SESSION}-${i}"
+	policies+=("$TPM2_POLICY")
+	if $trial || ((i != this_alt)); then
+		# Either we're not executing the policy, or not this arm of it.
+		sessions+=("${TPM2_POLICY_SESSION}-${i}")
+		tpm2 flushcontext --loaded-session
+		tpm2 startauthsession --session "${TPM2_POLICY_SESSION}-${i}"
+		TPM2_POLICY_SESSION=${TPM2_POLICY_SESSION}-${i}	\
+		TPM2_POLICY="$policy"					\
+		"${cmd[@]}"
+		tpm2 flushcontext --loaded-session
+	else
+		# shellcheck disable=SC2124
+		TPM2_POLICY_ALTERNATIVES=${alts[@]:1:${#alts[@]}}	\
+		TPM2_POLICY="$policy"					\
+		"${cmd[@]}"
+	fi
+	((++i))
+done
+
+tpm2_policyor --session "${TPM2_POLICY_SESSION}"	\
+	      --policy "$TPM2_POLICY"			\
+	      sha256:"$(join ',' "${policies[@]}")"
