@@ -70,18 +70,8 @@ declare -A TCTIs
 start_port=9880
 start_swtpm() {
 	local tries=0
-
-	while ((tries < 3)) && lsof -i ":${start_port}" >/dev/null; do
-		((++tries))
-		((++start_port))
-	done
 	local port=$start_port
 	((++start_port))
-
-	while ((tries < 3)) && lsof -i ":${start_port}" >/dev/null; do
-		((++tries))
-		((++start_port))
-	done
 	local cport=$((start_port))
 	((++start_port))
 
@@ -98,7 +88,8 @@ start_swtpm() {
 		--pid file="${d}/tpm${port}/.pid"		\
 		--server type="tcp,bindaddr=0.0.0.0,port=$port"	\
 		--ctrl type="tcp,bindaddr=0.0.0.0,port=$cport"	\
-		--flags startup-clear
+		--flags startup-clear				\
+	|| continue
 	sleep 1
 	swtpmpids+=("$(cat "${d}/tpm${port}/.pid")")
 	TCTIs[$1]="swtpm:host=localhost,port=$port"
