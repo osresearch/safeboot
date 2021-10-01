@@ -60,7 +60,6 @@ safeboot_file() {
 #
 ########################################
 
-TMP=
 TMP_MOUNT=n
 cleanup() {
 	if [[ $TMP_MOUNT = "y" ]]; then
@@ -70,8 +69,11 @@ cleanup() {
 	[[ -n $TMP ]] && rm -rf "$TMP"
 }
 
-trap cleanup EXIT
-TMP=$(mktemp -d)
+setup() {
+	TMP=
+	trap cleanup EXIT
+	TMP=$(mktemp -d)
+}
 
 mount_tmp() {
 	mount -t tmpfs none "$TMP" || die "Unable to mount temp directory"
