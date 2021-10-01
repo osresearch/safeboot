@@ -32,10 +32,12 @@ safeboot_dir() {
 			echo "$TOP/etc/safeboot"
 		elif [[ -d $TOP/etc && -f $TOP/etc/safeboot.conf ]]; then
 			echo "$TOP/etc"
+		elif [[ -d /etc/safeboot ]]; then
+			echo "$TOP/etc"
 		else
 			die "Cannot find 'etc' directory for Safeboot"
-		fi
-	*)	die "Internal error in caller of safeboot_dir"
+		fi;;
+	*)	die "Internal error in caller of safeboot_dir";;
 	esac
 }
 safeboot_file() {

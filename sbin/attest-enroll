@@ -482,7 +482,10 @@ start_swtpm() {
 			     --server type="tcp,bindaddr=127.0.0.1,port=$port"		\
 			     --ctrl type="tcp,bindaddr=127.0.0.1,port=$((port+1))"	\
 			     --flags startup-clear					\
-		&& { swtpm_pid=$(cat "${tmp}/.pid"); break; }
+		|| continue
+		sleep 1
+		swtpm_pid=$(cat "${tmp}/.pid")
+		break
 	done
 
 	[[ -n $swtpm_pid ]]	\
