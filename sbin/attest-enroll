@@ -470,6 +470,7 @@ cleanup() {
 	[[ -n $tmp ]] && rm -rf "$tmp";
 	if ! $success; then
 		warn "Failed to enroll $hostname"
+		backtrace 1>&2
 	fi
 }
 tmp="$(mktemp -d)"
