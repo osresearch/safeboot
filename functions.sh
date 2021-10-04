@@ -667,3 +667,16 @@ verify_sig() {
 	||
 	die "could not verify signature on $body with $pubkey"
 }
+
+backtrace () {
+	local -i n=${#FUNCNAME[@]}
+	local -i i
+
+	for ((i=1; i<n; i++)); do
+		printf '%*s' "$i" '' # indent
+		printf 'at: %s(), %s, line %s\n'	\
+			"${FUNCNAME[$i]}"		\
+			"${BASH_LINENO[$((i-1))]}"	\
+			"${BASH_SOURCE[i]}"
+	done
+}
