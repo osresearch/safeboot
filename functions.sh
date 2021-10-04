@@ -472,15 +472,19 @@ aead_encrypt() {
 	mackey=$(sha256 < "$key_file")
 
 	(_rand 16; cat "$plaintext_file") \
-	| openssl enc -aes-256-cbc					\
-		      -e						\
-		      -nosalt						\
-		      -kfile "$key_file"				\
-		      -iv 00000000000000000000000000000000 2>/dev/null	\
+	| openssl enc						\
+			-aes-256-cbc				\
+			-e					\
+			-nosalt					\
+			-kfile <(xxd -p -c 100 < "$key_file")	\
+			-iter 1					\
+			-md SHA256				\
+			-iv 00000000000000000000000000000000	\
 	|
-	(tee >(openssl dgst -mac HMAC			\
-			     -macopt hexkey:"$mackey"	\
-			     -binary) ) > "$ciphertext_file"
+	(tee >(openssl dgst					\
+			-mac HMAC				\
+			-macopt hexkey:"$mackey"		\
+			-binary) ) > "$ciphertext_file"
 }
 
 # Authenticated decryption counterpart to aead_encrypt.
@@ -508,29 +512,36 @@ aead_decrypt() {
 	# Extract the MAC, compute the MAC as it should be, compare the two
 	# (this complex cmp invocation means we don't need temp files, so no
 	# cleanup either)
-	if cmp <(dd if="$ciphertext_file"				\
-		    iflag=skip_bytes					\
-		    skip=$((sz - 32))					\
-		    bs=32						\
-		    count=1 2>/dev/null)				\
-	       <(dd if="$ciphertext_file"				\
-		    bs=$((sz - 32))					\
-		    count=1 2>/dev/null					\
-		 | openssl dgst -mac HMAC				\
+	if cmp <(dd							\
+			if="$ciphertext_file"				\
+			iflag=skip_bytes				\
+			skip=$((sz - 32))				\
+			bs=32						\
+			count=1 2>/dev/null)				\
+	       <(dd							\
+			if="$ciphertext_file"				\
+			bs=$((sz - 32))					\
+			count=1 2>/dev/null				\
+		 | openssl dgst						\
+				-mac HMAC				\
 				-macopt hexkey:"$mackey"		\
 				-binary); then
-		dd if="$ciphertext_file"				\
-		   bs=$((sz - 32))					\
-		   count=1 2>/dev/null					\
-		| openssl enc -aes-256-cbc				\
-			      -d					\
-			      -nosalt					\
-			      -kfile "$key_file"			\
-			      -iv 00000000000000000000000000000000	\
-			      2>/dev/null				\
-		| dd iflag=skip_bytes					\
-		     skip=16						\
-		     of="$plaintext_file" 2>/dev/null
+		dd							\
+			if="$ciphertext_file"				\
+			bs=$((sz - 32))					\
+			count=1 2>/dev/null				\
+		| openssl enc						\
+				-aes-256-cbc				\
+				-d					\
+				-nosalt					\
+				-kfile <(xxd -p -c 100 < "$key_file")	\
+				-iter 1					\
+				-md SHA256				\
+				-iv 00000000000000000000000000000000	\
+		| dd							\
+			iflag=skip_bytes				\
+			skip=16						\
+			of="$plaintext_file" 2>/dev/null
 	else
 		die "MAC does not match"
 	fi
