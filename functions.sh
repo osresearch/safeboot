@@ -20,6 +20,37 @@ error() { echo "$@" >&2 ; return 1 ; }
 info() { ((${VERBOSE:-0})) && echo "$@" >&2 ; return 0 ; }
 debug() { ((${VERBOSE:-0})) && echo "$@" >&2 ; return 0 ; }
 
+safeboot_dir() {
+	[[ -n $1 ]]	\
+	|| die "Internal error in caller of safeboot_dir"
+	case "$1" in
+	bin)	echo "$TOP/bin";;
+	lib)	echo "$TOP/lib";;
+	etc)	if [[ $TOP = /usr ]]; then
+			echo "/etc/safeboot"
+		elif [[ -d $TOP/etc/safeboot ]]; then
+			echo "$TOP/etc/safeboot"
+		elif [[ -d $TOP/etc && -f $TOP/etc/safeboot.conf ]]; then
+			echo "$TOP/etc"
+		elif [[ -d $TOP && -f $TOP/safeboot.conf ]]; then
+			echo "$TOP"
+		elif [[ -d /etc/safeboot ]]; then
+			echo "$TOP/etc"
+		else
+			die "Cannot find 'etc' directory for Safeboot"
+		fi;;
+	*)	die "Internal error in caller of safeboot_dir";;
+	esac
+}
+safeboot_file() {
+	local dir
+
+	[[ -n $1 && -n $2 ]]	\
+	|| die "Internal error in caller of safeboot_file"
+
+	dir="$(safeboot_dir "$1")"
+	echo "${dir}/$2"
+}
 
 ########################################
 #
@@ -31,7 +62,6 @@ debug() { ((${VERBOSE:-0})) && echo "$@" >&2 ; return 0 ; }
 #
 ########################################
 
-TMP=
 TMP_MOUNT=n
 cleanup() {
 	if [[ $TMP_MOUNT = "y" ]]; then
@@ -41,8 +71,11 @@ cleanup() {
 	[[ -n $TMP ]] && rm -rf "$TMP"
 }
 
-trap cleanup EXIT
-TMP=$(mktemp -d)
+setup() {
+	TMP=
+	trap cleanup EXIT
+	TMP=$(mktemp -d)
+}
 
 mount_tmp() {
 	mount -t tmpfs none "$TMP" || die "Unable to mount temp directory"
@@ -439,15 +472,19 @@ aead_encrypt() {
 	mackey=$(sha256 < "$key_file")
 
 	(_rand 16; cat "$plaintext_file") \
-	| openssl enc -aes-256-cbc					\
-		      -e						\
-		      -nosalt						\
-		      -kfile "$key_file"				\
-		      -iv 00000000000000000000000000000000 2>/dev/null	\
+	| openssl enc						\
+			-aes-256-cbc				\
+			-e					\
+			-nosalt					\
+			-kfile <(xxd -p -c 100 < "$key_file")	\
+			-iter 1					\
+			-md SHA256				\
+			-iv 00000000000000000000000000000000	\
 	|
-	(tee >(openssl dgst -mac HMAC			\
-			     -macopt hexkey:"$mackey"	\
-			     -binary) ) > "$ciphertext_file"
+	(tee >(openssl dgst					\
+			-mac HMAC				\
+			-macopt hexkey:"$mackey"		\
+			-binary) ) > "$ciphertext_file"
 }
 
 # Authenticated decryption counterpart to aead_encrypt.
@@ -475,29 +512,36 @@ aead_decrypt() {
 	# Extract the MAC, compute the MAC as it should be, compare the two
 	# (this complex cmp invocation means we don't need temp files, so no
 	# cleanup either)
-	if cmp <(dd if="$ciphertext_file"				\
-		    iflag=skip_bytes					\
-		    skip=$((sz - 32))					\
-		    bs=32						\
-		    count=1 2>/dev/null)				\
-	       <(dd if="$ciphertext_file"				\
-		    bs=$((sz - 32))					\
-		    count=1 2>/dev/null					\
-		 | openssl dgst -mac HMAC				\
+	if cmp <(dd							\
+			if="$ciphertext_file"				\
+			iflag=skip_bytes				\
+			skip=$((sz - 32))				\
+			bs=32						\
+			count=1 2>/dev/null)				\
+	       <(dd							\
+			if="$ciphertext_file"				\
+			bs=$((sz - 32))					\
+			count=1 2>/dev/null				\
+		 | openssl dgst						\
+				-mac HMAC				\
 				-macopt hexkey:"$mackey"		\
 				-binary); then
-		dd if="$ciphertext_file"				\
-		   bs=$((sz - 32))					\
-		   count=1 2>/dev/null					\
-		| openssl enc -aes-256-cbc				\
-			      -d					\
-			      -nosalt					\
-			      -kfile "$key_file"			\
-			      -iv 00000000000000000000000000000000	\
-			      2>/dev/null				\
-		| dd iflag=skip_bytes					\
-		     skip=16						\
-		     of="$plaintext_file" 2>/dev/null
+		dd							\
+			if="$ciphertext_file"				\
+			bs=$((sz - 32))					\
+			count=1 2>/dev/null				\
+		| openssl enc						\
+				-aes-256-cbc				\
+				-d					\
+				-nosalt					\
+				-kfile <(xxd -p -c 100 < "$key_file")	\
+				-iter 1					\
+				-md SHA256				\
+				-iv 00000000000000000000000000000000	\
+		| dd							\
+			iflag=skip_bytes				\
+			skip=16						\
+			of="$plaintext_file" 2>/dev/null
 	else
 		die "MAC does not match"
 	fi
@@ -622,4 +666,17 @@ verify_sig() {
 			"$body"					\
 	||
 	die "could not verify signature on $body with $pubkey"
+}
+
+backtrace () {
+	local -i n=${#FUNCNAME[@]}
+	local -i i
+
+	for ((i=1; i<n; i++)); do
+		printf '%*s' "$i" '' # indent
+		printf 'at: %s(), %s, line %s\n'	\
+			"${FUNCNAME[$i]}"		\
+			"${BASH_LINENO[$((i-1))]}"	\
+			"${BASH_SOURCE[i]}"
+	done
 }

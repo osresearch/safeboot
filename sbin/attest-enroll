@@ -13,26 +13,35 @@ set -euo pipefail
 shopt -s extglob
 
 PROG=${0##*/}
-if [[ $0 = /* ]]; then
-	BASEDIR=${0%/*}
-elif [[ $0 = */* ]]; then
-	BASEDIR=$PWD/${0%/*}
+BINDIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+TOP=$(dirname "$BINDIR")
+
+if [[ -s $TOP/lib/safeboot/functions.sh ]]; then
+	# shellcheck source=functions.sh
+	. "$TOP/lib/safeboot/functions.sh"
+elif [[ -s $TOP/functions.sh ]]; then
+	# shellcheck source=functions.sh
+	. "$TOP/functions.sh"
 else
-	BASEDIR=$PWD
+	echo "Unable to find Safeboot function library" 1>&2
+	exit 1
 fi
 
 # Make sure to export SAFEBOOT_ENROLL_CONF for external genprogs
 #
 # If one or more -C options given, use the first one for this (see getopts
 # loop below).
-export SAFEBOOT_ENROLL_CONF=/etc/safeboot-enroll.conf
-CONF=$SAFEBOOT_ENROLL_CONF
+cf=$(safeboot_file etc safeboot.conf)
+if [[ -n $cf && -f $cf ]]; then
+	export SAFEBOOT_ENROLL_CONF=/etc/safeboot/enroll.conf
+	CONF=$SAFEBOOT_ENROLL_CONF
+fi
 configured=false
 
 EKPUB=/dev/stdin
 
 # Configuration variables
-DBDIR="$BASEDIR/build/attest"
+DBDIR="$TOP/build/attest"
 POLICY=
 ESCROW_POLICY=
 ESCROW_PUBS_DIR=
@@ -80,9 +89,6 @@ configs() {
 		echo
 	done
 }
-
-# shellcheck disable=SC1090
-. "$BASEDIR/../functions.sh"
 
 die() { echo >&2 "Error: $PROG" "$@" ; exit 1 ; }
 warn() { echo >&2 "$@" ; }
@@ -440,6 +446,7 @@ done
 
 tmp=
 success=false
+swtpm_pid=
 cleanup() {
 	if ((VERBOSE > 1)); then
 		(
@@ -448,6 +455,14 @@ cleanup() {
 		) | sort
 	fi
 
+	(
+		[[ -n $swtpm_pid ]]	\
+		&& kill -0 "$swtpm_pid"	\
+		&& kill "$swtpm_pid"
+	) 2>/dev/null			\
+	|| true
+	unset TPM2TOOLS_TCTI
+
 	if $debug; then
 		echo "LEAVING TEMP DIR ALONE: $tmp" 1>&2
 		exit 0;
@@ -455,10 +470,71 @@ cleanup() {
 	[[ -n $tmp ]] && rm -rf "$tmp";
 	if ! $success; then
 		warn "Failed to enroll $hostname"
+		backtrace 1>&2
 	fi
 }
 tmp="$(mktemp -d)"
 trap cleanup EXIT
+
+# We might need a TPM for what should be software-only things...
+start_swtpm() {
+	local -i tries port start ready
+	((port= 10240 + ( ($$ % (32768 - 10240) ) ) ))
+	mkdir "${tmp}/swtpm"
+
+	start=$SECONDS
+	for ((tries=0, ready=0;
+	      ready == 0 && tries < 3 && (SECONDS - start) < 10;
+	      tries++, port+=2)); do
+
+		# swtpm --daemon exits immediately, which can be too soon.
+		swtpm socket							\
+			--tpm2							\
+			--tpmstate dir="${tmp}/swtpm"				\
+			--pid file="${tmp}/.pid"				\
+			--server type="tcp,bindaddr=127.0.0.1,port=$port"	\
+			--ctrl type="tcp,bindaddr=127.0.0.1,port=$((port+1))"	\
+			--flags startup-clear					&
+		swtpm_pid=$!
+
+		# Wait until swtpm is started and running
+		while ! lsof				\
+				-p "$swtpm_pid"		\
+				-a			\
+				-i ":$port"		\
+				-a			\
+				-i ":$((port+1))" >/dev/null 2>&1; do
+
+			# Is it still running?
+			kill -0 "$swtpm_pid" || break
+
+			# Have we waited too long?
+			(( (SECONDS - start) >= 10 )) && break
+
+			sleep 1
+		done
+
+		# Check that $swtpm_pid has the two ports open
+		lsof					\
+			-p "$swtpm_pid"			\
+			-a				\
+			-i ":$port"			\
+			-a				\
+			-i ":$((port+1))"		\
+			>/dev/null 2>&1
+		&& break
+
+		# Nope; retry.  Note that at this point $swtpm_pid would be
+		# alive or a zombie, so it's OK to kill it.
+		kill "$swtpm_pid"
+		wait "$swtpm_pid"
+		swtpm_pid=
+	done
+
+	[[ -n $swtpm_pid ]]	\
+	|| die "Could not start a software TPM"
+	export TPM2TOOLS_TCTI="swtpm:host=127.0.0.1,port=$port"
+}
 
 info() {
 	((VERBOSE == 0)) || echo info: "$@" 1>&2
@@ -586,6 +662,8 @@ sign() {
 		-in <(sha256 < "$1" | hex2bin)				\
 		-out "${1}.sig"
 }
+
+start_swtpm
 
 cat "$EKPUB" > "$tmp/ekpub" \
 || die "$0: unable to read EKpub from stdin"
