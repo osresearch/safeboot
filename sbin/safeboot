@@ -1018,13 +1018,14 @@ install-kernel() {
 	if ! efibootmgr | grep "^Boot.* $TARGET\$" ; then
 		# determine the device the EFI system partition is on
 		DEV="$(df "$OUTDIR" | tail -1 | cut -d' ' -f1)"
+		part=$(cat /sys/class/block/$(basename $DEV)/partition)
 
-		warn "$OUTDIR: Creating boot menu item on $DEV"
+		warn "$OUTDIR: Creating boot menu item on $DEV, partition $part"
 		efibootmgr \
 			--quiet \
 			--create \
 			--disk "$DEV" \
-			--part 1 \
+			--part $part \
 			--label "$TARGET" \
 			--loader "\\EFI\\$TARGET\\linux.efi" \
 		|| die "efibootmgr: failed to create $TARGET entry"
