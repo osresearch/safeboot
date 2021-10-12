@@ -12,7 +12,7 @@ fi
 
 TOP=${TOP%/*}
 
-# shellcheck source=functions.sh
+# shellcheck disable=SC1091 source=functions.sh
 . "$TOP/functions.sh"
 
 #PATH=$TOP/sbin:$TOP/swtpm/src/swtpm:$PATH
@@ -49,12 +49,20 @@ cat > "${d}/attest-enroll.conf" <<EOF
 DBDIR=${d}/db
 POLICY=7fdad037a921f7eec4f97c08722692028e96888f0b970dc7b3bb6a9c97e8f988
 ESCROW_POLICY=
-TRANSPORT_METHOD=EK
+TRANSPORT_METHOD=WK
 GENPROGS+=(gentest0)
 ESCROW_PUBS_DIR=${d}/escrowpubs
 POLICIES[rootfskey]=pcr11
 POLICIES[test0]=pcr11
+SIGNING_KEY_PUB=${d}/sign.pem
 EOF
+
+if [[ -n ${TEST_ENROLL_USE_OPENSSL:-} ]]; then
+	echo "SIGNING_KEY_PRIV=${d}/sign-priv.pem"
+else
+	echo "SIGNING_KEY_PRIV=${d}/sign.priv"
+fi >> "${d}/attest-enroll.conf"
+
 
 policy_pcr11_unext=(tpm2 policypcr '--pcr-list=sha256:11')
 
@@ -124,12 +132,14 @@ make_client() {
 	echo "Enrolling $1"
 	(
 		(($# == 1)) || unset TPM2TOOLS_TCTI
+		TPM2TOOLS_TCTI="${TCTIs[_self_]}"	\
 		attest-enroll -C "${d}/attest-enroll.conf" "$1" < "${d}/${1}/ek.pub"
 	)
 
 	echo "Checking that PEM also works"
-	if attest-enroll -C "${d}/attest-enroll.conf" "$1" < "${d}/${1}/ek.pem"; then
-		die "Using PEM we got a different TPM2B_PUBLIC!"
+	if TPM2TOOLS_TCTI="${TCTIs[_self_]}"	\
+	   attest-enroll -C "${d}/attest-enroll.conf" "$1" < "${d}/${1}/ek.pem"; then
+		warn "Using PEM we got a different TPM2B_PUBLIC!"
 	fi
 
 	ekpub=$(cat "${d}/db/hostname2ekpub/$1")
@@ -173,8 +183,42 @@ echo "Starting an SWTPM for things that should be software-only (but aren't yet)
 start_swtpm _self_
 export TPM2TOOLS_TCTI="${TCTIs[_self_]}"
 
+if [[ -n ${TEST_ENROLL_USE_OPENSSL:-} ]]; then
+	echo "Generating a key for signing enrolled assets"
+	openssl genrsa -out "${d}/sign-priv.pem" \
+	|| die "unable to create asset signing private key"
+	openssl rsa						\
+		-pubout						\
+		-in "${d}/sign-priv.pem"			\
+		-out "${d}/sign.pem"
+else
+	tpm2 createprimary					\
+		--hierarchy o					\
+		--key-context "${d}/primary.ctx"
+	tpm2 create						\
+		--parent-context "${d}/primary.ctx"		\
+		--key-context "${d}/sign.ctx"			\
+		--private "${d}/sign.priv"			\
+		--public "${d}/sign.pub"			\
+		--attributes 'sensitivedataorigin|userwithauth|sign'
+	tpm2 flushcontext --transient-object
+	tpm2 load						\
+		--private "${d}/sign.priv"			\
+		--public "${d}/sign.pub"			\
+		--parent-context "${d}/primary.ctx"		\
+		--key-context "${d}/signing-key.ctx"
+	tpm2 flushcontext --transient-object
+	tpm2 print						\
+		--type TPM2B_PUBLIC				\
+		--format pem "${d}/sign.pub"			\
+		> "${d}/sign.pem"
+fi
+
+mkdir -p /etc/safeboot
+cp "${d}/sign.pem" /etc/safeboot/enroll-signer.pem
+
 make_escrow BreakGlass
-make_client foo no-tpm
+make_client foo
 make_client bar
 make_client baz
 for i in foo bar baz; do
@@ -185,9 +229,10 @@ for i in foo bar baz; do
 		echo "Checking that $i can't read ${k}'s secrets"
 		rm -f "${d}/symkey"
 		TPM2TOOLS_TCTI="${TCTIs[$k]}" \
-		tpm2-recv	"${dir}/test0.symkeyenc"	\
-				"${d}/symkey" 2>/dev/null	\
-				"${policy_pcr11_unext[@]}"	\
+		tpm2-recv				\
+			"${dir}/test0.symkeyenc"	\
+			"${d}/symkey" 2>/dev/null	\
+			"${policy_pcr11_unext[@]}"	\
 		&& die "Whoops!  $i _can_ read ${k}'s secrets!!"
 		rm -f "${d}/symkey"
 	done
@@ -254,4 +299,5 @@ for i in foo bar baz; do
 	# Note that only attest-verify needs access to the enrolled clients
 	# attestation database (SAFEBOOT_DB_DIR).
 done
+
 success=true

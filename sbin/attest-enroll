@@ -36,11 +36,12 @@ DBDIR="$BASEDIR/build/attest"
 POLICY=
 ESCROW_POLICY=
 ESCROW_PUBS_DIR=
-TRANSPORT_METHOD=EK
+TRANSPORT_METHOD=WK
 DEFAULT_EK_POLICY=
 declare -a GENPROGS
-GENPROGS=(genhostname genrootfskey)
+GENPROGS=(genhostname genmetadata genrootfskey)
 declare -A POLICIES
+POLICIES=()
 
 # For the configure function (see below)
 declare -A vars
@@ -54,6 +55,19 @@ vars[CHECKOUT]=scalar
 vars[COMMIT]=scalar
 vars[GENPROGS]=array
 vars[POLICIES]=assoc
+vars[SIGNING_KEY_PRIV]=scalar
+vars[SIGNING_KEY_POLICY]=scalar
+vars[SIGNING_KEY_PUB]=scalar
+vars[SIGNING_KEY_ANCHOR]=scalar
+vars[TPM_VENDORS]=scalar
+
+# SIGNING_KEY_PRIV should be a blah.priv for a TPM entity, in which case there
+# should also be a blah.pub, or it should be a PEM file with a private key
+#
+# SIGNING_KEY_PUB should be either just the public key or a certificate for it
+# and a chain.  MUST be PEM.
+#
+# SIGNING_KEY_ANCHOR must be a PKIX trust anchor in PEM form.
 
 configs() {
 	local var type
@@ -73,15 +87,14 @@ configs() {
 die() { echo >&2 "Error: $PROG" "$@" ; exit 1 ; }
 warn() { echo >&2 "$@" ; }
 
-if [[ -n ${TPM2TOOLS_TCTI:-} ]]; then
-	# This is used via declare -n:
-	# shellcheck disable=SC2034
-	known_policy_pcr11=$("$BASEDIR/tpm2-policy" -A tpm2 policypcr --pcr-list=sha256:11)
-else
-	# This is used via declare -n:
-	# shellcheck disable=SC2034
-	known_policy_pcr11=7fdad037a921f7eec4f97c08722692028e96888f0b970dc7b3bb6a9c97e8f988
-fi
+# This policyDigest is the result of executing a policy with two commands:
+#
+#	TPM2_PolicyPCR() with PCR#11 set to all zeros.
+#	TPM2_PolicyCommandCode() with TPM_CC_ActivateCredential as the command
+#	code.
+# This is used via declare -n:
+# shellcheck disable=SC2034
+known_policy_pcr11=7fdad037a921f7eec4f97c08722692028e96888f0b970dc7b3bb6a9c97e8f988
 
 genhostname() {
 	if [[ -s $outdir/hostname ]]; then
@@ -101,6 +114,25 @@ genhostname() {
 	echo "public hostname"
 }
 
+genmetadata()
+{
+	if [[ -s $outdir/meta-data ]]; then
+		echo "skip"
+		return 0
+	fi
+	echo '{"instance-id": "iid-local01"}' > "${1}/meta-data"
+	cat > "${1}/user-data" <<EOF
+#cloud-config
+hostname: $hostname
+chpasswd:
+  expire: False
+  list: |
+    root:password
+    ubuntu:password
+EOF
+	echo "public meta-data user-data"
+}
+
 genrootfskey() {
 	if [[ -s ${outdir}/rootfs.key.enc ]]; then
 		echo "skip"
@@ -111,6 +143,16 @@ genrootfskey() {
 	openssl rand 64 > "${1}/rootfs.key" \
 	|| die "$0: unable to create disk encryption key"
 	echo "sensitive rootfs.key"
+}
+
+genmanifest() {
+	(cd "${outdir}" && sha256sum !(manifest).sig) > "${1}/manifest"
+	if [[ -s ${outdir}/manifest ]] \
+	   && cmp "${outdir}/manifest" "${1}/manifest" >/dev/null; then
+		echo "skip"
+	else
+		echo "public manifest"
+	fi
 }
 
 gentest0() {
@@ -176,6 +218,15 @@ Usage: $PROG [OPTIONS] HOSTNAME [DIR] < EKPUB
   credentials and/or metadata will be added.  This makes enrollment
   idempotent.
 
+  EKPUB must be one of
+
+   - endorsement key certificate (EKcert) in PEM or DER form
+   - endorsement key public key in {TPM2B_PUBLIC} form
+   - endorsement key public key in PEM form
+
+  If an EKcert is given, it will be validated.  Otherwise the user is
+  expected to have validated that the {EKPUB} is for a legitimate dTPM.
+
   If {-a} is given, the {HOSTNAME} will be added as a secondary hostname
   for {EKPUB} if already enrolled.
 
@@ -223,7 +274,7 @@ $(configs)
 		names of hard-coded policies, or names of executables
 		(default: POLICIES[rootkey]=pcr11).
 
-		TRANSPORT_METHOD should be EK or TK (default: EK).
+		TRANSPORT_METHOD should be WK or TK (default: WK).
 
   NOTE: Until https://github.com/tpm2-software/tpm2-tools/issues/2761 is
 	closed, {$PROG} may require a TPM (simulated will suffice) for
@@ -299,6 +350,7 @@ C)	# Read given configuration
 	CONF='';;
 I)	EKPUB=$OPTARG;;
 V)	if ! $configured && [[ -f $SAFEBOOT_ENROLL_CONF ]]; then
+		# shellcheck disable=SC1090
 		. "$SAFEBOOT_ENROLL_CONF"
 		configured=true
 	fi
@@ -337,14 +389,14 @@ if [[ -n ${DBDIR:-} && -f ${DBDIR:-}/attest-enroll.conf ]]; then
 		configured=true
 	fi
 fi
-[[ ${TRANSPORT_METHOD:-} = @(TK|EK) ]]	\
+[[ ${TRANSPORT_METHOD:-} = @(TK|WK) ]]	\
 || die "TRANSPORT_METHOD must be either 'TK' or 'EK'"
 [[ -z $ESCROW_PUBS_DIR || -d $ESCROW_PUBS_DIR ]] \
 || die "ESCROW_PUBS_DIR -- must be a directory or not given"
 
-# XXX This policy is for the EK method.
+# XXX This policy is for the WK method.
 #
-# FIXME We could make policies for EK/TK have the same digest by using
+# FIXME We could make policies for WK/TK have the same digest by using
 #       TPM2_PolicyOR:
 #
 #       tpm2 policy... -L ...
@@ -429,17 +481,18 @@ escrow() {
 				policy="${ESCROW_POLICY:-}"
 			fi
 			info "Escrowing secret ${src} to TPM $k"
-			tpm2-send -f -P "$policy" \
-				"$k" "${tmp}/${src}" \
-				"${outdir}/escrow-${aname}-${dst}" \
+			tpm2-send					\
+				-f -P "$policy"				\
+				"$k" "${tmp}/${src}"			\
+				"${outdir}/escrow-${aname}-${dst}"	\
 				|| die "$0: unable to escrow secret with EK"
 		else
 			info "Escrowing secret $src as $dst to bare RSA pubkey $k"
-			openssl rsautl \
-				-encrypt \
-				-pubin \
-				-inkey "$k" \
-				-in "${tmp}/${src}" \
+			openssl rsautl					\
+				-encrypt				\
+				-pubin					\
+				-inkey "$k"				\
+				-in "${tmp}/${src}"			\
 				-out "${outdir}/escrow-${aname}-${dst}" \
 				|| die "$0: unable to escrow secret with bare public key"
 		fi
@@ -489,6 +542,51 @@ encrypt() {
 	shift
 }
 
+# Sign an enrolled host asset
+sign() {
+	[[ -z ${SIGNING_KEY_PRIV:-} ]]		\
+	&& die "SIGNING_KEY_PRIV not configured!"
+	[[ -z ${SIGNING_KEY_PUB:-} ]]		\
+	&& die "SIGNING_KEY_PUB not configured!"
+
+	# Sign using a TPM key if we can load it as a TPM key
+	if [[ $SIGNING_KEY_PRIV = *.priv ]]				\
+	   && tpm2 flushcontext --transient-object	2>/dev/null	\
+	   && tpm2 createprimary					\
+		--hierarchy o						\
+		--key-context "${tmp}/primary.ctx"			\
+	   && tpm2 load							\
+		--private "$SIGNING_KEY_PRIV"				\
+		--public "${SIGNING_KEY_PRIV%.priv}.pub"		\
+		--parent-context "${tmp}/primary.ctx"			\
+		--key-context "${tmp}/signing-key.ctx"; then
+		tpm2 flushcontext --transient-object
+		tpm2 flushcontext --loaded-session
+		if [[ -n ${SIGNING_KEY_POLICY:-} ]]; then
+			# Execute the policy
+			"${SIGNING_KEY_POLICY}" -e "${tmp}/s.ctx"
+		fi
+		tpm2 sign						\
+			--key-context "${tmp}/signing-key.ctx"		\
+			${SIGNING_KEY_POLICY:+--auth}			\
+			${SIGNING_KEY_POLICY:+session:"${tmp}"/s.ctx}	\
+			--scheme rsassa					\
+			--hash-algorithm sha256				\
+			--format plain					\
+			--signature "${1}.sig"				\
+			< "$1"
+		return 0
+	fi
+
+	# Sign using OpenSSL
+	openssl pkeyutl							\
+		-sign							\
+		-keyform PEM						\
+		-inkey "$SIGNING_KEY_PRIV"				\
+		-in <(sha256 < "$1" | hex2bin)				\
+		-out "${1}.sig"
+}
+
 cat "$EKPUB" > "$tmp/ekpub" \
 || die "$0: unable to read EKpub from stdin"
 exec </dev/null
@@ -497,10 +595,46 @@ exec </dev/null
 # TODO: Support EKcert
 case "$(file -b --mime-type "$tmp/ekpub")" in
 text/plain)
-	# This is a PEM file, most likely
-	pem2tpm2bpublic "$tmp/ekpub" "$tmp/ek.pub" "${DEFAULT_EK_POLICY:-}";;
+	# Should be a PEM file then
+	EKCERT=
+	if grep -q CERTIFICATE "$tmp/ekpub"; then
+		# EKcert
+		cp "$tmp/ekpub" "$tmp/ekcert.pem"
+		EKCERT="$tmp/ekcert.pem"
+		openssl x509				\
+			-pubkey				\
+			-noout				\
+			-outform PEM			\
+			-in "$tmp/ekpub"		\
+			> "$tmp/ek.pub"
+		if [[ -d $TPM_VENDORS ]]; then
+			CAarg=CApath
+		elif [[ -f $TPM_VENDORS ]]; then
+			CAarg=CAfile
+		else
+			die "TPM_VENDORS is set to a non-existent file/directory"
+		fi
+		openssl verify				\
+			-$CAarg "$TPM_VENDORS"		\
+			-partial_chain			\
+			"$tmp/ekpub"			\
+		|| die "EKcert is not trusted"
+		pem2tpm2bpublic				\
+			"$tmp/ekpub"			\
+			"$tmp/ek.pub"			\
+			"${DEFAULT_EK_POLICY:-}"
+	elif grep -q PUBLIC "$tmp/ekpub"; then
+		# Plain public key
+		pem2tpm2bpublic				\
+			"$tmp/ekpub"			\
+			"$tmp/ek.pub"			\
+			"${DEFAULT_EK_POLICY:-}"
+	else
+		die "Cannot understand given EKpub/EKcert"
+	fi;;
 
 application/octet-stream)
+	EKCERT=
 	cp "$tmp/ekpub" "$tmp/ek.pub";;
 
 *)	die "Given EKpub is not in a supported format: $(file -b --mime-type "$tmp/ekpub")";;
@@ -552,7 +686,7 @@ if [[ -d $outdir ]] && $replace; then
 	mv "$outdir" "${outdir}-" || die "could not rename previous enrollment"
 	did_something=true
 elif [[ -d $outdir && -f ${outdir}/hostname &&
-        $(cat ${outdir}/hostname) != "$hostname" ]]; then
+        $(cat "${outdir}/hostname") != "$hostname" ]]; then
 
 	$add || die "already enrolled: $ekhash"
 
@@ -567,11 +701,16 @@ else
 fi
 mkdir -p "$outdir" || die "unable to create output directory $outdir"
 
-cp "$tmp/ek.pub" "$outdir/ek.pub" \
+cp "$EKPUB" "$outdir/ek.pub" \
 || die "unable to copy EK public key to output directory $outdir"
 
+if [[ -n $EKCERT ]]; then
+	cp "$EKCERT" "$outdir/ek.pub" \
+	|| die "unable to copy EK public key to output directory $outdir"
+fi
+
 info "Generating secrets and metadata"
-for genprog in "${GENPROGS[@]}"; do
+for genprog in "${GENPROGS[@]}" genmanifest; do
 	info "Running GENPROG $genprog"
 
 	# We want to split the output of genprog on spaces:
@@ -595,6 +734,8 @@ for genprog in "${GENPROGS[@]}"; do
 		# Encrypt file, escrow, and place into output dir.
 		info "Encrypting secret file from $genprog: $1"
 		encrypt "$genprog" "$1"
+		info "Signing ciphertext $1"
+		sign "${outdir}/${1}.enc"
 		did_something=true
 		shift
 	fi
@@ -608,30 +749,32 @@ for genprog in "${GENPROGS[@]}"; do
 			info "Installing public file $1"
 		fi
 		cp -f "${tmp}/$1" "${outdir}/${1}"
+		info "Signing metadata file $1"
+		sign "${outdir}/$1"
 		did_something=true
 		shift
 	done
-
 done
 
-#
-# Build the cloud-init data for this host
-#
-if [[ ! -s $outdir/user-data ]]; then
-	cat > "$outdir/user-data" <<EOF
-#cloud-config
-hostname: $hostname
-chpasswd:
-  expire: False
-  list: |
-    root:password
-    ubuntu:password
-EOF
+# Re-sign all assets if the signing key has changed
+if [[ -f ${outdir}/${SIGNING_KEY_PUB##*/} ]] &&
+   ! cmp "$SIGNING_KEY_PUB" "${outdir}/signer.pem" >/dev/null; then
+	for sig in "{outdir}"/*.sig; do
+		sign "${sig%.sig}"
+	done
 	did_something=true
 fi
 
-if [[ ! $outdir/meta-data ]]; then
-	echo '{"instance-id": "iid-local01"}' > "$outdir/meta-data"
+# Install the signing key public part (preferably it should be a certificate
+# and chain) and anchor, if we have one
+if [[ ! -f ${outdir}/${SIGNING_KEY_PUB##*/} ]] ||
+   ! cmp "$SIGNING_KEY_PUB" "${outdir}/signer.pem" >/dev/null; then
+	cp -f "$SIGNING_KEY_PUB" "${outdir}/signer.pem"
+	did_something=true
+fi
+if [[ -n ${SIGNING_KEY_ANCHOR:-} ]]	\
+   && ! cmp "$SIGNING_KEY_ANCHOR" "${outdir}/anchor.pem" >/dev/null 2>&1; then
+	cp -f "$SIGNING_KEY_ANCHOR" "${outdir}/anchor.pem"
 	did_something=true
 fi
 
@@ -648,5 +791,5 @@ if $did_something; then
 	info "$hostname: enrolled $ekhash"
 	success=true
 else
-	die "Already enrolled and nothing to add to enrollment"
+	die 2 "Already enrolled and nothing to add to enrollment"
 fi

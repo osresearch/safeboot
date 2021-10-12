@@ -19,7 +19,7 @@ Usage: $PROG CIPHERTEXT OUT [POLICY-CMD [ARGS] [;] ...]
 
   If {CIPHERTEXT}.tk.pem, {CIPHERTEXT}.tk.dpriv, {CIPHERTEXT}.tk.pub,
   and {CIPHERTEXT}.tk.seed exist, then the "TK" method of encryption is
-  assumed.  Otherwise the "EK" method of encryption is assumed.
+  assumed.  Otherwise the "WK" method of encryption is assumed.
 
   See {tpm2-send} for details of the two encryption-to-TPM methods
   supported.
@@ -119,27 +119,31 @@ if $use_tk; then
 	tpm2 flushcontext --loaded-session
 
 	info "tpm2: Importing duplicate transport key"
-	tpm2 import \
-		--parent-context "${d}/ek.ctx" \
-		--parent-auth "session:${d}/sessionek.ctx" \
-		--key-algorithm rsa \
-		--input "${ciphertext_file}.tk.dpriv" \
-		--seed "${ciphertext_file}.tk.seed" \
-		--public "${ciphertext_file}.tk.pub" \
-		--private "${d}/tk.priv" \
+	tpm2 import						\
+		--parent-context "${d}/ek.ctx"			\
+		--parent-auth "session:${d}/sessionek.ctx"	\
+		--key-algorithm rsa				\
+		--input "${ciphertext_file}.tk.dpriv"		\
+		--seed "${ciphertext_file}.tk.seed"		\
+		--public "${ciphertext_file}.tk.pub"		\
+		--private "${d}/tk.priv"			\
 	|| die "tpm2: unable to import duplicate transport key object"
 
 	warn "tpm2: Loading duplicate transport key"
 	tpm2 flushcontext --transient-object
 	tpm2 flushcontext --loaded-session
-	tpm2 startauthsession --session "${d}/sessionek.ctx" --policy-session
-	tpm2 policysecret --session "${d}/sessionek.ctx" --object-context endorsement
-	tpm2 load \
-		--parent-context "${d}/ek.ctx" \
-		--auth "session:${d}/sessionek.ctx" \
-		--key-context "${d}/tk.ctx" \
-		--public "${ciphertext_file}.tk.pub" \
-		--private "${d}/tk.priv" \
+	tpm2 startauthsession					\
+		--session "${d}/sessionek.ctx"			\
+		--policy-session
+	tpm2 policysecret					\
+		--session "${d}/sessionek.ctx"			\
+		--object-context endorsement
+	tpm2 load						\
+		--parent-context "${d}/ek.ctx"			\
+		--auth "session:${d}/sessionek.ctx"		\
+		--key-context "${d}/tk.ctx"			\
+		--public "${ciphertext_file}.tk.pub"		\
+		--private "${d}/tk.priv"			\
 	|| die "tpm2: unable to load duplicate transport key object"
 
 	warn "tpm2: Decrypting with TK"

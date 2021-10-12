@@ -34,10 +34,13 @@ TMPDIR=$(mktemp -d)
 tar -xvf - -C "$TMPDIR" \
 || die "attestation response is not a valid tar file?"
 
+[[ -f /etc/safeboot/anchor.pem || -f /etc/safeboot/enroll-signer.pem ]] \
+&& /safeboot/sbin/tpm2-attest verify-unsealed "$TMPDIR"
+
 STARTUP="$TMPDIR/startup.sh"
 KEY="$TMPDIR/rootfs.key"
 
-if [[ -x $STARTUP ]]; then
+if [[ -x $STARTUP && -f ${STARTUP}.sig ]]; then
 	# measure the startup script before doing anything else
 	warn "$STARTUP: measuring"
 	tpm2 pcrevent 14 "$STARTUP"
