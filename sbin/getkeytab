@@ -1,6 +1,25 @@
 #!/bin/bash
 #
-# Get a keytab using a certificate
+# Get a keytab using a PKIX certificate, PKINIT, and the Heimdal httpkadmind
+# (herein "HKD") service.
+#
+# The idea is that the certificate should have a Kerberos principal name
+# subject alternative name (SAN) naming the host service principal for its
+# hostname, and an extended key usage (EKU) object identifier (OID) denoting
+# that the certificate can be used as a client credential for PKINIT [RFC4556],
+# and thus obtain a Kerberos credential for authenticating to the httpkadmind
+# (HKD) service (or other Kerberos admin protocol, but here we assume HKD), and
+# then request the keytab for the host using that service.
+#
+# In summary:
+#
+#  - enrollment creates a key and certificate for the enrolled host
+#  - the host gets its key and certificate via successful attestation
+#  - the host uses the certificate as a PKINIT client credential to trade it
+#    for a Kerberos credential
+#  - the host uses curl(1) with the Kerberos credential to acquire its "keytab"
+#
+# This script is to be executed after the first successful attestation.
 
 set -euo pipefail
 shopt -s extglob
@@ -26,14 +45,24 @@ declare -A GETCERT_DOMAIN_REALM
 KEYTAB=FILE:/etc/krb5.keytab
 GETKEYTAB_HKD_URI=
 GETKEYTAB_REALM=
-CERT_KEY=
-CERT=
+HOST_CERT_KEY=
+HOST_CERT=
 
+# HKD is a Kerberos admin protocol over HTTP.  We'll use curl(1) as the HTTP
+# client.
+#
+# Note that we can get a redirect from one HKD server to another (e.g., one
+# co-located with the primary KDC), so we will use the curl --location and
+# --location-trusted options to enable chasing the referrals.
+#
+# Note: we don't use --fail.
 curl_opts=(
 	--silent
 	--globoff
 	--user :
 	--negotiate
+	--location
+	--location-trusted
 )
 
 cf=$(safeboot_file etc safeboot.conf)
@@ -51,10 +80,57 @@ if [[ -n $cf && -f $cf ]]; then
 fi
 DIR=$(safeboot_dir etc)
 
-: "${CERT_KEY:=${DIR}/cert-key.pem}"
-: "${CERT:=${DIR}/cert.pem}"
-[[ -f $CERT_KEY &&  -f $CERT ]]			\
-|| die "Could not get PKINIT certificate for impersonation"
+: "${HOST_CERT:=${DIR}/cert.pem}"
+if [[ -z ${HOST_CERT_KEY:-} && -f ${DIR}/cert-key.pem ]]; then
+	HOST_CERT_KEY=${DIR}/cert-key.pem
+fi
+
+usage() {
+	((${1:-1} > 0)) && exec 1>&2
+	cat <<EOF
+Usage: $PROG [options] [KEYTAB]
+
+    The configuration files ${DIR}/safeboot.conf and ${DIR}/local.conf will be
+    read if they exist.
+
+    Options:
+
+     -C CERT	Certificate for PKINIT
+		(default: ${DIR}/cert.pem or HOST_CERT from the configuration)
+     -K KEY 	Private key for certificate for PKINIT (if not in CERT)
+		(default: ${DIR}/cert-key.pem or HOST_CERT_KEY from the
+		configuration)
+     -R REALM	Kerberos realm to use
+		(default: <none>, may be set as GETKEYTAB_REALM in the
+		configuration file(s))
+     -U URI 	URI for httpkadmind
+		(default: <none>, may be set as GETKEYTAB_HKD_URI in the
+		configuration file(s))
+
+    KEYTAB defaults to "FILE:/etc/krb5.keytab"
+EOF
+	exit "${1:-1}"
+}
+while getopts +:C:K:R:U:hx opt; do
+case "$opt" in
+C)	HOST_CERT=$OPTARG;;
+K)	HOST_CERT_KEY=$OPTARG;;
+R)	GETKEYTAB_REALM=$OPTARG;;
+U)	GETKEYTAB_HKD_URI=$OPTARG;;
+h)	usage 0;;
+x)	set -vx;;
+*)	usage;;
+esac
+done
+shift $((OPTIND - 1))
+if (($# == 1)); then
+	KEYTAB=$1
+	shift
+fi
+(($# > 0)) && usage
+
+[[ -f $HOST_CERT ]]			\
+|| die "PKINIT certificate not configured"
 
 hostname=$(hostname)
 
@@ -81,7 +157,7 @@ fi
 check_keytab() {
 	[[ -n ${1:-} && -s $1 ]]			\
 	&& ktutil --keytab="$1" list >/dev/null		\
-	&& kinit --anonymous "$GETCERT_DOMAIN_REALM"	\
+	&& kinit --anonymous "$GETKEYTAB_REALM"	\
 		 gss-token "host@$hostname"		\
 	| KRB5_KTNAME="$1" gss-token -r
 }
@@ -96,37 +172,46 @@ trap 'cd /; rm -rf "$d";' EXIT
 d=$(mktemp -d)
 cd "$d"
 
+princ="host/${hostname}@${GETKEYTAB_REALM}"
+pkinit_cred="FILE:${HOST_CERT}${HOST_CERT_KEY+:",${HOST_CERT_KEY}"}"
+
 # Get a TGT using PKINIT
 kinit									\
 	${GETKEYTAB_KINIT_ARGS[0]:+"${GETKEYTAB_KINIT_ARGS[@]}"}	\
 	--cache cc							\
-	--pk-user "FILE:${CERT},${CERT_KEY}"				\
-	"host/$hostname@$GETKEYTAB_REALM"				\
-|| die "Could not get TGT for host/$hostname@$GETKEYTAB_REALM with PKINIT with FILE:${CERT},${CERT_KEY}"
+	--pk-user "$pkinit_cred"					\
+	"$princ"							\
+|| die "Could not get TGT for ${princ} with PKINIT with ${pkinit_cred}"
 
-# Get CSRF token
+# Get a CSRF token
 export KRB5CCNAME="${d}/cc"
 curl								\
 	"${curl_opts[@]}"					\
 	--output junk						\
 	--request POST						\
 	--data-binary @/dev/null				\
-	-D headers						\
-	"${GETKEYTAB_HKD_URI}?spn=host/$hostname&create=true"
+	--dump-header headers					\
+	"${GETKEYTAB_HKD_URI}/get-keys?spn=host/$hostname&create=true"
 csrf_token=$(sed -e 's/\r//' headers | grep ^X-CSRF-Token:)
+
+# Get the keytab
 rm -f headers junk
 curl								\
 	"${curl_opts[@]}"					\
 	--output keytab						\
 	--request POST						\
 	--data-binary @/dev/null				\
-	-D headers						\
-	-H "$csrf_token"					\
-	"${GETKEYTAB_HKD_URI}?spn=host/$hostname&create=true"
+	--dump-header headers					\
+	--header "$csrf_token"					\
+	"${GETKEYTAB_HKD_URI}/get-keys?spn=host/$hostname&create=true"
+
+# Check if the POST succeeded
 grep '^HTTP/1.1 200' headers >/dev/null				\
-|| die "Could not create service principal host/$hostname@$GETKEYTAB_REALM"
+|| die "Could not create service principal ${princ}"
+
 rm headers
 kdestroy -c "FILE:${d}/cc"
+
 check_keytab "FILE:$PWD/keytab"					\
 || die "Keytab fetched did not work"
 [[ -f ${KEYTAB#FILE:} ]]					\
