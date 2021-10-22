@@ -379,8 +379,8 @@ shift
 # Read default configuration if none given
 # shellcheck disable=SC1090
 if [[ -n ${CONF:-} && -f ${CONF} ]]; then
-	. "${CONF}"
 	if ! $configured; then
+		. "${CONF}"
 		export SAFEBOOT_ENROLL_CONF="$CONF"
 		configured=true
 	fi
