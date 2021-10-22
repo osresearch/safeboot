@@ -51,9 +51,6 @@ if [[ -z $GENCERT_REALM ]]; then
 			GENCERT_REALM=${GENCERT_DOMAIN_REALM[$domain]}
 			break
 		fi
-		if ((${#GENCERT_DOMAIN_REALM[@]} > 0)); then
-			die "Could not determine realm name for $hostname"
-		fi
 		if (($(dig -t srv "_kerberos._udp.$domain" +short|wc -l) > 0)); then
 			GENCERT_REALM=${domain^^?}
 			break
