@@ -178,8 +178,8 @@ pkinit_cred="FILE:${HOST_CERT}${HOST_CERT_KEY:+",${HOST_CERT_KEY}"}"
 # Get a TGT using PKINIT
 kinit									\
 	${GETKEYTAB_KINIT_ARGS[0]:+"${GETKEYTAB_KINIT_ARGS[@]}"}	\
-	--cache cc							\
-	--pk-user "$pkinit_cred"					\
+	--cache=cc							\
+	--pk-user="$pkinit_cred"					\
 	"$princ"							\
 || die "Could not get TGT for ${princ} with PKINIT with ${pkinit_cred}"
 
