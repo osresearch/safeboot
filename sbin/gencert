@@ -100,6 +100,11 @@ hxtool issue-certificate					\
 	--certificate=PEM-FILE:cert.pem				\
 || die "skip: Could not issue PKINIT certificate for impersonation!"
 
+# Append the issuer certificate and any other certs in that file to the output
+# so that the full chain is included.
+openssl crl2pkcs7 -nocrl -certfile "${GENCERT_CRED#*:}"		\
+| openssl pkcs7 -print_certs >> cert.pem
+
 grep -q PRIVATE cert.pem && die "Private key in cert file?!"
 trap true EXIT
 echo "sensitive cert-key.pem cert.pem"
