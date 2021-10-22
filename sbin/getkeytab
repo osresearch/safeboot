@@ -155,10 +155,18 @@ if [[ -z $GETKEYTAB_REALM ]]; then
 fi
 
 check_keytab() {
-	[[ -n ${1:-} && -s $1 ]]			\
-	&& ktutil --keytab="$1" list >/dev/null		\
-	&& kinit --anonymous "$GETKEYTAB_REALM"	\
-		 gss-token "host@$hostname"		\
+	[[ -n ${1:-} && -s $1 ]]				\
+	|| return 1
+	ktutil --keytab="$1" list >/dev/null			\
+	|| return 1
+	# Validate the keytab by using it as a service:
+	(
+		# Work around a gss-token(1) a bug in some versions where it
+		# exits with an error instead of success.  We don't care
+		# whether the client succeeds, just whether the server does.
+		kinit --anonymous "$GETKEYTAB_REALM"		\
+			gss-token "host@$hostname" || true
+	)							\
 	| KRB5_KTNAME="$1" gss-token -r
 }
 
