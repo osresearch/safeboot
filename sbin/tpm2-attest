@@ -819,10 +819,10 @@ unseal()
 ########################################
 
 verify_unsealed_usage='
-## verify_unsealed
+## verify-unsealed
 Usage:
 ```
-tpm2-attest verify_unsealed DIR
+tpm2-attest verify-unsealed DIR
 ```
 
 Assets returned by successful remote attestation should be signed.  This
@@ -835,11 +835,6 @@ verify-unsealed()
 {
 	show_help "$1" "$verify_unsealed_usage"
 	(($# == 1)) || die "No arguments expected.$verify_unsealed_usage"
-
-	# We must either know a priori an anchor for the signer's certificate,
-	# or we must know the signature key.
-	[[ -n ${ENROLL_SIGN_ANCHOR:-} ]]	\
-	|| die "neither enrollment server public key certificate nor anchor configured"
 
 	cd "$1" || die "Not a directory: $1"
 
