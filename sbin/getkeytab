@@ -173,7 +173,7 @@ d=$(mktemp -d)
 cd "$d"
 
 princ="host/${hostname}@${GETKEYTAB_REALM}"
-pkinit_cred="FILE:${HOST_CERT}${HOST_CERT_KEY+:",${HOST_CERT_KEY}"}"
+pkinit_cred="FILE:${HOST_CERT}${HOST_CERT_KEY:+",${HOST_CERT_KEY}"}"
 
 # Get a TGT using PKINIT
 kinit									\
