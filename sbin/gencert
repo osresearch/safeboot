@@ -51,9 +51,6 @@ if [[ -z $GENCERT_REALM ]]; then
 			GENCERT_REALM=${GENCERT_DOMAIN_REALM[$domain]}
 			break
 		fi
-		if ((${#GENCERT_DOMAIN_REALM[@]} > 0)); then
-			die "Could not determine realm name for $hostname"
-		fi
 		if (($(dig -t srv "_kerberos._udp.$domain" +short|wc -l) > 0)); then
 			GENCERT_REALM=${domain^^?}
 			break
@@ -99,6 +96,11 @@ hxtool issue-certificate					\
 	--req="PKCS10:cert-req.der"				\
 	--certificate=PEM-FILE:cert.pem				\
 || die "skip: Could not issue PKINIT certificate for impersonation!"
+
+# Append the issuer certificate and any other certs in that file to the output
+# so that the full chain is included.
+openssl crl2pkcs7 -nocrl -certfile "${GENCERT_CRED#*:}"		\
+| openssl pkcs7 -print_certs >> cert.pem
 
 grep -q PRIVATE cert.pem && die "Private key in cert file?!"
 trap true EXIT
