@@ -1,0 +1,5 @@
+#!/bin/bash
+
+if [ -f /boot/efi/EFI/qubes/qubes.efi.signed ]; then
+	safeboot qubes-sign
+fi

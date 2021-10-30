@@ -1,4 +1,4 @@
-VERSION ?= 0.8
+VERSION ?= $(file <version)
 
 GIT_DIRTY := $(shell if git status -s >/dev/null ; then echo dirty ; else echo clean ; fi)
 GIT_HASH  := $(shell git rev-parse HEAD)

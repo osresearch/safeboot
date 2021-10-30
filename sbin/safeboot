@@ -217,7 +217,10 @@ key-init() {
 		mv "$CERT" "$CERT.orig" \
 		|| die "$CERT: unable to backup"
 	fi
-
+	# Do not encrypt key with Qubes OS to allow unattended updates
+	if [ -f /etc/qubes-release ]; then
+		openssl_param+="-nodes"
+	fi
 	openssl req \
 		-new \
 		-x509 \
@@ -228,6 +231,7 @@ key-init() {
 		-out "$CERT" \
 		-days "3650" \
 		-sha256 \
+		$openssl_param \
 	|| die "$KEY: unable to create"
 
 	# Create a certificate and public key file from the PEM
@@ -501,7 +505,7 @@ pcrs-sign() {
 	target="${2-linux}"
 	linux="$EFIDIR/$target/linux.efi"
 
-	yubikey_daemon
+	[ -f /etc/qubes-release ] || yubikey_daemon
 
 	if [ "$prevent_rollback" = "prevent-rollback" ]; then
 		warn "$linux: Incrementing TPM version to prevent rollback"
@@ -636,7 +640,7 @@ luks-seal() {
 		shift
 	fi
 
-	yubikey_daemon
+	[ -f /etc/qubes-release ] || yubikey_daemon
 
 	KEYSLOT=1
 
@@ -844,7 +848,7 @@ sign() {
 		OUT="$IN.signed"
 	fi
 
-	yubikey_daemon
+	[ -f /etc/qubes-release ] || yubikey_daemon
 
 	sbsign.safeboot \
 		$KEY_ENGINE \
@@ -1154,6 +1158,77 @@ linux-sign()
 		# so that repeat signing can be done more quickly
 		cp "$TMP/verity.log" "$OUTDIR"
 	fi
+}
+
+########################################
+
+qubes_sign_usage='
+## qubes-sign
+Usage:
+```
+safeboot qubes-sign 
+```
+
+Generate a unified EFI executable bundle with xen, xen config, kernel and initrd,
+ sign it with safeboot keys and create EFI boot record "Safeboot Qubes OS".
+
+It requires Qubes OS R4.1+ with configured boot with xen EFI loader (xen.efi).
+'
+
+usage+=$qubes_sign_usage
+commands+="|qubes-sign"
+
+qubes-sign()
+{
+	xen_config='/boot/efi/EFI/qubes/xen.cfg'
+	[ -f "$xen_config" ] \
+		&& qubes_kver=$(awk -F= '/default=/ {print $2}' "$xen_config") \
+		|| die "No xen.cfg found!"
+
+	xen_efi='/boot/efi/EFI/qubes/xen.efi'
+	[ -f "$xen_efi" ] \
+		|| die "No xen.efi found!"
+
+	qubes_kernel="/boot/efi/EFI/qubes/vmlinuz-$qubes_kver"
+	[ -f "$qubes_kernel" ] \
+		|| die "No default kernel found!"
+
+	qubes_ramdisk="/boot/efi/EFI/qubes/initramfs-$qubes_kver.img"
+	[ -f "$qubes_ramdisk" ] \
+		|| die "No default initramfs found!"
+
+	qubes_efi='/boot/efi/EFI/qubes/qubes.efi'
+	objcopy \
+		--add-section .config="$xen_config" \
+		--change-section-vma .config=0xffff82d041000000 \
+		--add-section .kernel="$qubes_kernel" \
+		--change-section-vma .kernel=0xffff82d041100000 \
+		--add-section .ramdisk="$qubes_ramdisk" \
+		--change-section-vma .ramdisk=0xffff82d042000000 \
+		$xen_efi \
+		$qubes_efi \
+		|| die "Objcopy failed!"
+
+	safeboot sign \
+		$qubes_efi $qubes_efi.signed \
+		|| die "Signing failed!"
+
+	qubes_label="Safeboot Qubes OS"
+        if ! efibootmgr | grep "^Boot.* $qubes_label\$" ; then
+                # determine the device the EFI system partition is on
+                DEV="$(df "$qubes_efi" | tail -1 | cut -d' ' -f1)"
+                part=$(cat /sys/class/block/$(basename $DEV)/partition)
+
+                warn "efibootmgr: Creating boot menu item on $DEV, partition $part"
+                efibootmgr \
+                        --quiet \
+                        --create \
+                        --disk "$DEV" \
+                        --part $part \
+                        --label "$qubes_label" \
+                        --loader "\\EFI\\qubes\\qubes.efi.signed" \
+                || die "efibootmgr: failed to create $qubes_label entry"
+        fi
 }
 
 ########################################
@@ -1641,7 +1716,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign|unify-kernel|sign-kernel|install-kernel|linux-sign|recovery-sign|reboot|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext|unlock|mount-all)
+	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign|unify-kernel|sign-kernel|install-kernel|linux-sign|qubes-sign|recovery-sign|reboot|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext|unlock|mount-all)
 		$command "$@"
 		;;
 	*)
