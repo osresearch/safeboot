@@ -24,7 +24,7 @@ install -m 0644 -D %{_builddir}/%{name}-%{version}/safeboot.conf -t %{buildroot}
 install -m 0644 -D %{_builddir}/%{name}-%{version}/functions.sh -t %{buildroot}/usr/lib/safeboot/
 install -m 0755 -D %{_builddir}/%{name}-%{version}/qubes-hooks/kernel-safeboot.install %{buildroot}/usr/lib/kernel/install.d/99-qubes-safeboot.install
 
-# symlink since we doesn't build this tools to Qubes OS
+# symlink since we don't build this tools to Qubes OS
 mkdir -p %{buildroot}%{_bindir}
 ln -s sbsign %{buildroot}%{_bindir}/sbsign.safeboot
 ln -s sign-efi-sig-list  %{buildroot}%{_bindir}/sign-efi-sig-list.safeboot

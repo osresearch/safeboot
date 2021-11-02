@@ -1162,6 +1162,55 @@ linux-sign()
 
 ########################################
 
+qubes_xen_config_usage='
+## qubes-xen-config
+Usage:
+```
+safeboot qubes-xen-config
+```
+Generate Xen EFI loader configuration (xen.cfg) based on default grub2 variables.
+'
+usage+=$qubes_xen_config_usage
+commands+="|qubes-xen-config"
+
+qubes-xen-config(){
+	show_help "$1" "$qubes_xen_config_usage"
+	rootdev-check -
+
+	QUBES_EFIDIR="/boot/efi/EFI/qubes"
+	xen_config="$QUBES_EFIDIR/xen.cfg"
+	if [ -f "$xen_config" ]; then
+		warn "Xen config exists"
+		return
+	fi
+
+	QUBES_KVER=$(uname -r)
+	kernel="vmlinuz-$QUBES_KVER"
+	[ -f /boot/$kernel ] \
+		&& cp /boot/$kernel $QUBES_EFIDIR \
+		|| die "Kernel image not found!"
+
+	ramdisk=initramfs-$QUBES_KVER.img
+	[ -f /boot/$ramdisk ] \
+		&& cp /boot/$ramdisk $QUBES_EFIDIR \
+		|| die "Initrd image not found!"
+
+	. /etc/default/grub
+	[ -n "$GRUB_CMDLINE_LINUX" ] \
+		&& [ -n "$GRUB_CMDLINE_XEN_DEFAULT" ] \
+		|| die "Failed read grub defaults"
+
+	( \
+	echo "[global]" ; \
+	echo "default=$QUBES_KVER" ; \
+	echo "[$QUBES_KVER]" ; \
+	echo "kernel=$kernel root=$ROOTDEV ro $GRUB_CMDLINE_LINUX" ; \
+	echo "ramdisk=$ramdisk" ; \
+	echo "options=$GRUB_CMDLINE_XEN_DEFAULT"
+	) >> $xen_config \
+	|| die "Unable create xen.cfg"
+}
+
 qubes_sign_usage='
 ## qubes-sign
 Usage:
@@ -1172,7 +1221,7 @@ safeboot qubes-sign
 Generate a unified EFI executable bundle with xen, xen config, kernel and initrd,
  sign it with safeboot keys and create EFI boot record "Safeboot Qubes OS".
 
-It requires Qubes OS R4.1+ with configured boot with xen EFI loader (xen.efi).
+It requires Qubes OS R4.1+ with xen >= 4.14
 '
 
 usage+=$qubes_sign_usage
@@ -1180,20 +1229,22 @@ commands+="|qubes-sign"
 
 qubes-sign()
 {
+	show_help "$1" "$qubes_sign_usage"
+
 	xen_config='/boot/efi/EFI/qubes/xen.cfg'
 	[ -f "$xen_config" ] \
-		&& qubes_kver=$(awk -F= '/default=/ {print $2}' "$xen_config") \
-		|| die "No xen.cfg found!"
+		&& QUBES_KVER=$(awk -F= '/default=/ {print $2}' "$xen_config") \
+		|| qubes-xen-config
 
 	xen_efi='/boot/efi/EFI/qubes/xen.efi'
 	[ -f "$xen_efi" ] \
 		|| die "No xen.efi found!"
 
-	qubes_kernel="/boot/efi/EFI/qubes/vmlinuz-$qubes_kver"
+	qubes_kernel="/boot/efi/EFI/qubes/vmlinuz-$QUBES_KVER"
 	[ -f "$qubes_kernel" ] \
 		|| die "No default kernel found!"
 
-	qubes_ramdisk="/boot/efi/EFI/qubes/initramfs-$qubes_kver.img"
+	qubes_ramdisk="/boot/efi/EFI/qubes/initramfs-$QUBES_KVER.img"
 	[ -f "$qubes_ramdisk" ] \
 		|| die "No default initramfs found!"
 
@@ -1209,7 +1260,7 @@ qubes-sign()
 		$qubes_efi \
 		|| die "Objcopy failed!"
 
-	safeboot sign \
+	sign \
 		$qubes_efi $qubes_efi.signed \
 		|| die "Signing failed!"
 
@@ -1716,7 +1767,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign|unify-kernel|sign-kernel|install-kernel|linux-sign|qubes-sign|recovery-sign|reboot|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext|unlock|mount-all)
+	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign|unify-kernel|sign-kernel|install-kernel|linux-sign|qubes-xen-config|qubes-sign|recovery-sign|reboot|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext|unlock|mount-all)
 		$command "$@"
 		;;
 	*)
