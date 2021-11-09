@@ -1265,21 +1265,21 @@ qubes-sign()
 		|| die "Signing failed!"
 
 	qubes_label="Safeboot Qubes OS"
-        if ! efibootmgr | grep "^Boot.* $qubes_label\$" ; then
-                # determine the device the EFI system partition is on
-                DEV="$(df "$qubes_efi" | tail -1 | cut -d' ' -f1)"
-                part=$(cat /sys/class/block/$(basename $DEV)/partition)
-
-                warn "efibootmgr: Creating boot menu item on $DEV, partition $part"
-                efibootmgr \
-                        --quiet \
-                        --create \
-                        --disk "$DEV" \
-                        --part $part \
-                        --label "$qubes_label" \
-                        --loader "\\EFI\\qubes\\qubes.efi.signed" \
-                || die "efibootmgr: failed to create $qubes_label entry"
-        fi
+	# determine the device the EFI system partition is on
+	DEV="$(df "$qubes_efi" | tail -1 | cut -d' ' -f1)"
+	part=$(cat /sys/class/block/$(basename $DEV)/partition)
+	partuuid=$(blkid --output value --match-tag PARTUUID $DEV)
+	if ! efibootmgr -v | grep "^Boot.* $qubes_label.*$partuuid.*\$" >/dev/null ; then
+		warn "efibootmgr: Creating boot menu item on $DEV, partition $part"
+		efibootmgr \
+			--quiet \
+			--create \
+			--disk "$DEV" \
+			--part $part \
+			--label "$qubes_label" \
+			--loader "\\EFI\\qubes\\qubes.efi.signed" \
+		|| die "efibootmgr: failed to create $qubes_label entry"
+	fi
 }
 
 ########################################
