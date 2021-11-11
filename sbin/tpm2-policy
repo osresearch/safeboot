@@ -7,17 +7,16 @@ TOP=$(dirname "$BINDIR")
 if [[ -s $TOP/lib/safeboot/functions.sh ]]; then
 	# shellcheck disable=SC1090 source=functions.sh
 	. "$TOP/lib/safeboot/functions.sh"
-	functions_sh=$TOP/lib/safeboot/functions.sh
 elif [[ -s $TOP/functions.sh ]]; then
 	# shellcheck disable=SC1090 source=functions.sh
 	. "$TOP/functions.sh"
-	functions_sh=$TOP/functions.sh
+elif [[ -s /etc/safeboot/functions.sh ]]; then
+	# shellcheck disable=SC1090 source=functions.sh
+	. /etc/safeboot/functions.sh
 else
 	echo "Unable to find Safeboot function library" 1>&2
 	exit 1
 fi
-# shellcheck source=functions.sh
-. "$functions_sh"
 
 set -euo pipefail -o noclobber
 shopt -s extglob
