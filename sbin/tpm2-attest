@@ -394,7 +394,7 @@ verify()
 
 	QUOTE_TAR="$1"
 	NONCE="$2"
-	CA_ROOT="${3:-$PREFIX$DIR/certs}"
+	CA_ROOT="${3:-$(safeboot_dir certs)}"
 
 	unpack-quote "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: unable to unpack"

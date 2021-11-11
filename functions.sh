@@ -24,8 +24,17 @@ safeboot_dir() {
 	[[ -n $1 ]]	\
 	|| die "Internal error in caller of safeboot_dir"
 	case "$1" in
-	bin)	echo "$TOP/bin";;
+	bin)	echo "$TOP/sbin";;
 	lib)	echo "$TOP/lib";;
+	libexec|share)
+		if [[ $TOP = /usr && -d /usr/${1}/safeboot ]]; then
+			echo "/usr/${1}/safeboot"
+		elif [[ -d $TOP/${1} ]]; then
+			echo "$TOP/${1}"
+		else
+			echo "/etc/safeboot"
+		fi;;
+	certs)	echo "$(safeboot_dir libexec)/certs";;
 	etc)	if [[ $TOP = /usr ]]; then
 			echo "/etc/safeboot"
 		elif [[ -d $TOP/etc/safeboot ]]; then

@@ -1,30 +1,14 @@
 # shell scripts in the tree
-sbin/safeboot			usr/sbin/
-sbin/safeboot-tpm-unseal	usr/sbin/
-sbin/tpm2-attest		usr/sbin/
-sbin/tpm2-pcr-validate		usr/sbin/
+sbin/attest-enroll		usr/sbin/
+sbin/attest-verify
+sbin/attest-server		usr/sbin/
+# XXX
+sbin/attest-server-sub.py	usr/sbin/
 
-# configuration files and helper functions
-safeboot.conf			etc/safeboot/
-functions.sh			etc/safeboot/
+# These are delivered by safeboot-attest-client for now until we split them up
+# sbin/tpm2-attest		usr/sbin/
+# sbin/tpm2-pcr-validate		usr/sbin/
 
-# TPM certs and a script to refresh them
-tpm-certs.txt			etc/safeboot/
-refresh-certs			etc/safeboot/
-certs/*				etc/safeboot/certs/
-
-# Compiled with modifications from source
-# to add support for the pkcs11 engine (sbsign),
-# hostnames and small qrcodes (tpm2-totp), 
-# and bundle all tpm2 applications in a single script (tpm2)
-bin/sbsign.safeboot		usr/sbin/
-bin/sign-efi-sig-list.safeboot	usr/sbin/
-bin/tpm2-totp			usr/sbin/
-bin/tpm2			usr/sbin/
-
-# scripts to interface with secure boot in the initramfs
-initramfs/hooks/dmverity-root	etc/initramfs-tools/hooks/
-initramfs/hooks/safeboot-hooks	etc/initramfs-tools/hooks/
-initramfs/scripts/dmverity-root	etc/initramfs-tools/scripts/local-premount/
-initramfs/scripts/blockdev-readonly etc/initramfs-tools/scripts/local-premount/
-initramfs/scripts/safeboot-bootmode etc/initramfs-tools/scripts/init-top/
+# libexec shell scripts
+sbin/gencert			usr/libexec/safeboot/
+sbin/genkeytab			usr/libexec/safeboot/
