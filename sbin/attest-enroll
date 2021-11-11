@@ -15,6 +15,11 @@ shopt -s extglob
 PROG=${0##*/}
 BINDIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 TOP=$(dirname "$BINDIR")
+if [[ $TOP = /usr ]]; then
+	PATH=${TOP}/libexec/safeboot:$PATH
+else
+	PATH=${TOP}/libexec/:$PATH
+fi
 
 if [[ -s $TOP/lib/safeboot/functions.sh ]]; then
 	# shellcheck source=functions.sh
