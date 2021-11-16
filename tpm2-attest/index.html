@@ -1,0 +1,535 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="Debian package to enable UEFI SecureBoot, enroll your own hardware backed platform key, sign the kernel and initrd, decrypt the disk with the TPM, and enable system integrity protection with dmverity" name="description"/>
+<link href="https://safeboot.dev/tpm2-attest/" rel="canonical"/>
+<link href="../images/favicon.ico" rel="icon"/>
+<meta content="mkdocs-1.2.3, mkdocs-material-7.3.6" name="generator"/>
+<!--
+ fill in the opengraph meta tags, with defaults from the site config
+ or values in the yaml metadata for the specific page (summary and image).
+-->
+<meta content="tpm2-attest subcommands" property="og:title"/>
+<meta content="safeboot" property="og:site_name"/>
+<meta content="https://safeboot.dev/tpm2-attest/" property="og:url"/>
+<meta content="Debian package to enable UEFI SecureBoot, enroll your own hardware backed platform key, sign the kernel and initrd, decrypt the disk with the TPM, and enable system integrity protection with dmverity" property="og:description"/>
+<meta content="https://safeboot.dev/images/logo.png" property="og:image"/>
+<title>tpm2-attest subcommands - safeboot</title>
+<link href="../assets/stylesheets/main.a57b2b03.min.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/palette.3f5d1f46.min.css" rel="stylesheet"/>
+<!-- Load fonts from Google -->
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css?family=IBM+Plex+Serif:300,400,400i,700%7CIBM+Plex+Sans:500,600,700%7CIBM+Plex+Mono&amp;display=fallback" rel="stylesheet" type="text/css">
+<style>
+           body, input {
+             font-family: "IBM Plex Serif", "Helvetica Neue",
+               Helvetica, Arial, sans-serif;
+           }
+           pre, code, kbd {
+             font-family: "IBM Plex Mono", "Courier New",
+               Courier, monospace;
+           }
+	   h1, h2, h3, h4, h5, h6 {
+             font-family: "IBM Plex Sans", sans-serif;
+	     font-weight: 700 !important;
+           }
+         </style>
+<link href="../extra.css" rel="stylesheet"/>
+</link></link></head>
+<body data-md-color-accent="none" data-md-color-primary="none" data-md-color-scheme="" dir="ltr">
+<script>function __prefix(e){return new URL("..",location).pathname+"."+e}function __get(e,t=localStorage){return JSON.parse(t.getItem(__prefix(e)))}</script>
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#tpm2-attest-subcommands">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="safeboot" class="md-header__button md-logo" data-md-component="logo" href=".." title="safeboot">
+<img alt="logo" src="../images/logo.png"/>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            safeboot
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              tpm2-attest subcommands
+            
+          </span>
+</div>
+</div>
+</div>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"></path></svg>
+</button>
+</nav>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/osresearch/safeboot/" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="safeboot" class="md-nav__button md-logo" data-md-component="logo" href=".." title="safeboot">
+<img alt="logo" src="../images/logo.png"/>
+</a>
+    safeboot
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/osresearch/safeboot/" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="..">
+        Overview
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../install/">
+        Installation
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../faq/">
+        Frequently Asked Questions
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../threats/">
+        Threat Model
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../attestation/">
+        Remote Attestation
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../chain-of-trust/">
+        Chain of Trust
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../safeboot/">
+        safeboot subcommands
+      </a>
+</li>
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" data-md-toggle="toc" id="__toc" type="checkbox"/>
+<label class="md-nav__link md-nav__link--active" for="__toc">
+          tpm2-attest subcommands
+          <span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+        tpm2-attest subcommands
+      </a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#quote">
+    quote
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#attest">
+    attest
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#verify">
+    verify
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#eventlog">
+    eventlog
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#eventlog-verify">
+    eventlog-verify
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#ek-verify">
+    ek-verify
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#quote-verify">
+    quote-verify
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#seal">
+    seal
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#unseal">
+    unseal
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#verify-and-seal">
+    verify-and-seal
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#ek-sign">
+    ek-sign
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#ek-crt">
+    ek-crt
+  </a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#quote">
+    quote
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#attest">
+    attest
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#verify">
+    verify
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#eventlog">
+    eventlog
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#eventlog-verify">
+    eventlog-verify
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#ek-verify">
+    ek-verify
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#quote-verify">
+    quote-verify
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#seal">
+    seal
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#unseal">
+    unseal
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#verify-and-seal">
+    verify-and-seal
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#ek-sign">
+    ek-sign
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#ek-crt">
+    ek-crt
+  </a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1 id="tpm2-attest-subcommands">tpm2-attest subcommands</h1>
+<p>Usage: <code>tpm2-attest subcommand [options...]</code></p>
+<p>For more information see: <a href="https://safeboot.dev/attestation/">https://safeboot.dev/attestation/</a></p>
+<h2 id="quote">quote</h2>
+<p>Usage:</p>
+<pre><code>tpm2-attest quote [nonce] &gt; quote.tar
+scp quote.tar ...
+</code></pre>
+<p>After contacting the remote attestation server to receive the
+nonce, the machine will generate the endorsement key,
+endorsement cert, a one-time attestation key, and a signed quote
+for the all PCRs using that nonce (or the time of day, if no nonce
+is supplied).</p>
+<p>The output <code>quote.tar</code> should be sent to the remote side for validation.
+There is nothing sensitive in the file, so it can be sent in clear text
+to the server.</p>
+<p>TODO: the quote should be integrity protected, although while it does
+not weaken the protocol, it does allow an adversary to create spurious
+attestation failures.</p>
+<h2 id="attest">attest</h2>
+<p>Usage:</p>
+<pre><code>tpm2-attest attest http://server/attest [nonce [pcrs,...]] &gt; secret.txt
+</code></pre>
+<p>This will generate a quote for the nonce (or the current time if
+none is specified) and for the PCRs listed in the <code>$QUOTE_PCRS</code>
+environment variable.  It will then send the quote to a simple
+attestation server, which will validate the quote and reply with
+a sealed message that can only be decrypted by this TPM on this
+boot.</p>
+<p>No validation of the attestation server is done.</p>
+<h2 id="verify">verify</h2>
+<p>Usage:</p>
+<pre><code>tpm2-attest verify quote.tar [nonce [ca-path]]
+</code></pre>
+<p>This will validate that the quote was signed with the attestation key
+with the provided nonce, and verify that the endorsement key from a valid
+TPM.  It outputs, but does not validate the event log; use
+<code>tpm2-attest eventlog-verify</code> once the known PCRs are available, or use a more 
+complex validation scheme.</p>
+<p>If the <code>nonce</code> is not specified, the one in the quote file will be used,
+although this opens up the possibility of a replay attack.  The QUOTE_MAX_AGE
+can be used to ensure that the quote is fresh.</p>
+<p>If the <code>ca-path</code> is not specified, the system one will be used.</p>
+<p>The output on stdout is yaml formatted with the sha256 hash of the DER format
+EK certificate, the validated quote PCRs, and the unvalidated eventlog PCRs.</p>
+<h2 id="eventlog">eventlog</h2>
+<p>Usage:</p>
+<pre><code>tpm2-attest eventlog [eventlog.bin]
+</code></pre>
+<p>This will read and parse the TPM2 eventlog. If no file is specified,
+the default Linux one will be parsed.  If <code>-</code> is specified, the eventlog
+will be read from stdin.</p>
+<h2 id="eventlog-verify">eventlog-verify</h2>
+<p>Usage:</p>
+<pre><code>tpm2-attest eventlog-verify quote.tar [good-pcrs.txt]
+</code></pre>
+<p>This will verify that the PCRs included in the quote match the
+TPM event log, and if <code>good-prcs.txt</code> are passed in that they
+match those as well.</p>
+<h2 id="ek-verify">ek-verify</h2>
+<p>Usage:</p>
+<pre><code>tpm2-attest ek-verify quote.tar ca-path
+</code></pre>
+<p>This will validate that the endorsement key came from a valid TPM.</p>
+<p>The TPM endorsement key is signed by the manufacturer OEM key, which is
+in turn signed by a trusted root CA.  Before trusting an attestation it is
+necessary to validate this chain of signatures to ensure that it came
+from a legitimate TPM, otherwise an attacker could send a quote that
+has a fake key and decrypt the message in software.</p>
+<p>The <code>ca-path</code> should contain a file named <code>roots.pem</code> with the trusted
+root keys and have the hash symlinks created by <code>c_rehash</code>.</p>
+<p>stdout is the sha256 hash of the DER format EK certificate.</p>
+<h2 id="quote-verify">quote-verify</h2>
+<p>Usage:</p>
+<pre><code>tpm2-attest quote-verify quote.tar [nonce]
+</code></pre>
+<p>This command checks that the quote includes the given nonce and
+was signed by the public attestation key (AK) in the quote file.
+This also check the attributes of the AK to ensure that it has
+the correct bits set (<code>fixedtpm</code>, <code>stclear</code>, etc).
+NOTE: This does not verify that the AK came from a valid TPM.
+See <code>tpm2-attest verify</code> for the full validation.</p>
+<p>If the <code>nonce</code> is not specified on the command line, the one in the
+quote file will be used.  Note that this is a potential for a replay
+attack -- the remote attestation server should keep track of which
+nonce it used for this quote so that it can verify that the quote
+is actually live.</p>
+<p>stdout is the yaml formatted <code>tpm2 checkquote</code>, which can be used to
+validate the eventlog PCRs.</p>
+<h2 id="seal">seal</h2>
+<p>Usage:</p>
+<pre><code>echo secret | tpm2-attest seal quote.tar &gt; cipher.bin
+</code></pre>
+<p>After a attested quote has been validated, an encrypted reply is sent to
+the machine with a sealed secret, which can be of arbitrary length,
+that is encrypted with a random key. This random key is encrypted
+with that machines endorsment key (<code>ek.crt</code>), along with the name
+of the attestation key used to sign the quote.  The TPM will not decrypt
+the message key unless the attestation key was one that it generated.</p>
+<p>The <code>sealed.tar</code> file should be sent back to the device being attested;
+it can then run <code>tpm2-attest unseal &lt; sealed.tar &gt; secret.txt</code>
+to extract the sealed secret (which may be of arbitrary length).</p>
+<h2 id="unseal">unseal</h2>
+<p>Usage:</p>
+<pre><code>cat sealed.tar | tpm2-attest unseal &gt; secret.txt
+</code></pre>
+<p>When the remote attestation has been successful, the remote machine will
+reply with an encrypted blob that is only unsealable by this TPM
+if and only if the EK matches and the AK is one that it generated.</p>
+<h2 id="verify-and-seal">verify-and-seal</h2>
+<p>Usage:</p>
+<pre><code>tpm2-attest verify-and-seal quote.tar [nonce [pcrs]] &lt; secret.txt &gt; sealed.tar
+</code></pre>
+<p>If the <code>nonce</code> is not specified on the command line, the one in the
+quote file will be used.  Note that this is a potential for a replay
+attack -- the remote attestation server should keep track of which
+nonce it used for this quote so that it can verify that the quote
+is actually live.</p>
+<h2 id="ek-sign">ek-sign</h2>
+<p>Usage:</p>
+<pre><code>tpm2-attest ek-sign &lt; ek.pem &gt; ek.crt [/CN=device-name/]
+</code></pre>
+<p>Some TPMs do not include manufacturer signed endorsement key
+certificates, so it is necessary to extract the EK and sign it
+with a trusted key.  This will produce <code>ek.crt</code>, signed with
+the safeboot key.  The signing operation can be done out-of-band
+on a different machine.</p>
+<p>For Google Cloud ShieldedVM machines see:
+<a href="https://cloud.google.com/security/shielded-cloud/retrieving-endorsement-key">https://cloud.google.com/security/shielded-cloud/retrieving-endorsement-key</a></p>
+<p>Usually the EK public components can be extracted from the TPM, signed,
+and the resulting signed <code>ek.crt</code> can be stored back into the TPM nvram.
+Note that this will erase an existing OEM cert if you have one!</p>
+<pre><code># on the device
+tpm2-attest ek-crt &gt; ek.pem
+# on the server
+tpm2-attest ek-sign &lt; ek.pem &gt; ek.crt /CN=device/OU=example.org/
+# on the device again
+tpm2-attest ek-crt ek.crt
+</code></pre>
+<h2 id="ek-crt">ek-crt</h2>
+<p>Usage:</p>
+<pre><code>tpm2-attest ek-crt &gt; ek.pem  # Export the TPM EK in PEM format (not cert)
+</code></pre>
+<p>or</p>
+<pre><code>tpm2-attest ek-crt ek.crt  # Import a signed cert for the EK in DER format
+</code></pre>
+<p>Export the TPM RSA endorsement key for signing by a CA or import a signed
+endorsement key certificate into the TPM NVRAM at the well-known handle.
+See <code>tpm2-attest ek-sign</code> for more details.</p>
+<hr/>
+<div class="md-source-date">
+<small>
+    
+      Last update: <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date">June 21, 2021</span>
+</small>
+</div>
+</article>
+</div>
+</div>
+</main>
+<footer class="md-footer">
+<nav aria-label="Footer" class="md-footer__inner md-grid">
+<a aria-label="Previous: safeboot subcommands" class="md-footer__link md-footer__link--prev" href="../safeboot/" rel="prev">
+<div class="md-footer__button md-icon">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"></path></svg>
+</div>
+<div class="md-footer__title">
+<div class="md-ellipsis">
+<span class="md-footer__direction">
+                Previous
+              </span>
+              safeboot subcommands
+            </div>
+</div>
+</a>
+</nav>
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-footer-copyright">
+        
+        
+          Made with
+          <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+            Material for MkDocs
+          </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"base": "..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing", "select.version.title": "Select version"}, "search": "../assets/javascripts/workers/search.fcfe8b6d.min.js", "version": null}</script>
+<script src="../assets/javascripts/bundle.b1047164.min.js"></script>
+</body>
+</html>

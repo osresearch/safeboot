@@ -1,0 +1,666 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="Debian package to enable UEFI SecureBoot, enroll your own hardware backed platform key, sign the kernel and initrd, decrypt the disk with the TPM, and enable system integrity protection with dmverity" name="description"/>
+<link href="https://safeboot.dev/safeboot/" rel="canonical"/>
+<link href="../images/favicon.ico" rel="icon"/>
+<meta content="mkdocs-1.2.3, mkdocs-material-7.3.6" name="generator"/>
+<!--
+ fill in the opengraph meta tags, with defaults from the site config
+ or values in the yaml metadata for the specific page (summary and image).
+-->
+<meta content="safeboot subcommands" property="og:title"/>
+<meta content="safeboot" property="og:site_name"/>
+<meta content="https://safeboot.dev/safeboot/" property="og:url"/>
+<meta content="Debian package to enable UEFI SecureBoot, enroll your own hardware backed platform key, sign the kernel and initrd, decrypt the disk with the TPM, and enable system integrity protection with dmverity" property="og:description"/>
+<meta content="https://safeboot.dev/images/logo.png" property="og:image"/>
+<title>safeboot subcommands - safeboot</title>
+<link href="../assets/stylesheets/main.a57b2b03.min.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/palette.3f5d1f46.min.css" rel="stylesheet"/>
+<!-- Load fonts from Google -->
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css?family=IBM+Plex+Serif:300,400,400i,700%7CIBM+Plex+Sans:500,600,700%7CIBM+Plex+Mono&amp;display=fallback" rel="stylesheet" type="text/css">
+<style>
+           body, input {
+             font-family: "IBM Plex Serif", "Helvetica Neue",
+               Helvetica, Arial, sans-serif;
+           }
+           pre, code, kbd {
+             font-family: "IBM Plex Mono", "Courier New",
+               Courier, monospace;
+           }
+	   h1, h2, h3, h4, h5, h6 {
+             font-family: "IBM Plex Sans", sans-serif;
+	     font-weight: 700 !important;
+           }
+         </style>
+<link href="../extra.css" rel="stylesheet"/>
+</link></link></head>
+<body data-md-color-accent="none" data-md-color-primary="none" data-md-color-scheme="" dir="ltr">
+<script>function __prefix(e){return new URL("..",location).pathname+"."+e}function __get(e,t=localStorage){return JSON.parse(t.getItem(__prefix(e)))}</script>
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#safe-boot-subcommands">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="safeboot" class="md-header__button md-logo" data-md-component="logo" href=".." title="safeboot">
+<img alt="logo" src="../images/logo.png"/>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            safeboot
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              safeboot subcommands
+            
+          </span>
+</div>
+</div>
+</div>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"></path></svg>
+</button>
+</nav>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/osresearch/safeboot/" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="safeboot" class="md-nav__button md-logo" data-md-component="logo" href=".." title="safeboot">
+<img alt="logo" src="../images/logo.png"/>
+</a>
+    safeboot
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/osresearch/safeboot/" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="..">
+        Overview
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../install/">
+        Installation
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../faq/">
+        Frequently Asked Questions
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../threats/">
+        Threat Model
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../attestation/">
+        Remote Attestation
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../chain-of-trust/">
+        Chain of Trust
+      </a>
+</li>
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" data-md-toggle="toc" id="__toc" type="checkbox"/>
+<label class="md-nav__link md-nav__link--active" for="__toc">
+          safeboot subcommands
+          <span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+        safeboot subcommands
+      </a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#key-init">
+    key-init
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#yubikey-init">
+    yubikey-init
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#yubikey-pubkey">
+    yubikey-pubkey
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#uefi-sign-keys">
+    uefi-sign-keys
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#uefi-set-keys">
+    uefi-set-keys
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#pcrs-sign">
+    pcrs-sign
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#luks-seal">
+    luks-seal
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#sign">
+    sign
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#unify-kernel">
+    unify-kernel
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#sign-kernel">
+    sign-kernel
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#install-kernel">
+    install-kernel
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#linux-sign">
+    linux-sign
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#recovery-sign">
+    recovery-sign
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#recovery-reboot">
+    recovery-reboot
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#bootnext">
+    bootnext
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#remount">
+    remount
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#sip-init">
+    sip-init
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#unlock">
+    unlock
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#mount-all">
+    mount-all
+  </a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../tpm2-attest/">
+        tpm2-attest subcommands
+      </a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#key-init">
+    key-init
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#yubikey-init">
+    yubikey-init
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#yubikey-pubkey">
+    yubikey-pubkey
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#uefi-sign-keys">
+    uefi-sign-keys
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#uefi-set-keys">
+    uefi-set-keys
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#pcrs-sign">
+    pcrs-sign
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#luks-seal">
+    luks-seal
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#sign">
+    sign
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#unify-kernel">
+    unify-kernel
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#sign-kernel">
+    sign-kernel
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#install-kernel">
+    install-kernel
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#linux-sign">
+    linux-sign
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#recovery-sign">
+    recovery-sign
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#recovery-reboot">
+    recovery-reboot
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#bootnext">
+    bootnext
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#remount">
+    remount
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#sip-init">
+    sip-init
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#unlock">
+    unlock
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#mount-all">
+    mount-all
+  </a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1 id="safe-boot-subcommands">Safe Boot subcommands</h1>
+<p>Usage: <code>safeboot subcommand [options...]</code></p>
+<h2 id="key-init">key-init</h2>
+<p>Usage:</p>
+<pre><code>safeboot key-init "subject"
+</code></pre>
+<p>Generate a new x509 signing key with openssl, writing storing
+the public key in <code>/etc/safeboot/cert.pem</code> and the password
+protected private key in <code>/etc/safeboot/signing.key</code>.
+This is not as secure as storing it in a hardware token,
+although if the key is moved to an external device and the
+<code>$KEY</code> variable in <code>/etc/safeboot/local.conf</code> updated to point
+to it, then it will prevent a software-only attack.</p>
+<p>The subject must be written as a "distinguished name":</p>
+<pre><code>       /CN=host.example.com/OU=test/O=example.com/
+</code></pre>
+<h2 id="yubikey-init">yubikey-init</h2>
+<p>Usage:</p>
+<pre><code>safeboot yubikey-init "subject"
+</code></pre>
+<p>Generate a new x509 signing key on an attached Yubikey device
+and set the certificate subject to the provided argument.
+The public key certificate will be written to <code>/etc/safeboot/cert.pem</code>
+and will also be used for the UEFI SecureBoot variables.</p>
+<p>Due to a limitation in the OpenSSL PKCS11 engine, you have to enter
+the password multiple times (once for the engine, and then once for
+the signature).</p>
+<p>The subject must be written as a "distinguished name":</p>
+<pre><code>       /CN=host.example.com/OU=test/O=example.com/
+</code></pre>
+<h2 id="yubikey-pubkey">yubikey-pubkey</h2>
+<p>Usage:</p>
+<pre><code>safeboot yubikey-pubkey cert.pem
+</code></pre>
+<p>Extract the public key certificate in PEM, DER and PUB format.
+The <code>sbsign</code> tool wants PEM, the <code>kmodsign</code> tool wants DER,
+the <code>tpm2-tools</code> wants a raw public key.
+The best part about standards...</p>
+<h2 id="uefi-sign-keys">uefi-sign-keys</h2>
+<p>Usage:</p>
+<pre><code>safeboot uefi-sign-keys
+</code></pre>
+<p>Create three signed certificates for the PK, KEK, and db using
+the attached Yubikey or x509 key stored in <code>/etc/safeboot/signing.key</code>
+and store them in the UEFI SecureBoot configuration.  You should
+have run <code>safeboot yubikey-init</code> or <code>safeboot key-init</code> to have
+already generated the keys.</p>
+<p>Due to an issue with the OpenSSL PKCS11 engine, you will have to authenticate
+to the Yubikey multiple times during this process.</p>
+<h2 id="uefi-set-keys">uefi-set-keys</h2>
+<p>Usage:</p>
+<pre><code>safeboot uefi-set-keys
+</code></pre>
+<p>Store the PK, KEK, and db into the UEFI Secure Boot configuration
+variables.  This must be done once during system setup or if a new
+key is generated.  The <code>uefi-sign-key</code> subcommand attempts to do
+this automatically.</p>
+<h2 id="pcrs-sign">pcrs-sign</h2>
+<p>Usage:
+safeboot pcrs-sign [prevent-rollback] [path-to-unified-kernel]</p>
+<p>Generate a signature for the PCRs that can be used to unseal the LUKS key
+according to the policy created by <code>safeboot luks-seal</code>.  The PCRs used
+are specified in the <code>/etc/safeboot/safeboot.conf</code> or <code>local.conf</code> files, and
+must match the values that were configured during <code>luks-seal</code>.</p>
+<p>If the prevent-rollback argument is <code>prevent-rollback</code>, the TPM version counter
+will be incremented, which will invalidate all previous PCR signatures and prevent
+the older unified kernel images from being able to unseal the PCR data.</p>
+<p>The signature is persisted in a UEFI NVRAM variable, defined in <code>safeboot.conf</code>.</p>
+<h2 id="luks-seal">luks-seal</h2>
+<p>Usage:</p>
+<pre><code>safeboot luks-seal
+</code></pre>
+<p>This will generate a new LUKS encryption key for the block device in
+<code>/etc/crypttab</code> and requires an existing recovery key to install the
+new key slot.  You will also be prompted for an unlock PIN, which will
+be required on the next normal boot in place of the recovery code.</p>
+<p>If this is the first time the disk has been sealed, <code>/etc/crypttab</code>
+will be updated to include a call to the unsealing script to retrieve
+the keys from the TPM, and a counter will be created to prevent rollbacks.</p>
+<p>After sealing the secret, the initrd will be rebuild, the kernel signed,
+and the new predicted PCRs signed.  Any previous sealed data will be
+invalidated since the version counter will be incremented.</p>
+<p>Right now only a single crypt disk is supported.</p>
+<h2 id="sign">sign</h2>
+<p>Usage:</p>
+<pre><code>safeboot sign exe [exe.signed]
+</code></pre>
+<p>Sign an EFI executable with the safeboot keys.</p>
+<p>This is the raw command; you might want to use <code>safeboot linux-sign</code> or
+<code>safeboot recovery-sign</code> instead.</p>
+<h2 id="unify-kernel">unify-kernel</h2>
+<p>Usage:</p>
+<pre><code>safeboot unify-kernel linux.efi kernel=path-to-kernel initrd=path-to-initrd ...
+</code></pre>
+<p>Creates a unified kernel image with the named sections and files
+(typically <code>kernel</code>, <code>initrd</code>, <code>cmdline</code>, and <code>osrel</code>) bundled into
+an EFI executable.</p>
+<p>This is the raw command; you might want to use <code>safeboot linux-sign</code> or
+<code>safeboot recovery-sign</code> instead to add the EFI boot manager entry.</p>
+<h2 id="sign-kernel">sign-kernel</h2>
+<p>Usage:</p>
+<pre><code>safeboot sign-kernel linux.efi [linux.signed.efi]
+</code></pre>
+<p>Sign a unified EFI executable with the safeboot keys.  If no destination
+is specified it will be the same name as the input kernel with <code>.signed.efi</code>
+added.</p>
+<p>This is the raw command; you might want to use <code>safeboot linux-sign</code> or
+<code>safeboot recovery-sign</code> instead to add the EFI boot manager entry.</p>
+<h2 id="install-kernel">install-kernel</h2>
+<p>Usage:</p>
+<pre><code>safeboot install-kernel boot-name [extra kernel parameters...]
+</code></pre>
+<p>Create an EFI boot menu entry for <code>boot-name</code>, with the specified
+kernel, initrd and command line bundled into an executable and signed.
+This command requires the Yubikey or x509 password to be able to sign
+the merged EFI executable.</p>
+<p>This is the raw command; you might want to use <code>safeboot linux-sign</code> or
+<code>safeboot recovery-sign</code> instead.</p>
+<h2 id="linux-sign">linux-sign</h2>
+<p>Usage:</p>
+<pre><code>safeboot linux-sign [target-name [parameters...]]
+</code></pre>
+<p>Generate dm-verity hashes and then sign the Linux with the root hash added
+to the kernel command line.  The default target for the EFI boot manager is
+<code>linux</code>.  You will need the Yubikey or x509 password to sign the new hashes
+and kernel.</p>
+<p>If the environment variable <code>$HASH</code> is set to the hash value, or if
+the <code>$HASHFILE</code> variable points to the previous dmverity log (typically
+<code>/boot/efi/EFI/linux/verity.log</code>), then the precomputed value will be used
+instead of recomputing the dmverity hashes (which can take some time).
+If the hashes are out-of-date, this might render the <code>linux</code> target
+unbootable and require a recovery reboot to re-hash the root filesystem.</p>
+<h2 id="recovery-sign">recovery-sign</h2>
+<p>Usage:</p>
+<pre><code>safeboot recovery-sign [kernel command line...]
+</code></pre>
+<p>Sign the Linux kernel and initrd into the EFI boot manager
+<code>recovery</code> entry.  Typically this only needs to be done once
+and after validating that the system can boot with it, you
+should not have to re-run this command.</p>
+<p>You will need the Yubikey or x509 password as well as root
+accesss to perform this action.</p>
+<p>If SIP is enabled the root device will be marked read-only
+for the reboot and fscked will not been run on boot.</p>
+<p>Use <code>safeboot remount</code> to remount <code>/</code> as read-write when
+in recovery mode, and then <code>safeboot remount ro</code> to restore
+it to read-only mode before signing the hashes.</p>
+<h2 id="recovery-reboot">recovery-reboot</h2>
+<p>Usage:</p>
+<pre><code>safeboot recovery-reboot
+</code></pre>
+<p>Configure the EFI boot manager so that the <code>BootNext</code> is the recovery
+target and reboot the machine.  This command requires root access to
+update the EFI variables and will also require the disk encryption
+recovery key since the TPM will not unseal the disk automatically for
+recovery mode.</p>
+<p><strong>NOTE!</strong> This will reboot the machine!</p>
+<h2 id="bootnext">bootnext</h2>
+<p>Usage:</p>
+<pre><code>safeboot bootnext Setup
+</code></pre>
+<p>Configure the EFI boot manager <code>BootNext</code> variable to select an
+alternate boot menu item.  This command requires root access to
+update the EFI variables.</p>
+<h2 id="remount">remount</h2>
+<p>Usage:</p>
+<pre><code>safeboot remount [ro]
+</code></pre>
+<p>Attempt to remount the root filesystem read/write or read-only.
+If SIP is enabled this will likely invalidate any hashes
+and require a re-signing of the root filesystem.</p>
+<p>If <code>ro</code> is specified, then the file system will be re-mounted read-only
+If there are processes blocking the remount, they will be listed.</p>
+<h2 id="sip-init">sip-init</h2>
+<p>Usage:</p>
+<pre><code>safeboot sip-init [home-size-in-GB [var-size]]
+</code></pre>
+<p><strong>DANGER!</strong> This command can mess up your root filesystem.
+There must be space in the volume group for the new entries
+It will create the volume groups for <code>/var</code> and <code>/home</code>,
+add entries to <code>/etc/fstab</code> for them with secure mount parameters,
+and makes <code>/tmp</code> a symlink into <code>/var/tmp</code>.</p>
+<h2 id="unlock">unlock</h2>
+<p>Usage:</p>
+<pre><code>safeboot unlock
+</code></pre>
+<p>This is a recovery shell command to scan the <code>/etc/crypttab</code> for devices
+and call <code>cryptsetup luksOpen</code> on each of them, and then scan the LVM groups
+for volumes.  After it succeeds you can call <code>safeboot mount</code> to mount
+the root filesystem (read-only) on <code>/root</code>.</p>
+<h2 id="mount-all">mount-all</h2>
+<p>Usage:</p>
+<pre><code>safeboot mount-all
+</code></pre>
+<p>This is a recovery shell command to attempt to mount the root disk read-only
+on <code>/root</code>, as well as the <code>/boot</code> and <code>/boot/efi</code> if they exist in
+<code>/root/etc/fstab</code>.</p>
+<hr/>
+<div class="md-source-date">
+<small>
+    
+      Last update: <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date">July 23, 2021</span>
+</small>
+</div>
+</article>
+</div>
+</div>
+</main>
+<footer class="md-footer">
+<nav aria-label="Footer" class="md-footer__inner md-grid">
+<a aria-label="Previous: Chain of Trust" class="md-footer__link md-footer__link--prev" href="../chain-of-trust/" rel="prev">
+<div class="md-footer__button md-icon">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"></path></svg>
+</div>
+<div class="md-footer__title">
+<div class="md-ellipsis">
+<span class="md-footer__direction">
+                Previous
+              </span>
+              Chain of Trust
+            </div>
+</div>
+</a>
+<a aria-label="Next: tpm2-attest subcommands" class="md-footer__link md-footer__link--next" href="../tpm2-attest/" rel="next">
+<div class="md-footer__title">
+<div class="md-ellipsis">
+<span class="md-footer__direction">
+                Next
+              </span>
+              tpm2-attest subcommands
+            </div>
+</div>
+<div class="md-footer__button md-icon">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11H4z"></path></svg>
+</div>
+</a>
+</nav>
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-footer-copyright">
+        
+        
+          Made with
+          <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+            Material for MkDocs
+          </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"base": "..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing", "select.version.title": "Select version"}, "search": "../assets/javascripts/workers/search.fcfe8b6d.min.js", "version": null}</script>
+<script src="../assets/javascripts/bundle.b1047164.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,401 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="Debian package to enable UEFI SecureBoot, enroll your own hardware backed platform key, sign the kernel and initrd, decrypt the disk with the TPM, and enable system integrity protection with dmverity" name="description"/>
+<link href="https://safeboot.dev/attest-enroll/" rel="canonical"/>
+<link href="../images/favicon.ico" rel="icon"/>
+<meta content="mkdocs-1.2.3, mkdocs-material-7.3.6" name="generator"/>
+<!--
+ fill in the opengraph meta tags, with defaults from the site config
+ or values in the yaml metadata for the specific page (summary and image).
+-->
+<meta content="attest-enroll: enrolling a device for TPM2 remote attestation" property="og:title"/>
+<meta content="safeboot" property="og:site_name"/>
+<meta content="https://safeboot.dev/attest-enroll/" property="og:url"/>
+<meta content="`attest-enroll` registers a system into the safeboot remote attestation system using the device's TPM's endorsement key as a long term device identity." property="og:description"/>
+<meta content="https://safeboot.dev/images/tpm-header.jpg" property="og:image"/>
+<title>attest-enroll: enrolling a device for TPM2 remote attestation - safeboot</title>
+<link href="../assets/stylesheets/main.a57b2b03.min.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/palette.3f5d1f46.min.css" rel="stylesheet"/>
+<!-- Load fonts from Google -->
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css?family=IBM+Plex+Serif:300,400,400i,700%7CIBM+Plex+Sans:500,600,700%7CIBM+Plex+Mono&amp;display=fallback" rel="stylesheet" type="text/css">
+<style>
+           body, input {
+             font-family: "IBM Plex Serif", "Helvetica Neue",
+               Helvetica, Arial, sans-serif;
+           }
+           pre, code, kbd {
+             font-family: "IBM Plex Mono", "Courier New",
+               Courier, monospace;
+           }
+	   h1, h2, h3, h4, h5, h6 {
+             font-family: "IBM Plex Sans", sans-serif;
+	     font-weight: 700 !important;
+           }
+         </style>
+<link href="../extra.css" rel="stylesheet"/>
+</link></link></head>
+<body data-md-color-accent="none" data-md-color-primary="none" data-md-color-scheme="" dir="ltr">
+<script>function __prefix(e){return new URL("..",location).pathname+"."+e}function __get(e,t=localStorage){return JSON.parse(t.getItem(__prefix(e)))}</script>
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#escrow-of-enrolled-secrets">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="safeboot" class="md-header__button md-logo" data-md-component="logo" href=".." title="safeboot">
+<img alt="logo" src="../images/logo.png"/>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            safeboot
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              attest-enroll: enrolling a device for TPM2 remote attestation
+            
+          </span>
+</div>
+</div>
+</div>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"></path></svg>
+</button>
+</nav>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/osresearch/safeboot/" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="safeboot" class="md-nav__button md-logo" data-md-component="logo" href=".." title="safeboot">
+<img alt="logo" src="../images/logo.png"/>
+</a>
+    safeboot
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/osresearch/safeboot/" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="..">
+        Overview
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../install/">
+        Installation
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../faq/">
+        Frequently Asked Questions
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../threats/">
+        Threat Model
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../attestation/">
+        Remote Attestation
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../chain-of-trust/">
+        Chain of Trust
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../safeboot/">
+        safeboot subcommands
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../tpm2-attest/">
+        tpm2-attest subcommands
+      </a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#escrow-of-enrolled-secrets">
+    Escrow of Enrolled Secrets
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#enrollment-state-generation">
+    Enrollment State Generation
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#encryption">
+    Encryption
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#encryption-of-larger-secrets">
+    Encryption of Larger Secrets
+  </a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1>attest-enroll: enrolling a device for TPM2 remote attestation</h1>
+<p>This script, <a href="/sbin/attest-enroll"><code>sbin/attest-enroll</code></a> implements
+enrollment of a device into the attestation system using the device's
+TPM's Endorsement Key's public key (<code>EKpub</code>).</p>
+<p>It takes as arguments an <code>EKpub</code> or the <code>EKpub</code>'s public key in PEM
+form, and a desired <code>hostname</code>, and it creates the enrollment state for
+that tuple.</p>
+<p>Enrollment state consists of:</p>
+<ul>
+<li>the <code>EKpub</code></li>
+<li>the <code>hostname</code></li>
+<li>any configured secrets and metadata for that device, with secrets
+   encrypted to the <code>EKpub</code></li>
+</ul>
+<p>Secrets are encrypted to the <code>EKpub</code> using
+<a href="/sbin/tpm2-send"><code>sbin/tpm2-send</code></a>.  <a href="#Encryption">More on this below</a>.</p>
+<p>The enrollment database is file based.  The directory structure looks
+like:</p>
+<pre><code>$DBDIR/??/...               # enrollment state for enrolled hosts
+$DBDIR/${ekhash:0:2}/${ekhash}/     # &lt;- enrollment state for SHA-256(EKpub)
+$DBDIR/${ekhash:0:2}/${ekhash}/     # &lt;- enrollment state for SHA-256(EKpub)
+$DBDIR/hostname2ekpub/          # &lt;- index by hostname
+$DBDIR/hostname2ekpub/${hostname}   # &lt;- file containing ${hostname}'s SHA-256(EKpub)
+$DBDIR/hostname2ekpub/...
+</code></pre>
+<p>Configuration is via bash scripts sourced by
+<a href="/sbin/attest-enroll"><code>sbin/attest-enroll</code></a>:</p>
+<pre><code>/etc/safeboot-enroll/conf       # Principal config file (optional)
+$DBDIR/attest-enroll.conf       # Additional config file (optional)
+</code></pre>
+<p>Configuration parameters can also be given on the command-line.  See the
+<a href="/sbin/attest-enroll#L165"><code>sbin/attest-enroll</code></a> usage message for more
+details.</p>
+<h2 id="escrow-of-enrolled-secrets">Escrow of Enrolled Secrets</h2>
+<p>If an <code>ESCROW_PUBS_DIR</code> is configured, then every secret subsequently
+encrypted to any TPM is also encrypted to the defined escrow
+authorities' public keys:</p>
+<pre><code>$ESCROW_PUBS_DIR/           # &lt;- EKpubs/PEM of escrow agents here (optional)
+$ESCROW_PUBS_DIR/someEscrowName.pub # EKpub
+$ESCROW_PUBS_DIR/otherEscrowName.pem    # Public key in PEM form
+</code></pre>
+<h2 id="enrollment-state-generation">Enrollment State Generation</h2>
+<p>Enrollment state is generated by configured <code>genprog</code>s.  Two built-in
+genprogs are:</p>
+<ul>
+<li><code>genhostname</code> -- creates the metadata file recording the hostname,</li>
+<li><code>genrootfskey</code> -- creates a 64-byte secret key for root filesystem /
+   volume encryption.</li>
+</ul>
+<p>Other, external <code>genprog</code>s can be added and configured.  The following
+external <code>genprog</code>s are included:</p>
+<ul>
+<li><code>gencert</code> -- creates a private key and a certificate for its public
+   key naming the <code>hostname</code>,</li>
+<li><code>genkeytab</code> -- creates a "keytab" with the keys for the <code>hostname</code>'s
+   host service Kerberos principal.</li>
+</ul>
+<p>Sites can provide additional <code>genprog</code>s to generate a large variety of
+credentials and metadata:</p>
+<ul>
+<li>PKIX certificates for IPsec, TLS, and/or other purposes</li>
+<li>OpenSSH host keys and possibly OpenSSH host key certificates</li>
+<li>Service access tokens</li>
+</ul>
+<h2 id="encryption">Encryption</h2>
+<p>Encryption is implemented by <a href="/sbin/tpm2-send"><code>sbin/tpm2-send</code></a>.</p>
+<p>Decryption is implemented by <a href="/sbin/tpm2-recv"><code>sbin/tpm2-recv</code></a>.</p>
+<p>Two methods are possible for encryption to a target TPM's <code>EKpub</code>:</p>
+<ul>
+<li>the "WK" method (our name for it)</li>
+<li>the "TK" method (our name for it)</li>
+</ul>
+<p>Both methods support setting a policy on the ciphertext such that any
+application using the target's TPM to decrypt it must first execute and
+satisfy that policy.</p>
+<p>The "WK" method uses <code>TPM2_MakeCredential()</code> via tpm2-tools' <code>tpm2
+makecredential</code> command, using the <code>none</code> TCTI (i.e., implemented in
+software).  The target's <code>EKpub</code> is used as the <code>handle</code> input parameter
+to <code>TPM2_MakeCredential()</code>.  A well-known key (<code>WK</code>), and the desired policy
+(if any) are used to compute the cryptographic name of the "activation
+object" (<code>objectName</code>) input parameter to <code>TPM2_MakeCredential()</code>.
+Decryption consists of calling <code>TPM2_ActivateCredential()</code> with the
+handle to the <code>WK</code> as the <code>activationHandle</code> input
+parameter, and the <code>EK</code> as the <code>keyHandle</code> input parameter of
+<code>TPM2_ActivateCredential()</code>.  If a policy is desired then the
+<code>adminWithPolicy</code> attribute will be set on the <code>WKname</code>, which will
+cause <code>TPM2_ActivateCredential()</code> to require that the policy be
+satisfied.</p>
+<p>The "TK" method uses <code>TPM2_Duplicate()</code> via tpm2-tools' <code>tpm2 duplicate</code>
+command using the <code>none</code> TCTI (i.e., implemented in software.  An RSA
+keypair is generated and its private key is exported to the target TPM
+using <code>TPM2_Duplicate()</code> -- we call this the "transport key", the <code>TK</code>.
+The small secret will then be encrypted to the <code>TK</code>'s public key
+(<code>TKpub</code>).  Decryption works by importing the exported <code>TK</code> and then
+using <code>TPM2_RSA_Decrypt()</code> to decrypt the small secret encrypted to the
+<code>TKpub</code>.</p>
+<h2 id="encryption-of-larger-secrets">Encryption of Larger Secrets</h2>
+<p>In all cases, regardless of a secret's size, we use
+<a href="/sbin/tpm2-send"><code>sbin/tpm2-send</code></a> to encrypt an ephemeral, random
+AES-256 key to the target's TPM, then we encrypt the actual secret in
+that AES key in confounded AES-256-CBC-HMAC-SHA-256 cipher mode.  The
+final ciphertext consists of those two ciphertexts: the one generated by
+<code>sbin/tpm2-send</code> and the one generated by AES encryption.</p>
+<p>Encryption using the confounded AES-256-CBC-HMAC-SHA-256 cipher mode
+consists of:</p>
+<ul>
+<li>prepending a full cipher block of random bits (the "confounder") to
+   the plaintext,</li>
+<li>encrypting the plaintext in AES-256 in cipher block chaining (CBC)
+   mode with padding and zero IV,</li>
+<li>appending the HMAC of the resulting ciphertext using SHA-256 as the
+   hash function for HMAC.</li>
+</ul>
+<p>Decryption using the confounded AES-256-CBC-HMAC-SHA-256 cipher mode
+consists of:</p>
+<ul>
+<li>computing the HMAC-SHA-256 of the ciphertext excluding the MAC,</li>
+<li>checking that the HMAC of the ciphertext matches the HMAC in the
+   ciphertext,</li>
+<li>decryption of the ciphertext using AES-256 in CBC with zero IV,</li>
+<li>removing the first full cipher block of the plaintext (the
+   "confounder"),</li>
+<li>removing the padding.</li>
+</ul>
+<p>The confounder serves mainly to function as a sort of explicit random IV
+while allowing us to use a zero IV in the <code>openssl enc</code> command
+invocations.  Since all of this is implemented in bash with <code>openssl</code>,
+and OpenSSL does not provide a decent authenticated encryption mode for
+AES, we script the confounded AES-256-CBC-HMAC-SHA-256 cipher mode,
+which turns out to be <a href="/functions.sh#L396">simple</a> and
+<a href="/functions.sh#L425">elegant</a> in bash.</p>
+<p>With OpenSSL 3.0 we could use <a href="https://en.wikipedia.org/wiki/Ciphertext_stealing">ciphertext stealing mode
+(CTS)</a> instead of
+CBC, and then we'd be using exactly the same more as Kerberos uses
+(confounded CTS with HMAC).</p>
+<blockquote>
+<p>The <a href="https://en.wikipedia.org/wiki/Ciphertext_stealing">CTS cipher mode</a>
+is a variant of CBC mode that avoids the need for padding, in exchange
+for which advantage CTS requires plaintexts to be at least one full
+cipher block (16 bytes) long, thus CTS is always used with a
+confounder, and the confounder functions as an explicit IV that allows
+the external IV to be zero.</p>
+</blockquote>
+<hr/>
+<div class="md-source-date">
+<small>
+    
+      Last update: <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date">July 26, 2021</span>
+</small>
+</div>
+</article>
+</div>
+</div>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-footer-copyright">
+        
+        
+          Made with
+          <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+            Material for MkDocs
+          </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"base": "..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing", "select.version.title": "Select version"}, "search": "../assets/javascripts/workers/search.fcfe8b6d.min.js", "version": null}</script>
+<script src="../assets/javascripts/bundle.b1047164.min.js"></script>
+</body>
+</html>

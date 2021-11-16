@@ -1,0 +1,731 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="Debian package to enable UEFI SecureBoot, enroll your own hardware backed platform key, sign the kernel and initrd, decrypt the disk with the TPM, and enable system integrity protection with dmverity" name="description"/>
+<link href="https://safeboot.dev/threats/" rel="canonical"/>
+<link href="../images/favicon.ico" rel="icon"/>
+<meta content="mkdocs-1.2.3, mkdocs-material-7.3.6" name="generator"/>
+<!--
+ fill in the opengraph meta tags, with defaults from the site config
+ or values in the yaml metadata for the specific page (summary and image).
+-->
+<meta content="safeboot threat model" property="og:title"/>
+<meta content="safeboot" property="og:site_name"/>
+<meta content="https://safeboot.dev/threats/" property="og:url"/>
+<meta content="Overview of the protections enabled by safeboot and the threats that they are intended to prevent, detect, or repair." property="og:description"/>
+<meta content="https://safeboot.dev/images/threat-model.jpg" property="og:image"/>
+<title>safeboot threat model - safeboot</title>
+<link href="../assets/stylesheets/main.a57b2b03.min.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/palette.3f5d1f46.min.css" rel="stylesheet"/>
+<!-- Load fonts from Google -->
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css?family=IBM+Plex+Serif:300,400,400i,700%7CIBM+Plex+Sans:500,600,700%7CIBM+Plex+Mono&amp;display=fallback" rel="stylesheet" type="text/css">
+<style>
+           body, input {
+             font-family: "IBM Plex Serif", "Helvetica Neue",
+               Helvetica, Arial, sans-serif;
+           }
+           pre, code, kbd {
+             font-family: "IBM Plex Mono", "Courier New",
+               Courier, monospace;
+           }
+	   h1, h2, h3, h4, h5, h6 {
+             font-family: "IBM Plex Sans", sans-serif;
+	     font-weight: 700 !important;
+           }
+         </style>
+<link href="../extra.css" rel="stylesheet"/>
+</link></link></head>
+<body data-md-color-accent="none" data-md-color-primary="none" data-md-color-scheme="" dir="ltr">
+<script>function __prefix(e){return new URL("..",location).pathname+"."+e}function __get(e,t=localStorage){return JSON.parse(t.getItem(__prefix(e)))}</script>
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#protections">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="safeboot" class="md-header__button md-logo" data-md-component="logo" href=".." title="safeboot">
+<img alt="logo" src="../images/logo.png"/>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            safeboot
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              safeboot threat model
+            
+          </span>
+</div>
+</div>
+</div>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"></path></svg>
+</button>
+</nav>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/osresearch/safeboot/" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="safeboot" class="md-nav__button md-logo" data-md-component="logo" href=".." title="safeboot">
+<img alt="logo" src="../images/logo.png"/>
+</a>
+    safeboot
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/osresearch/safeboot/" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="..">
+        Overview
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../install/">
+        Installation
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../faq/">
+        Frequently Asked Questions
+      </a>
+</li>
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" data-md-toggle="toc" id="__toc" type="checkbox"/>
+<label class="md-nav__link md-nav__link--active" for="__toc">
+          Threat Model
+          <span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+        Threat Model
+      </a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#protections">
+    Protections
+  </a>
+<nav aria-label="Protections" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#firmware">
+    Firmware
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#booting">
+    Booting
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#runtime">
+    Runtime
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#todo">
+    Todo
+  </a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#attacks">
+    Attacks
+  </a>
+<nav aria-label="Attacks" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#physical-hardware-attacks">
+    Physical hardware attacks
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#physical-software-attacks">
+    Physical software attacks
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#software-attacks">
+    Software attacks
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#todo_1">
+    Todo
+  </a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../attestation/">
+        Remote Attestation
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../chain-of-trust/">
+        Chain of Trust
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../safeboot/">
+        safeboot subcommands
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../tpm2-attest/">
+        tpm2-attest subcommands
+      </a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#protections">
+    Protections
+  </a>
+<nav aria-label="Protections" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#firmware">
+    Firmware
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#booting">
+    Booting
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#runtime">
+    Runtime
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#todo">
+    Todo
+  </a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#attacks">
+    Attacks
+  </a>
+<nav aria-label="Attacks" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#physical-hardware-attacks">
+    Physical hardware attacks
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#physical-software-attacks">
+    Physical software attacks
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#software-attacks">
+    Software attacks
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#todo_1">
+    Todo
+  </a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1>Threat Model</h1>
+<p><img alt="Your threat model is not my threat model, but your threat model is ok" src="../images/threat-model.jpg"/></p>
+<p><code>safeboot</code> intends to protect the integrity of the boot process and
+runtime integrity of the system against adversaries with external physical
+access to the device, as well as limited internal physical access.
+The assumption is that the attacker can get code execution on the device
+as the user and as root, but does not have access to the signing keys or
+the disk encryption key.  The goal is to prevent the attacker from exfiltrating
+data from the device or making persistent changes to the system configuration.</p>
+<p>The <a href="../faq/#how-is-this-better-than-normal-uefi-secure-boot">protections offered by UEFI Secure Boot</a>
+fall short of these goals in several areas.  The default signing keys in
+Secure Boot are not under control of the computer owner -- the bootloader
+root CA keys are controlled by Microsoft, who signs the keys used to sign
+the shim bootloader, which has the Linux distribution keys built in.
+Owners can enroll their keys to the Machine Owner Key (MOK), but this does
+not replace the distribution keys in the shim.  Even with SecureBoot enabled,
+most distributions still go through grub for a boot menu, which increases
+the attack surface and adds another layer of validation that needs to be done.
+Finally, Canonical signs the kernel and the kernel modules so that they are
+accepted by the shim and grub, but the initrd is unsigned and an attacker can
+replace it without too much difficulty since it is stored in plaintext
+on the disk.  Additionally, none of the Linux distributions support TPM
+protected keys out of the box, which is why it is necessary to install
+a package like <code>safeboot</code> to make use of them.</p>
+<h2 id="protections">Protections</h2>
+<p>The protections that are applied by the <code>/usr/sbin/safeboot</code> script and
+setup instructions include:</p>
+<h3 id="firmware">Firmware</h3>
+<ul>
+<li>Enabling UEFI Secure Boot, Supervisor password, Tamper Switches, etc</li>
+<li>Generating an owner controlled signing key in a hardware token</li>
+<li>Installing the owner's signing key as the UEFI Secure Boot Platform Key (<code>PK</code>)</li>
+<li>Removing OEM and Microsoft keys from the UEFI Secure Boot key database (<code>db</code>)</li>
+<li>Signing the kernel, initrd and command line with the owner's hardware key</li>
+</ul>
+<h3 id="booting">Booting</h3>
+<ul>
+<li>LUKS block device encryption on <code>/</code>, <code>/home</code>, <code>/var</code> and swap.</li>
+<li>TPM Sealing the disk encryption key with the UEFI firmware and configuration values</li>
+<li>The TPM sealed secret can be protected with a PIN</li>
+<li>The TPM sealed secret can be protected from rollback with a TPM counter</li>
+<li>If unsealing fails, attesting to the firmware state with TOTP and using a recovery key</li>
+<li>Storing the unsealed key in a protected kernel keyring and logging </li>
+<li>Enabling <code>intel_iommu=on</code> and <code>efi=disable_early_pci_dma</code> to eliminate some hardware attacks</li>
+</ul>
+<h3 id="runtime">Runtime</h3>
+<ul>
+<li>Enabling <code>lockdown=confidentiality</code> mode to prevent root from accessing keyrings or memory</li>
+<li>Mounting the root filesystem read-only and marking the block device read-only</li>
+<li>Enabling dmverity hash checking on the root filesystem ("SIP" mode)</li>
+<li>Mounting <code>/tmp</code>, <code>/home</code> and <code>/var</code> with <code>nosuid,nodev</code></li>
+<li>Removing Canonical's module signing key</li>
+<li>Adding <code>usb-storage</code> and other external media to the kernel module deny list</li>
+<li>Proving the firmware and kernel configuration to remote attestation servers with <a href="../attestation/"><code>tpm2-attest</code></a></li>
+</ul>
+<h3 id="todo">Todo</h3>
+<ul>
+<li>TODO: Flush encryption keys during sleep</li>
+<li>TODO: VPN config</li>
+<li>TODO: Prevent network reconfiguration</li>
+<li>TODO: Device VM separation</li>
+<li>TODO: Separate <code>/home</code> encryption</li>
+<li>TODO: Multiparty signatures for higher assurance</li>
+<li>TODO: Allowed list of USB device IDs.</li>
+</ul>
+<p>The behaviour of things like the tamper switches and supervisor password
+are as observed on the Lenovo X1 firmware (and some were fixed after
+reporting vulnerabilities to Lenovo); other devices may vary and have
+less secure behaviour.</p>
+<h2 id="attacks">Attacks</h2>
+<p>These changes protect against many local physical and software attacks.</p>
+<h3 id="physical-hardware-attacks">Physical hardware attacks</h3>
+<p>A local attacker with physical access to the device can open the device to gain
+access to the drive, the SPI flash on the mainboard, the Management Engine and CPU chipset,
+the discrete TPM device, the RAM chips, PCIe buses (such as m.2 slots), etc.</p>
+<ul>
+<li>
+<p>Opening the case to modify the flash or modify devices will trip the case tamper
+switch and prevent the device from booting until the firmware supervisor password
+is entered.  This detects several classes of "evil maid" attacks that require
+physical access.</p>
+</li>
+<li>
+<p>Removing the disk to attempt to rewrite it or image it for offline
+attacks will trigger both the case tamper switch and the disk tamper
+switch.  The firmware supervisor password is required to reboot, which
+will allow the user or administrator to detect that the device has been
+compromised.</p>
+</li>
+<li>
+<p>On Lenovo's recent firmware, the supervisor password is not stored
+in the SPI flash (Serial Peripheral Interface), but in the Embedded Controler (EC),
+and changing it requires the EC to validate the change. This prevents a local
+attacker from modifying the NVRAM variabels in the SPI flash to bypass the supervisor
+checks. However, the EC is an open field of security research.</p>
+</li>
+<li>
+<p>On Lenovo's recent firmware, the tamper switch state is stored in the EC,
+rather than the RTC RAM.  This makes it more difficult to bypass the
+tamper switches since an EC or Bootguard attack is necessary.</p>
+</li>
+<li>
+<p>Exploits against the ME are unlikely to be detectable, although they require a
+level of expertise to pull off and do not provide persistence.  A local attacker
+could use this to bypass Bootguard and other TPM provided protections.  If they also
+know the TPM PIN and <code>/home</code> encryption password, they can exfiltrate data, but
+are unlikely to be able to gain persistence without the attack device in place
+due to the signed dmverity hashes.</p>
+</li>
+<li>
+<p>Changing the firmware in the SPI flash <em>should</em> be detected by Intel Bootguard's
+verification of the IBB during boot up and result in the device not booting.
+There are public TOCTOU attacks against Bootguard, so a local attacker can bypass
+the measured root of trust to boot their unsigned firmware and kernel.
+As with the ME attacks, if the TPM PIN and <code>/home</code> encryption key are known then
+data can be exfiltrated, but this does not provide persistence.</p>
+</li>
+<li>
+<p>Writing new platform keys in the SPI flash will result in a TPM unsealing failure
+since the UEFI secure boot configuration is part of the measured state included in
+the TPM PCRs.</p>
+</li>
+<li>
+<p>An attack that presents a fake recovery key input dialog can be detected
+by the <code>tpm2-totp</code> tool. The TPM2 will only generate the 30-second,
+6-digit authentication code if the PCRs match the expected value
+and the administrator can verify it against their authenticator app.
+With TPM2, the HMAC is computed in the TPM itself, so the secret is never
+accessible to the operating system.</p>
+</li>
+<li>
+<p>The PCR values in the TPM are not "secret", so an adversary with physical access
+could directly wire to the TPM and provide it with the correct measurements to
+extend the PCRs to match the signed values.  The user PIN is still necessary to unseal
+the secret and the TPM dictionary attack protections both rate-limit and retry-limit
+the attacker.</p>
+</li>
+<li>
+<p>Discrete TPM tampering on the LPC bus is not necessarily detectable by this system;
+an adversary with unlimited internal physical access can also probe sealed secrets.
+If a TPM PIN is used then the secrets might be brute-forcable, but would require
+much longer internal access.</p>
+</li>
+<li>
+<p>Functional TPM tampering is out of scope since the fTPM is an
+application running inside the Intel Management Engine, not a separate
+device, and the ME is the root of all trust in the system. An adversary
+with code execution on the ME is able to bypass all of the other platform
+protections (with maybe the exception of SGX enclaves, although this is not
+certain).</p>
+</li>
+<li>
+<p>In a <a href="https://en.wikipedia.org/wiki/Cold_boot_attack">"Coldboot" attacks on the memory</a>,
+an attack triggers a reboot in order to boot into their own kernel that doesn't
+clear memory. Since most of the old contents are still present, this custom
+kernel can read through memory to look for secrets.
+This attack is prevented by requiring valid owner signatures on any kernel,
+and could be additionally prevented by enabling Intel TXT with an enforced
+DRAM clear, although a physically proximate attacker can turn off those
+protections by modifying the NVRAM variables during the boot process.</p>
+</li>
+<li>
+<p>In another variant of the coldboot attack, the attacker freezes the
+RAM chips with cooling spray, removes the physical memory modules and
+install them into a new system that the attacker controls and that is
+configured to not clear the memory on power up.  This attack is not
+easily doable on the X1 since all of the RAM is soldered onto mainboard,
+but is possible against part of the memory on the T490 since it has some
+of its memory soldered and some on a DIMM.
+TODO: Can Linux restrict the keys to the hard soldered chips?</p>
+</li>
+<li>
+<p>The encryption keys are stored in RAM even while the system is asleep, which makes
+the keys potentially available to an attacker with certain resources; it would
+be worthwhile to consider flushing them prior to entering S3 suspend.
+This would require modifying the init scripts that handle resume to prompt
+for the password; the TPM sealed encryption keys are problematic since the
+TPM state is reloaded during a resume.</p>
+</li>
+</ul>
+<h3 id="physical-software-attacks">Physical software attacks</h3>
+<ul>
+<li>
+<p>Modifying the unencrypted kernel or initrd on <code>/boot</code> or attempting to pass in
+unapproved kernel command line parameters is prevented by the
+UEFI Secure Boot signature checks.  The firmware will not hand control of the system
+to an unsigned EFI executable, which in this case is the entire kernel, initrd, and
+command line.  This prevents both physical rewriting the disk in another machine,
+as well as if an attacker escallates to root and remounts <code>/boot</code> as read-write.</p>
+</li>
+<li>
+<p>The boot order NVRAM variable could be modified by an attacker with access to the
+SPI flash or if they have escallated to root.  However, booting from an
+external device still requires an EFI executable signed by the PK/KEK/db,
+and since the default signing keys (typically the OEM and Microsoft) have been
+removed, only images signed the the computer owner's key will be booted
+from the external USB flash drive.</p>
+</li>
+<li>
+<p>Adversaries might try to gain persistence or weaken security by gaining
+write access to the unencrypted <code>/boot</code> partition and changing the kernel images.
+This requires either a root escalation or a tamper switch bypass,
+but the firmware will deny them peristence by refusing to boot from
+the modified image since the signature is checked when they are loaded
+into RAM at boot.  There should not be any runtime TOCTOU since the DRAM has
+been initialized and there is space to store the entire image prior to
+validating the signature.</p>
+</li>
+<li>
+<p>The adversary might roll back to a prior version of the signed kernel and initrd,
+with a prior signed version of the PCRs.  This is prevented by using monotonic
+TPM counter in addition to the signature.  When a security critical update is
+available, the TPM counter is incremented and the PCRs are signed with that new
+value. The TPM will refuse to unseal older sealed data since the counter no longer
+matches.  The TPM counter should be protected against rollback since deleting and
+re-creating a counter does not reset it to zero, but instead to the highest value
+that any counter in the TPM has ever reached.</p>
+</li>
+<li>
+<p>Adversaries might try to gain persistence by gaining write access to the
+encrypted and dmverity protected <code>/</code> filesystem, which requires a
+kernel escalation since dmverity prohibits writes to the protected block device,
+or a tamper switch bypass in addition to possession of the TPM disk unsealing keys.
+However, even with write access, the adversary can not gain persistence since
+the signed kernel command line and signed initrd enable dmverity hash checking,
+which will detect any modifications to <code>/</code>.  They would also need access to the
+signing keys to be able to produce a new valid root hash.</p>
+</li>
+<li>
+<p>An adversary might try to gain run time access to the disk encryption key.
+The PCRs are extended with the booted state so that the TPM will no longer unseal
+it after the initrd, and root is prevented from reading the key from the Linux kernel
+keyring, so a kernel escallation is required to gain access to it.
+TODO: qubes style separate VM for disk and user?</p>
+</li>
+<li>
+<p>Some of the ports on the device, such as Thunderbolt and PCIe, have the ability to
+DMA in and out of main memory, which would allow a local attacker to connect
+a device that reads secrets out of unencrypted memory.
+The safeboot kernel commandline parameter configuration turns on the Intel IOMMU
+by default, as well as turns off PCIe bus-mastering, both of which should protect
+against attacks like Thunderspy as well as some classes of malicious devices
+on the Thunderbolt port or internal Mini-PCIe ports.</p>
+</li>
+</ul>
+<h3 id="software-attacks">Software attacks</h3>
+<ul>
+<li>
+<p>An attacker might try to exfiltrate data by plugging in a USB flash drive,
+which is prevented by adding <code>usb-storage</code> to the deny list.  The USB ports
+could also be turned off in the UEFI <code>Setup</code>, although this would also
+prevent external keyboards and mice, if they are desired.</p>
+</li>
+<li>
+<p>An attacker with root access could try to load the USB storage module
+with <code>insmod /lib/modules/..../usb-storage.ko</code>, which bypasses the
+<code>/etc/modprobe.d/</code> configuration.  This can be prevented by removing
+the module from the root filesystem.</p>
+</li>
+<li>
+<p>An attacker with root access could download a version of the
+<code>usb-storage</code> module from the Ubuntu website, which is signed by 
+the Canononical key and can be loaded into a stock kernel since
+their key is in the default key ring.  This is prevented by building
+a custom kernel with a module signing key that is not stored
+on the machine.</p>
+</li>
+<li>
+<p>An attacker with root access could try to <code>kexec</code> into a
+custom kernel that doesn't overwrite the disk encryption key and
+that doesn't enforce external device access.  This is prevented by the
+<a href="https://mjg59.dreamwidth.org/50577.html">Linux kernel lockdown mode (turned on by UEFI Secure Boot mode)</a>,
+which requires a signature on the new kernel by one of the keys in the
+UEFI Secure Boot key database, which only contains the public key of
+the hardware token used to sign the real kernel and initrd.</p>
+</li>
+<li>
+<p>An attacker with root access could try to bypass the module
+or <code>kexec</code> signature checks by opening <code>/dev/mem</code> or otherwise
+directly poking into memory to enable the hardware to escalate into
+kernel mode.  The Lockdown patches also disable access to the memory
+device and prevent root from being able to adjust <code>iopl</code> or other
+special modes, which should make it more difficult for an attacker
+to escalate into kernel mode.</p>
+</li>
+<li>
+<p>An attacker with root access might try to use the Linux kernel
+keyring to read the disk encryption key.  This is prevented by
+<a href="https://mjg59.dreamwidth.org/55105.html">enabling <code>lockdown=confidentiality</code> mode</a>,
+which prevent all kernel memory accesses from user space, and
+also ensures that the keyrings are not accessible.  The attacker
+would require an additional privilege escalation is required to turn off
+lockdown.</p>
+</li>
+<li>
+<p>An attacker might try to escalate to root by somehow creating device files or
+mounting filesystems with SUID binaries.  The <code>/etc/fstab</code> entries for <code>/home</code>
+and <code>/var</code> are configured to not allow such executables.</p>
+</li>
+<li>
+<p>TODO: Prevent network reconfiguration that bypasses mandatory VPN.</p>
+</li>
+<li>
+<p>TODO: ensure that the magic sysctl isn't allowed to bypass various security bits.</p>
+</li>
+</ul>
+<h3 id="todo_1">Todo</h3>
+<ul>
+<li>
+<p>TODO: rollback attacks; how to use TPM counters to prevent them</p>
+</li>
+<li>
+<p>TODO: Document rebuilding the kernel</p>
+</li>
+<li>
+<p>TODO: configure allow/deny lists to clean up the module directories.</p>
+</li>
+<li>
+<p>TODO: SELinux config</p>
+</li>
+<li>
+<p>TODO: qubes/secureview separation</p>
+</li>
+<li>
+<p>TODO: /home encryption</p>
+</li>
+<li>
+<p>TODO: TPM PIN</p>
+</li>
+<li>
+<p>TODO: tpm-totp</p>
+</li>
+<li>
+<p>TODO: document how <a href="../attestation/"><code>tpm2-attest</code> handles access to remote resources</a></p>
+</li>
+</ul>
+<hr/>
+<div class="md-source-date">
+<small>
+    
+      Last update: <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date">November 15, 2021</span>
+</small>
+</div>
+</article>
+</div>
+</div>
+</main>
+<footer class="md-footer">
+<nav aria-label="Footer" class="md-footer__inner md-grid">
+<a aria-label="Previous: Frequently Asked Questions" class="md-footer__link md-footer__link--prev" href="../faq/" rel="prev">
+<div class="md-footer__button md-icon">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"></path></svg>
+</div>
+<div class="md-footer__title">
+<div class="md-ellipsis">
+<span class="md-footer__direction">
+                Previous
+              </span>
+              Frequently Asked Questions
+            </div>
+</div>
+</a>
+<a aria-label="Next: Remote Attestation" class="md-footer__link md-footer__link--next" href="../attestation/" rel="next">
+<div class="md-footer__title">
+<div class="md-ellipsis">
+<span class="md-footer__direction">
+                Next
+              </span>
+              Remote Attestation
+            </div>
+</div>
+<div class="md-footer__button md-icon">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11H4z"></path></svg>
+</div>
+</a>
+</nav>
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-footer-copyright">
+        
+        
+          Made with
+          <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+            Material for MkDocs
+          </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"base": "..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing", "select.version.title": "Select version"}, "search": "../assets/javascripts/workers/search.fcfe8b6d.min.js", "version": null}</script>
+<script src="../assets/javascripts/bundle.b1047164.min.js"></script>
+</body>
+</html>

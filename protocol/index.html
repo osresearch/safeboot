@@ -1,0 +1,1308 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="Debian package to enable UEFI SecureBoot, enroll your own hardware backed platform key, sign the kernel and initrd, decrypt the disk with the TPM, and enable system integrity protection with dmverity" name="description"/>
+<link href="https://safeboot.dev/protocol/" rel="canonical"/>
+<link href="../images/favicon.ico" rel="icon"/>
+<meta content="mkdocs-1.2.3, mkdocs-material-7.3.6" name="generator"/>
+<!--
+ fill in the opengraph meta tags, with defaults from the site config
+ or values in the yaml metadata for the specific page (summary and image).
+-->
+<meta content="Safeboot.dev Enrollment, Attestation, and Proof-of-Possession Protocols" property="og:title"/>
+<meta content="safeboot" property="og:site_name"/>
+<meta content="https://safeboot.dev/protocol/" property="og:url"/>
+<meta content="Debian package to enable UEFI SecureBoot, enroll your own hardware backed platform key, sign the kernel and initrd, decrypt the disk with the TPM, and enable system integrity protection with dmverity" property="og:description"/>
+<meta content="https://safeboot.dev/images/logo.png" property="og:image"/>
+<title>Safeboot.dev Enrollment, Attestation, and Proof-of-Possession Protocols - safeboot</title>
+<link href="../assets/stylesheets/main.a57b2b03.min.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/palette.3f5d1f46.min.css" rel="stylesheet"/>
+<!-- Load fonts from Google -->
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css?family=IBM+Plex+Serif:300,400,400i,700%7CIBM+Plex+Sans:500,600,700%7CIBM+Plex+Mono&amp;display=fallback" rel="stylesheet" type="text/css">
+<style>
+           body, input {
+             font-family: "IBM Plex Serif", "Helvetica Neue",
+               Helvetica, Arial, sans-serif;
+           }
+           pre, code, kbd {
+             font-family: "IBM Plex Mono", "Courier New",
+               Courier, monospace;
+           }
+	   h1, h2, h3, h4, h5, h6 {
+             font-family: "IBM Plex Sans", sans-serif;
+	     font-weight: 700 !important;
+           }
+         </style>
+<link href="../extra.css" rel="stylesheet"/>
+</link></link></head>
+<body data-md-color-accent="none" data-md-color-primary="none" data-md-color-scheme="" dir="ltr">
+<script>function __prefix(e){return new URL("..",location).pathname+"."+e}function __get(e,t=localStorage){return JSON.parse(t.getItem(__prefix(e)))}</script>
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#safebootdev-enrollment-attestation-and-proof-of-possession-protocols">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="safeboot" class="md-header__button md-logo" data-md-component="logo" href=".." title="safeboot">
+<img alt="logo" src="../images/logo.png"/>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            safeboot
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              Safeboot.dev Enrollment, Attestation, and Proof-of-Possession Protocols
+            
+          </span>
+</div>
+</div>
+</div>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"></path></svg>
+</button>
+</nav>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/osresearch/safeboot/" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="safeboot" class="md-nav__button md-logo" data-md-component="logo" href=".." title="safeboot">
+<img alt="logo" src="../images/logo.png"/>
+</a>
+    safeboot
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/osresearch/safeboot/" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="..">
+        Overview
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../install/">
+        Installation
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../faq/">
+        Frequently Asked Questions
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../threats/">
+        Threat Model
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../attestation/">
+        Remote Attestation
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../chain-of-trust/">
+        Chain of Trust
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../safeboot/">
+        safeboot subcommands
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../tpm2-attest/">
+        tpm2-attest subcommands
+      </a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#goals">
+    Goals
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#background">
+    Background
+  </a>
+<nav aria-label="Background" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#critical-background">
+    Critical Background
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#other-tpm-background">
+    Other TPM Background
+  </a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#terminology">
+    Terminology
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#use-cases-secure-boot-device-credential-provisioning">
+    Use Cases: Secure Boot, Device Credential Provisioning
+  </a>
+<nav aria-label="Use Cases: Secure Boot, Device Credential Provisioning" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#use-cases-secure-boot">
+    Use Cases: Secure Boot
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#use-cases-device-credential-provisioning">
+    Use Cases: Device Credential Provisioning
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#use-cases-secure-boot-and-device-credential-provisioning">
+    Use Cases: Secure Boot and Device Credential Provisioning
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#use-cases-currently-out-of-scope">
+    Use Cases Currently Out of Scope
+  </a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1 id="safebootdev-enrollment-attestation-and-proof-of-possession-protocols">Safeboot.dev Enrollment, Attestation, and Proof-of-Possession Protocols</h1>
+<p>This document describes the Safeboot.dev enrollment and attestation protocols.</p>
+<p>These protocols are based on the Trusted Computing Group's (TCG) Trusted
+Platform Module (TPM), using a discrete TPM or a firmware TPM to secure
+enrollment and delivery of secrets to enrolled devices.  The use of a TPM helps
+provide decent assurance of device state at certain times, provides us with a
+way to bootstrap trust.</p>
+<p>The Safeboot.dev enrollment protocol creates long-term state for an enrolled
+device, including secrets/credentials needed by the device.  The Safeboot.dev
+attestation protocol conveys enrolled state to devices that demonstrate being
+in good state.</p>
+<blockquote>
+<p>NOTE: The protocol is described as it will soon be.  Specifically, the use of
+digital signatures for authentication of long-term enrolled assets is not yet
+integrated.  See <a href="https://github.com/osresearch/safeboot/pull/140">Pull Request #140</a>.</p>
+</blockquote>
+<h2 id="goals">Goals</h2>
+<ul>
+<li>protocol specification sufficient for</li>
+<li>security review</li>
+</ul>
+<h2 id="background">Background</h2>
+<p>The security of the Safeboot.dev protocols depends critically on the use of
+TPMs.  Reviewers must be familiar with some of the relevant TPM concepts listed
+below.</p>
+<p>Some useful links:</p>
+<ul>
+<li><a href="https://github.com/tpm2dev/tpm.dev.tutorials/tree/master/Intro">Introduction to TPMs</a></li>
+<li><a href="https://github.com/tpm2dev/tpm.dev.tutorials/tree/master/Enrollment">Device Enrollment</a></li>
+<li><a href="https://github.com/tpm2dev/tpm.dev.tutorials/tree/master/Attestation">What Attestation Is</a></li>
+</ul>
+<h3 id="critical-background">Critical Background</h3>
+<p>It is essential that readers understand:</p>
+<ul>
+<li><a href="https://github.com/tpm2dev/tpm.dev.tutorials/blob/master/TPM-Commands/TPM2_MakeCredential.md"><code>TPM2_MakeCredential()</code></a></li>
+<li><a href="https://github.com/tpm2dev/tpm.dev.tutorials/blob/master/TPM-Commands/TPM2_ActivateCredential.md"><code>TPM2_ActivateCredential()</code></a></li>
+<li><a href="https://github.com/tpm2dev/tpm.dev.tutorials/tree/master/Intro#cryptographic-object-naming">Cryptographic object naming</a></li>
+</ul>
+<p>Readers should also have a passing understanding of how authorization works in
+a TPM 2.0 as well, especially when a TPM requires a caller to execute some
+authorization policy, and which policy.</p>
+<p>Readers must be familiar with the <code>TPM2_MakeCredential()</code> /
+<code>TPM2_ActivateCredential()</code> constructs.  We describe these somewhat here.</p>
+<p><code>TPM2_MakeCredential()</code> is an operation that amounts to encryption of a small
+secret to a public key, but with a binding to the cryptographic name of an
+"activation object".  <code>TPM2_ActivateCredential()</code> decrypts such ciphertexts
+provided that:</p>
+<ol>
+<li>the caller has access to the private key to whose public key
+   <code>TPM2_MakeCredential()</code> encrypted the payload,</li>
+<li>and that the caller has access to the "activation object" named by the
+   caller of <code>TPM2_MakeCredential()</code>.</li>
+</ol>
+<p>As the cryptographic name of an object binds to it any authorization policies
+associated with use of that object, the caller of <code>TPM2_ActivateCredential()</code>
+must meet that policy.</p>
+<p>This means that the caller of <code>TPM2_MakeCredential()</code> can require specific
+authorization and other attributes -via the activation object's name- that the
+caller of <code>TPM2_ActivateCredential()</code> must satisfy.</p>
+<p>For example, a device that will call <code>TPM2_ActivateCredential()</code> can supply the
+activation object's public key to the peer that will call
+<code>TPM2_MakeCredential()</code>, then that peer can combine the activation object's
+public key with the attributes expected of the activation object to cause the
+protocol to succeed IFF the possessor of the activation object created it with
+those same attributes.</p>
+<blockquote>
+<p>NOTE: The activation object's private key is not itself used for any
+cryptographic operations in <code>TPM2_ActivateCredential()</code>.  Only the activation
+object's cryptographic name and its attributes are used.</p>
+<p>NOTE: The <code>TPM2_MakeCredential()</code> function can be implemented entirely in
+software, as it requires no privileged access to any objects stored in any
+TPMs.</p>
+<p>NOTE: It is essential to the security of the Safeboot.dev protocols that
+enrolled devices' TPMs be legitimate TPMs or virtual TPMs run by trusted
+agents.  This is due to the protocol depending on the TPM to enforce
+authorization policies for certain functions that an untrusted implementation
+could forgo.</p>
+</blockquote>
+<h3 id="other-tpm-background">Other TPM Background</h3>
+<p>Some less critical TPM background:</p>
+<ul>
+<li><a href="https://github.com/tpm2dev/tpm.dev.tutorials/tree/master/Intro#hash-extension">Hash extension</a></li>
+<li><a href="https://github.com/tpm2dev/tpm.dev.tutorials/tree/master/Intro#platform-configuration-registers-pcrs">Platform Configuration Registers (PCRs)</a></li>
+<li><a href="https://github.com/tpm2dev/tpm.dev.tutorials/tree/master/Intro#root-of-trust-measurements-rtm">Root of Trust Measurement (RTM)</a></li>
+<li><a href="https://github.com/tpm2dev/tpm.dev.tutorials/tree/master/Intro#authentication-and-authorization">Authorization</a></li>
+<li><a href="https://github.com/tpm2dev/tpm.dev.tutorials/tree/master/Intro#key-hierarchies">Key hierarchies</a></li>
+</ul>
+<h2 id="terminology">Terminology</h2>
+<p>We will use a lot of terminology from the TCG universe.</p>
+<p>In particular we will speak of:</p>
+<ul>
+<li>credential</li>
+</ul>
+<p>Depending on the context, "credential" will refer either to:</p>
+<p>a) a secret or private key and possibly some metadata which can be used to
+   access some remote resources -- for example, a PKIX certificate and private
+   key --,</p>
+<p>b) a small secret key -typically an AES key- encrypted with
+   <a href="https://github.com/tpm2dev/tpm.dev.tutorials/blob/master/TPM-Commands/TPM2_MakeCredential.md"><code>TPM2_MakeCredential()</code></a>.</p>
+<ul>
+<li>credential activation</li>
+</ul>
+<p>The successful use of
+   <a href="https://github.com/tpm2dev/tpm.dev.tutorials/blob/master/TPM-Commands/TPM2_ActivateCredential.md"><code>TPM2_ActivateCredential()</code></a>
+   to recover a small secret.</p>
+<ul>
+<li>activation object</li>
+</ul>
+<p>A TPM entity whose cryptographic name is used in making a "credential" with
+   <a href="https://github.com/tpm2dev/tpm.dev.tutorials/blob/master/TPM-Commands/TPM2_MakeCredential.md"><code>TPM2_MakeCredential()</code></a>,
+   and a handle and authorization session to which will be provided by the
+   caller of
+   <a href="https://github.com/tpm2dev/tpm.dev.tutorials/blob/master/TPM-Commands/TPM2_ActivateCredential.md"><code>TPM2_ActivateCredential()</code></a>
+   to recover the credential.</p>
+<h2 id="use-cases-secure-boot-device-credential-provisioning">Use Cases: Secure Boot, Device Credential Provisioning</h2>
+<p>The Safeboot.dev enrollment and attestation protocols support two use cases:</p>
+<ul>
+<li>secure boot</li>
+<li>device credential provisioning</li>
+</ul>
+<p>These two uses differ only in whether the enrolled device is expected to
+perform UEFI secure boot.</p>
+<p>In all cases Safeboot.dev enrollment is about creating sensitive
+files/blobs/assets that are stored encrypted to the device's TPM and to escrow
+agents.</p>
+<p>In all cases Safeboot.dev attestation is about delivering enrolled assets to
+devices in trusted state.</p>
+<h3 id="use-cases-secure-boot">Use Cases: Secure Boot</h3>
+<p>This use-case involves the device encrypting local storage with a secret
+long-term key obtained at boot time via the attestation protocol.</p>
+<h3 id="use-cases-device-credential-provisioning">Use Cases: Device Credential Provisioning</h3>
+<p>This use-case involves delivering to the device credentials such as:</p>
+<ul>
+<li>private keys and PKIX certificates for their public keys (for, e.g., TLS and/or IPsec)</li>
+<li>Kerberos keys ("keytabs")</li>
+<li>OpenSSH host keys and certificates</li>
+<li>service account tokens of various kinds</li>
+</ul>
+<h3 id="use-cases-secure-boot-and-device-credential-provisioning">Use Cases: Secure Boot and Device Credential Provisioning</h3>
+<p>Naturally, both of these use cases can be combined.  In fact, they are the same
+use case, differing only in the nature of the material delivered to the client.</p>
+<h3 id="use-cases-currently-out-of-scope">Use Cases Currently Out of Scope</h3>
+<p>Other attestation protocols are meant to be used not just at boot time but very
+often, and not so much for delivering device credentials to the client device
+as for ascertaining the continued trusted state of the client device.  Devices
+that fail to attest successfully and often enough might, e.g., be locked out of
+the network.</p>
+<p>Such protocols may depend on having some dynamic state on the server side.  For
+example, keeping track of the last time that a client attested, its TPM's
+<code>resetCount</code> (to make sure it never goes backward, and to detect reboots), etc.</p>
+<p>Nothing about Safeboot.dev's protocols precludes the use of other attestation
+protocols for purposes other than the use cases listed above.  Nothing about
+Safeboot.dev's current protocols precludes the addition to Safeboot.dev of
+functionality similar to those other projects' attestation protocols'.</p>
+<h1 id="threat-model">Threat Model</h1>
+<p>The primary threats that the Safeboot.dev enrollment and attestation protocols
+seek to protect against are:</p>
+<ul>
+<li>theft of devices and/or their local storage</li>
+<li>passive attacks on the attestation protocol</li>
+<li>active attacks on the attestation protocol</li>
+<li>any attacks on the enrollment protocol</li>
+</ul>
+<h2 id="assumptions">Assumptions</h2>
+<p>We assume that:</p>
+<ul>
+<li>enrollment and attestation servers are physically secure</li>
+<li>access to enrollment and attestation servers is secured</li>
+<li>the credentials held by enrollment and attestation servers are secure</li>
+<li>the enrollment database and any associated servers are secure</li>
+<li>read access to the enrollment database can be secured</li>
+<li>enrollment database protocols are secure</li>
+</ul>
+<h2 id="threat-models-out-of-scope">Threat Models Out of Scope</h2>
+<p>The following threats are out of scope for this document:</p>
+<ul>
+<li>any attacks on the attestation server (other than via attacks on the
+   attestation protocol)</li>
+<li>any attacks on the enrollment database</li>
+<li>any attacks on the enrollment server (other than via attacks on the
+   enrollment protocol)</li>
+<li>post-attestation attacks on devices</li>
+</ul>
+<h1 id="architecture">Architecture</h1>
+<p>The Safeboot.dev architecture consists of two separate protocols: one for
+enrollment, and one for attestation.</p>
+<p>The Safeboot.dev attestation protocol operates using state created at
+enrollment time.</p>
+<p>Enrollment is the act of creating state binding a device's TPM and a name for
+that device, as well as creating any secrets and/or metadata that that device
+may repeatedly need in the environment it will be used in.</p>
+<p>The separation of enrollment and attestation is motivated by:</p>
+<ul>
+<li>privilege separation considerations</li>
+</ul>
+<p>We'd like to isolate any issuer credentials to as few systems as possible,
+   while allowing the attestation service to be widely replicated.</p>
+<p>Because enrollment is a low-frequency event, while attestation a
+   high-frequency event, we can have fewer enrollment servers and more
+   attestation servers.  Then we can isolate issuer credentials by placing them
+   only on enrollment servers.</p>
+<ul>
+<li>database replication and write concurrency considerations</li>
+</ul>
+<p>Having state created and manipulated only at enrollment servers allows us to
+   replicate the enrollment database to attestation servers as a read-only
+   database.</p>
+<p>Together with the low frequency of enrollment events this frees us from
+   having to address concurrent database updates at this time, at the cost of
+   having primary/secondary enrollment server roles.</p>
+<blockquote>
+<p>Any future evolution of Safeboot.dev towards more dynamic attestation state
+may well use separate databases for enrolled assets and attestation state.
+Our interest in privilege separation does not preclude such an evolution, as
+the separation between one database type and the other would tend to fulfill
+that interest.</p>
+</blockquote>
+<h1 id="enrollment-protocol">Enrollment Protocol</h1>
+<p>The enrollment protocol cosists of an HTTP API called over HTTPS:</p>
+<ul>
+<li><code>/v1/add</code> -- <code>POST</code> here to enroll, as described above</li>
+<li><code>/v1/find</code> -- <code>GET</code> here to query the enrolled device database by <code>hostname</code></li>
+<li><code>/v1/query</code> -- <code>GET</code> here to query the enrolled device database by <code>EKhash</code></li>
+<li><code>/v1/delete</code> -- <code>POST</code> here to delete an enrolled device's database entry</li>
+</ul>
+<p>All of these end-points are 1 round trip, naturally (except where HTTP
+authentication methods used require more round trips).</p>
+<p>The <code>/v1/add</code> and <code>/v1/delete</code> end-points expect an HTML form to be posted.</p>
+<p><img alt="Image of Safeboot enrollment protocol sequence diagram" src="../images/enrollment.png"/></p>
+<p>The <code>/v1/find</code> end-point expects a single query parameter to be given:
+<code>hostname</code>, with a hostname prefix.</p>
+<p>The <code>/v1/query</code> end-point expects a single query parameter to be given:
+<code>ekpubhash</code>, with a hash of <code>EKpub</code> prefix.</p>
+<p>The <code>/v1/add</code> end-point takes two inputs from the client, delivered as an HTML
+form over an HTTPS POST:</p>
+<ul>
+<li><code>hostname</code> -- the desired device name</li>
+<li><code>ekpub</code> -- the device's TPM's endorsement public key (<code>EKpub</code>), either in
+   <code>TPM2B_PUBLIC</code> or <code>PEM</code> formats (either as a public key or as a
+   certificate)</li>
+</ul>
+<p>An <code>EK</code> certificate is preferred, as that can be validated by checking that its
+issuer chains to a trusted TPM vendor root certification authority (CA).  In
+environments such as the Google compute cloud's Shielded VMs, there may not be
+an <code>EK</code> certificate available, but instead an API may be available to validate
+an <code>EKpub</code>.</p>
+<p>User authentication and authorization MAY be required if only certain users
+should be allowed to enroll devices.  The choice of HTTP authentication method
+is not specified here (options include Negotiate, Bearer, OIDC, SCRAM, etc.).</p>
+<p>The enrollment server ensures that the creation of the binding of device name
+and <code>EKpub</code> is made atomically.</p>
+<blockquote>
+<p>NOTE: In a putative future where multiple enrollment servers can concurrently
+create these bindings, we may dispense with atomic bindings; instead a
+conflict resolution mechanism MAY be used to resolve conflicts.</p>
+</blockquote>
+<p>The enrollment server will also provision the device with any number of secrets
+and metadata of various kinds that will be transported to the device during
+attestation.  These are stored encrypted at rest (more on this below).</p>
+<p>No request or response headers are used.  No universal resource identifier
+(URI) query-parts are used.  The URI local-part need only denote that it is the
+enrollment end-point.  We are using the following URI local-parts:</p>
+<h2 id="types-of-secrets-and-metadata-provisioned">Types of Secrets and Metadata Provisioned</h2>
+<p>Various types of long-term secrets and metadata can be provisioned to an
+enrolled device:</p>
+<ul>
+<li>configuration</li>
+<li>early boot scripts</li>
+<li>symmetric keys (or passphrase) for local storage encryption</li>
+<li>private keys and PKIX certificates for them (client, server) for TLS, IPsec, etc.</li>
+<li>Kerberos keys ("keytab")</li>
+<li>service account tokens</li>
+<li>IPsec keys for manually keyed SAs</li>
+<li>etc.</li>
+</ul>
+<blockquote>
+<p>IMPLEMENTATION NOTE: These are configurable as <code>genprog</code>s for the
+<code>sbin/attest-enroll</code> program.  See its usage message.</p>
+</blockquote>
+<h2 id="data-at-rest-encryption">Data-at-Rest Encryption</h2>
+<p>All these secrets created by the <code>/v1/add</code> end-point are encrypted to the
+device's TPM's <code>EKpub</code> and separately also encrypted to the public keys of
+configured escrow agents for, e.g., break-glass recovery.</p>
+<p>For every secret asset the server generates a random AES-256 key.  The
+plaintext of the secret to be encrypted is then encrypted using the AES-256 key
+in an authenticated encryption cipher mode.  See
+<a href="#Appendix-A-Symmetric-AEAD-Cipher-Mode-Confounded-AES-256-CBC-HMAC-SHA-256">Appendix-A</a>.</p>
+<p>The AES-256 key is then encrypted to the enrolled device's <code>EKpub</code> and to any
+configured escrow agents' public keys.</p>
+<h2 id="encryption-to-escrow-agents">Encryption to Escrow Agents</h2>
+<p>Encryption to escrow agents is done using raw RSA public keys.</p>
+<h2 id="encryption-to-device-ekpub">Encryption to Device <code>EKpub</code></h2>
+<p>All these secrets are encrypted to the device's TPM's <code>EKpub</code>, each with an
+optional, configurable TPM authorization policy.  Two mechanisms can be used
+for encryption to a device's TPM: the "WK" and "TK" mechanisms.</p>
+<p>A TPM authorization policy is a TPM 2.0 enhanced authorization (EA) policy, and
+will be enforced by the device's TPM when called to decrypt one of these
+secrets.</p>
+<p>The default policy for the <code>rootfs</code> key (a symmetric key for local storage
+encryption) is that the platform configuration register (PCR) #11 must have the
+initial value (all zeros), with the expecation that the attestation client will
+immediately extend PCR #11 (with no particular value -- just some value) so
+that the TPM will not again decrypt the same ciphertext unless the device
+reboots.</p>
+<p>Policies are configurable for each secret type.</p>
+<blockquote>
+<p>NOTE: We could use well-known PCR#11 extension values for the purpose of
+creating specific time windows during the boot process during which different
+secrets could be decrypted.</p>
+<p>NOTE: Both, the WK and TK methods offer equivalent functionality.  We support
+both mainly for historical reasons.  The WK method is simpler, but the TK
+method was implemented first.</p>
+</blockquote>
+<h3 id="encryption-to-tpm-ekpub-wk-method">Encryption to TPM <code>EKpub</code>: WK Method</h3>
+<blockquote>
+<p>NOTE: Readers are expected to understand the <code>TPM2_MakeCredential()</code> and
+<code>TPM2_ActivateCredential()</code> functions.  See the <a href="#Critical-Background">Critical Background
+section</a>.</p>
+</blockquote>
+<ol>
+<li>
+<p>A well-known public key (<code>WK</code>) is loaded into a software TPM using
+   <code>TPM2_LoadExternal()</code> with the desired policy's <code>policyDigest</code>.</p>
+</li>
+<li>
+<p><code>TPM2_MakeCredential()</code> is called with these input parameters:</p>
+<ul>
+<li>the <code>WKpub</code> (the loaded WK) as the <code>objectName</code> input parameter,</li>
+<li>the device's <code>EKpub</code> as the <code>handle</code> input parameter,</li>
+<li>and the AES-256 symmetric key as the <code>credential</code> input parameter (the
+  plaintext).</li>
+</ul>
+</li>
+</ol>
+<p>The outputs of <code>TPM2_MakeCredential()</code> (<code>credentialBlob</code> and <code>secret</code>) make up
+the ciphertext of the AES-256 key encrypted to the TPM's <code>EKpub</code>.</p>
+<p>The details of what <code>TPM2_MakeCredential()</code> does are described in the <a href="https://trustedcomputinggroup.org/wp-content/uploads/TCG_TPM2_r1p59_Part1_Architecture_pub.pdf">TCG TPM
+2.0 Library part 1: Architecture, section 24 (Credential
+Protection)</a>.</p>
+<p>Decryption is done by calling <code>TPM2_ActivateCredential()</code> on the TPM that has
+the <code>EK</code> corresponding to the <code>EKpub</code>.  Critically, the TPM will refuse to
+"activate" the credential (i.e., decrypt the ciphertext) unless the caller has
+satisfied the WK's <code>authPolicy</code> (if set).</p>
+<p>To decrypt, access to the TPM identified by the <code>EKpub</code> is needed.  The process
+is as follows:</p>
+<ul>
+<li>call <code>TPM2_LoadExternal()</code> the well-known key, with the desired
+   <code>authPolicy</code>, if any</li>
+<li>call <code>TPM2_StartAuthSession()</code> to create a policy session for the <code>EK</code></li>
+<li>call <code>TPM2_PolicySecret()</code> to obtain access to the <code>EK</code></li>
+<li>call <code>TPM2_StartAuthSession()</code> to create a policy session for the <code>WK</code> (if
+   the <code>WK</code> had a <code>policyDigest</code> set)</li>
+<li>call the policy commands on the <code>WK</code> session handle to satisfy its policy
+   (if one was set)</li>
+<li>call <code>TPM2_ActivateCredential()</code> with the loaded <code>WK</code> as the
+   <code>activateHandle</code> and its corresponding policy session, the <code>EK</code> as the
+   <code>keyHandle</code> and its corresponding policy session, and the ciphertext
+   (<code>credentialBlob</code> and <code>secret</code>) as input parameters</li>
+</ul>
+<p>The <code>WK</code>'s authorization policy, if set, is enforced by
+<code>TPM2_ActivateCredential()</code>.</p>
+<p>Then, once the AES-256 key is decrypted, the confounded AES-256-CBC-HMAC-SHA256
+ciphertext is decrypted as described above.</p>
+<h3 id="encryption-to-tpm-ekpub-tk-method">Encryption to TPM <code>EKpub</code>: TK Method</h3>
+<ol>
+<li>create an RSA key-pair in software</li>
+<li>encrypt the AES-256 key to the RSA public key using OEAP with any software</li>
+<li>use a software TPM to encrypt the RSA private key from (1) to the <code>EKpub</code> of
+   the target TPM using <code>TPM2_Duplicate()</code>, setting the desired policy's
+   <code>policyDigest</code> as the intended <code>authPolicy</code> of the RSA key as it will be
+   when loaded by the target TPM</li>
+<li>the ciphertext then consists of a) the ciphertext from encryption to the RSA
+   public key, b) the outputs of <code>TPM2_Duplicate()</code></li>
+</ol>
+<p>To decrypt, access to the TPM identified by the <code>EKpub</code> is needed.  The process
+is as follows:</p>
+<ul>
+<li>call <code>TPM2_StartAuthSession()</code> to create a policy session for the <code>EK</code></li>
+<li>call <code>TPM2_PolicySecret()</code> to obtain access to the <code>EK</code></li>
+<li>call <code>TPM2_Import()</code> and <code>TPM2_Load()</code> to import and load the output of
+   <code>TPM2_Duplicate()</code></li>
+<li>call <code>TPM2_StartAuthSession()</code> to create a policy session for the <code>TK</code> (if
+   the <code>TK</code> had a <code>policyDigest</code> set)</li>
+<li>call the policy commands on the <code>WK</code> session handle to satisfy its policy
+   (if one was set)</li>
+<li>call <code>TPM2_RSA_Decrypt()</code> to decrypt the AES-256 key with the imported <code>TK</code></li>
+</ul>
+<p>The <code>TK</code>'s authorization policy, if set, is enforced by <code>TPM2_RSA_Decrypt()</code>.</p>
+<p>Then, once the AES-256 key is decrypted, the confounded AES-256-CBC-HMAC-SHA256
+ciphertext is decrypted as described above.</p>
+<h2 id="break-glass-recovery">Break-Glass Recovery</h2>
+<p>Break-glass recovery consists of:</p>
+<ol>
+<li>replacing a device's TPM or the device itself (including its TPM),</li>
+<li>decrypting the secret AES-256 keys stored in the enrollment DB using an
+   escrow agent,</li>
+<li>encrypting those to the new TPM's <code>EKpub</code>,</li>
+<li>and replacing the corresponding ciphertexts in the enrolled device's entry
+   in the enrollment DB.</li>
+</ol>
+<p>Any break-glass recovery operations must be performed only by authorized users.</p>
+<h1 id="attestation-protocol">Attestation Protocol</h1>
+<p>The Safeboot.dev attestation protocol is a single round trip protocol that
+allows a device to obtain its enrolled assets from the attestation server in
+exchange for successfully attesting to the device's state.</p>
+<p><img alt="Image of Safeboot attestation protocol sequence diagram" src="../images/attestation.png"/></p>
+<p>State that can be attested:</p>
+<ul>
+<li>recency -- via a timestamp</li>
+<li>that the caller has access to the <code>EK</code></li>
+<li>the values of PCRs, which reflect the firmware ROMs and operating system
+   loaded</li>
+<li>the TPM's <code>resetCount</code> (count of reboots)</li>
+<li>anything that can be required by a TPM policy</li>
+</ul>
+<p>To attest its state, a client device first generates an "attestation key"
+(<code>AK</code>) -- an asymmetric signing keypair.  This object must have the <code>stClear</code>
+attribute set, which means that the TPM will refuse to reload or re-create this
+<code>AK</code> if the TPM is reset (which happens when the host device reboots).  It must
+also have the <code>fixedTPM</code>, <code>fixedParent</code>, and <code>sign</code> attributes set.  Then the
+client creates a "quote" of all the PCRs, signed with the <code>AK</code>.  See
+<a href="https://github.com/tpm2dev/tpm.dev.tutorials/blob/master/TPM-Commands/TPM2_Quote.md"><code>TPM2_Quote()</code></a>.</p>
+<p>The attestation protocol consists of an HTTP POST (HTTPS not required) with:</p>
+<ul>
+<li><code>/v1/attest</code> as the end-point</li>
+<li>no particular request headers</li>
+<li>no URI query-parameters</li>
+<li>no HTTP authentication needed</li>
+<li>
+<p>the request body consisting of an uncompressed <code>tar</code> file containing the
+   following items:</p>
+<ul>
+<li>
+<p><code>ek.crt</code> -- the <code>EKcert</code>, that is, the PKIX certificate for the TPM's
+  endorsment key (EK) as provisioned by the TPM's vendor (this is optional,
+  present only if the TPM has an <code>EKcert</code>)</p>
+</li>
+<li>
+<p><code>ek.pub</code> -- the <code>EKpub</code> in <code>TPM2B_PUBLIC</code> format</p>
+</li>
+<li>
+<p><code>ak.pub</code> -- the <code>TPM2B_PUBLIC</code> representation of the <code>AK</code></p>
+</li>
+<li>
+<p><code>ak.ctx</code> -- the <code>AK</code> object, saved to help make it easier for the client
+  to keep state</p>
+</li>
+<li>
+<p><code>quote.out</code>, <code>quote.sig</code>, and <code>quote.pcr</code> -- the outputs of <code>TPM2_Quote()</code></p>
+</li>
+<li>
+<p>using the <code>AK</code></p>
+</li>
+<li>
+<p><code>nonce</code> -- not actually a nonce but a timestamp as seconds since the Unix
+  epoch</p>
+</li>
+<li>
+<p><code>eventlog</code> -- if possible, this is the TPM PCR eventlog kept by the UEFI
+  BIOS</p>
+</li>
+<li>
+<p><code>ima</code> -- if possible, this is the Linux IMA log</p>
+</li>
+</ul>
+</li>
+</ul>
+<p>The attestation server then:</p>
+<ul>
+<li>looks up the device's enrollment DB entry by the given <code>EKpub</code></li>
+<li>examines the <code>ak.pub</code> to ensure that it has the desired attributes
+   (specifically:<ul>
+<li><code>sign</code></li>
+<li><code>fixedTPM</code></li>
+<li><code>fixedParent</code></li>
+<li><code>stClear</code>
+   and recomputes the <code>AK</code>'s cryptographic name for later use as the activation
+   object name request parameter of <code>TPM2_MakeCredential()</code></li>
+</ul>
+</li>
+<li>verifies that the eventlog matches the PCRs</li>
+<li>verifies that the digests that appear in the eventlog are acceptable, or
+   that the PCRs match "golden PCRs"</li>
+<li>examines the <code>nonce</code> to verify that it is a recent timestamp</li>
+</ul>
+<p>If all the validation steps succeed, then the attestation server:</p>
+<ul>
+<li>generates an ephemeral AES-256 session key,</li>
+<li>constructs a tarball of the device's long-term enrolled assets from the
+   device's enrollment database entry,</li>
+<li>encrypts that tarball in the session key,</li>
+<li>encrypts the session key to the device's TPM's <code>EKpub</code> using
+   <code>TPM2_MakeCredential()</code> with the <code>AKpub</code>'s cryptographic name as the
+   <code>objectName</code> and the <code>EKpub</code> as the <code>handle</code></li>
+</ul>
+<p>In the successful case, then, the response body is a tarball consisting of:</p>
+<ul>
+<li><code>credential.bin</code> -- a file containing the <code>credentialBlob</code> and <code>secret</code>
+   output parameters of the <code>TPM2_MakeCredential()</code> call</li>
+<li><code>cipher.bin</code> -- the ciphertext of a tarball of the device's enrollment DB
+   entry, encrypted with the AES-256 session key using confounded
+   AES-256-CBC-HMAC-SHA-256 as described above.</li>
+<li><code>ak.ctx</code> (as provided by the client, sent back)</li>
+</ul>
+<p>The client can decrypt and recover the AES-256 session key IFF it has a TPM
+with the corresponding <code>EK</code> and <code>AK</code> loaded.</p>
+<p>Having recovered the AES-256 session key, the client can decrypt the tarball of
+the client's long-term secrets and metadata, where the secrets are encrypted to
+the client's TPM using the WK or TK methods.  The client can then decrypt the
+secrets whose policies it can satisfy.</p>
+<p>The client is expected to immediately extend PCR #11 so that long-term secrets
+whose policies expect PCR #11 to be in its initial state (all zeros) cannot
+again be decrypted with the client's TPM without first rebooting.</p>
+<blockquote>
+<p>Note that we use the server uses <code>TPM2_MakeCredential()</code> to construct the
+response, much like the "WK method" of encrypting secrets, with these
+differences:</p>
+<ul>
+<li>the client's ephemeral <code>AKpub</code> is used to construct the <code>objectName</code> input
+  parameter,</li>
+</ul>
+<p>(This means that if the client reboots it will not be able to decrypt this
+  response with <code>TPM2_ActivateCredential()</code> because the <code>AK</code> had <code>stClear</code>
+  set, which means it cannot be recovered if the TPM is reset.)</p>
+<ul>
+<li>
+<p>the <code>objectName</code> does not involve a <code>policyDigest</code></p>
+</li>
+<li>
+<p>the ciphertext is not a long-term stable ciphertext but one made with an
+  ephemeral AES-256 session key.</p>
+</li>
+</ul>
+</blockquote>
+<h1 id="authentication-of-enrolled-assets">Authentication of Enrolled Assets</h1>
+<p>All enrolled assets are signed by a private key on the enrollment server at the
+time that the assets are created.</p>
+<p>Attestation clients validate these signatures after successful attestation and
+conveyance of enrolled assets to the attestation client.</p>
+<p>Signatures can be made with a bare key, or they can be made with a certified
+key.  In the former case the attestation client must know the public key to
+validate the signatures with.  In the latter case the attestation client must
+know a PKIX trust anchor for validating the enrollment server's certificate and
+certificate chain.</p>
+<h1 id="proof-of-possession-protocol">Proof-of-Possession Protocol</h1>
+<p>TBD (not yet designed or implemented).</p>
+<p>Attestation clients cannot recover their secrets unless they are in the
+attested state, or unless they ran untrusted code and locally saved their
+enrolled assets from a previous attestation.  The attestation server currently
+receives no confirmation of that state after the fact, but knows that the
+client can recover its secrets IFF its attestation is correct because the
+client's TPM will enforce the binding between the client's <code>EK</code> and <code>AK</code>, and
+any policies needed to decrypt the client's enrolled assets.</p>
+<blockquote>
+<p>We are considering chaining instances of the attestation protocol where each
+instance proves activation of the preceding instance's credential.  Thus the
+proof-of-posession (PoP) protocol would be the same as the attestation
+protocol.</p>
+<p>We might also use attestation chaining in this way to implement continuous
+(frequent) attestation.  We can then keep some mutable per-device state,
+mainly the <code>resetCount</code>, time of last good attestation, and a sequence number
+of the last good attestation.</p>
+</blockquote>
+<h2 id="use-cases-for-pop-protocols">Use Cases for PoP Protocols</h2>
+<ul>
+<li>
+<p>logging and alerting</p>
+</li>
+<li>
+<p>unlocking attested device access to a wider network</p>
+</li>
+<li>
+<p>locking out of the network devices that fail to attest frequently</p>
+</li>
+</ul>
+<h1 id="enrollment-database">Enrollment Database</h1>
+<blockquote>
+<p>NOTE: Nothing here formally specifies a schema for this database.  This
+content is supplied only to help reviewers.</p>
+</blockquote>
+<p>The enrollment server creates state that is shared with attestation servers.
+Attestation servers need only read access to that state.  We shall call that
+state a "database".  Many options exist for representing the enrolled device
+database:</p>
+<ul>
+<li>relational (e.g., any SQL server)</li>
+<li>any NoSQL</li>
+<li>a filesystem</li>
+<li>a Git repository (basically a filesystem)</li>
+</ul>
+<p>Each enrolled asset, with all its encryptions and signatures, can be a <code>BLOB</code>
+value in a SQL table's column, or a file in a filesystem, or base64-encoded as
+a field in a JSON/YAML/etc file, or any similar concept.</p>
+<p>These blobs must be named, since the tarball sent to the client requires names
+for them.</p>
+<blockquote>
+<p>NOTE: Currently the <code>sbin/attest-enroll</code> program uses the filesystem to
+access the enrollment DB.</p>
+<p>Configurable hooks allow a site to convert the filesystem representation to
+other representations.  One upcoming use will be to use a <code>CHECKOUT</code> hook to
+fetch a client's current entry from the DB and a <code>COMMIT</code> hook to commit a
+client's new current entry in the DB, using a Git repository to encode the
+client's entry as left on the filesystem by <code>sbin/attest-enroll</code>.</p>
+</blockquote>
+<h2 id="enrollment-database-contents">Enrollment Database Contents</h2>
+<p>Every enrolled device is identified by the SHA-256 digest of its <code>EKpub</code> (in
+<code>TPM2B_PUBLIC</code> format).  This is also the cryptographic name of the device's
+TPM's <code>EKpub</code>.</p>
+<blockquote>
+<p>NOTE: In our current implementation this digest is part of the path to the
+enrolled device's filesystem-based database entry:</p>
+<p><code>$DBDIR/${ekhash:0:2}/${ekhash}/</code></p>
+</blockquote>
+<p>Every enrolled device's enrolled state consists for the following named blobs.
+The blobs' names denote the expected type of their contents.</p>
+<p>Blobs:</p>
+<ul>
+<li><code>manifest</code></li>
+</ul>
+<p>(metadata) A textual (ASCII), newline-separated list of enrolled assets'
+   blob names.</p>
+<ul>
+<li><code>manifest.sig</code></li>
+</ul>
+<p>(metadata) A digital signature of the manifest.</p>
+<ul>
+<li><code>ek.pub</code></li>
+</ul>
+<p>The enrolled device's <code>EKpub</code>, in <code>TPM2B_PUBLIC</code> format.</p>
+<ul>
+<li><code>hostname</code></li>
+</ul>
+<p>(metadata) The enrolled device's fully-qualified hostname.</p>
+<ul>
+<li>
+<p>For each non-secret metadata:</p>
+<ul>
+<li><code>${name}</code></li>
+</ul>
+<p>A blob containing some metadata of type identified by its name.</p>
+<ul>
+<li><code>${name}.sig</code></li>
+</ul>
+<p>This is a digital signature the contents of the <code>${name}</code> blob.</p>
+</li>
+<li>
+<p>For each type of secret:</p>
+<ul>
+<li><code>${secret_name}.enc</code></li>
+</ul>
+<p>This is the secret itself, symmetrically encrypted in confounded
+  AES-256-CBC-HMAC-SHA-256, with a unique symmetric key (see item below).</p>
+<ul>
+<li><code>${secret_name}.enc.sig</code></li>
+</ul>
+<p>This is a signature of the ciphertext of the symmetrically encrypted
+  secret.</p>
+<ul>
+<li><code>${secret_name}.symkeyenc</code></li>
+</ul>
+<p>This is the AES-256 key used to encrypt the the previous item, itself
+  encrypted to the device's TPM's <code>EKpub</code>.  (In this case using the "WK"
+  method.)</p>
+<ul>
+<li><code>${secret_name}.policy</code></li>
+</ul>
+<p>Identifies (as a <code>policyDigest</code> value, hex-encoded in ASCII) or defines a
+  policy used to encrypt the previous item (<code>${secret_name}.symkeyenc</code>).</p>
+<blockquote>
+<p>NOTE: A policy definition language will be documented in an appendix
+later.</p>
+</blockquote>
+<ul>
+<li><code>escrow-${escrow_agent_names[0]}.symkeyenc</code></li>
+<li><code>escrow-${escrow_agent_names[1]}.symkeyenc</code></li>
+<li>..</li>
+<li><code>escrow-${escrow_agent_names[$n]}.symkeyenc</code></li>
+</ul>
+<p>These are the <code>${secret_name}.symkey</code>, each encrypted to the
+  corresponding escrow agents, if any such are defined.</p>
+</li>
+</ul>
+<p>The names and types of secrets need not be specified here, but currently we
+have support for the following:</p>
+<ul>
+<li><code>rootfs.key</code> (a symmetric key(s) for local storage encryption)</li>
+<li><code>cert-priv.pem</code> (a private key to a public key digital signature
+   cryptosystem)</li>
+<li><code>keytab</code> (a file containing one or more Kerberos "key table" entries with
+   keys for the device's <code>host</code> service principals)</li>
+</ul>
+<p>The names and types of non-secret data blobs need not be specified here, but
+currently we have support for the following:</p>
+<p>Metadata types:</p>
+<ul>
+<li><code>anchor.pem</code> (a trust anchor for the enrollment server's signing key)</li>
+<li><code>signer.pem</code> (the enrollment server's public signing key)</li>
+<li><code>chain.pem</code> (the enrollment server's signing key's PKIX certificate chain)</li>
+<li><code>hostname</code> (see above)</li>
+<li><code>cert.pem</code> (a certificate for <code>cert-key.pem</code> naming <code>hostname</code>)</li>
+</ul>
+<p>Metadata files are also signed, thus if there is a <code>something</code> there will be a
+<code>something.sig</code>.  Except that <code>anchor.pem</code>, <code>signer.pem</code>, and <code>chain.pem</code> are
+not signed, as there is no point to signing them.</p>
+<blockquote>
+<p>NOTE: The <code>anchor.pem</code>, <code>signer.pem</code>, and <code>chain.pem</code> are sent back to the
+attestation client, if present in the client's enrolled device entry, but the
+attestation client is expected to know the anchor.pem<code>or</code>signer.pem` a
+priori.  Including these allows for key rotation and trust-on-first-use
+(TOFU) semantics on the attestation client side.  The Safeboot.dev
+attestation client does <em>not</em> implement TOFU semantics.</p>
+</blockquote>
+<h1 id="site-local-customization">Site-local Customization</h1>
+<p>Things that may vary locally:</p>
+<ul>
+<li>enrollment service base URI</li>
+</ul>
+<p>Naturally, different users of Safeboot.dev may have different enrollment
+   service URIs, which may even vary by datacenter, by rack, by client OS, etc.</p>
+<ul>
+<li>attestation service URIs</li>
+</ul>
+<p>Ditto.</p>
+<ul>
+<li>
+<p>enrolled assets</p>
+</li>
+<li>
+<p>enrolled device database and schema</p>
+</li>
+<li>
+<p><code>EKpub</code> validation</p>
+</li>
+<li>
+<p>TPM vendor root CAs configured for <code>EKcert</code> validation</p>
+</li>
+</ul>
+<h1 id="implementation-considerations">Implementation Considerations</h1>
+<p>The entire client side of the Safeboot.dev attestation protocol is implemented
+in Bash using native command-line tools to interact with the TPM and to perform
+software cryptographic operations, such as tpm2-tools and OpenSSL.</p>
+<p>The reason for the client side being implemented mostly in Bash is that we
+intend to use PXE booting, and we need the Linux initramfs image to be small.
+Using Bash and standard command-line tools (typically coded in C) allows the
+Linux initramfs image that must contain them to be small.  In particular, using
+Bash consumes much less space than any scripting language such as Python.</p>
+<p>Most of the server side of enrollment and attestation is also implemented in
+Bash, with some parts in Python.</p>
+<blockquote>
+<p>An alternative would be to code the entire stack in Rust.</p>
+</blockquote>
+<h1 id="security-considerations">Security Considerations</h1>
+<p>As with all TPM-based attestation protocols, the security of the protocols
+depends critically on the device's TPM being a legitimate, trusted TPM.  A TPM
+can be implemented in software, but then it can only be trusted if it is
+implemented by a trusted implementor, <em>and</em> run in a trusted hypervisor, <em>and</em>
+used by a guest of the hypervisor.  Otherwise we expect the use of discrete,
+hardware TPMs, or perhaps firmware TPMs in some cases.</p>
+<p>The attestation server response is not authenticated.  This means that any
+on-path attacker or any attacker that can redirect the client's communications
+with the server, can impersonate an attestation server and feed the client
+arbitrary secrets and metadata, but only if the attacker knows the client's
+<code>EKpub</code>.  Since the client always tells the server it's <code>EKpub</code>, any attacker
+can impersonate the attestation server.</p>
+<p>Because all the enrolled assets are signed, all the enrolled assets are sent to
+the client, and a manifest of them is signed and sent to the client, no
+attacker can impersonate the attestation server without having access to the
+client's enrolled assets.</p>
+<p>An attacker that can impersonate the attestation server can furnish the
+enrolled assets to a client that is in an untrusted state.</p>
+<p>Therefore we consider the enrolled asset database to be read-sensitive.  Only
+enrollment servers and attestation servers should be able to read it.</p>
+<p>Separation of enrollment and attestation server roles is not required, but
+enables privilege separation such that attestation servers need only read from
+the database, while enrollment servers need only write (for <code>/v1/add</code> and
+<code>/v1/delete</code>) and also read (for <code>/v1/query</code> and <code>/v1/find</code>).</p>
+<p>An attacker that can write to the enrollment database can also substitute its
+own assets, but only if it can sign them as a legitimate enrollment server
+would.</p>
+<p>Strict authorization of access to the enrollment server's signing credential is
+REQUIRED.</p>
+<p>The enrollment server can implement TOFU enrollment or authenticated and
+authorized enrollment.  In the case of TOFU enrollment, binding of device
+<code>EKpub</code> and device name must be atomic.  In the case of authenticated and
+authorized enrollment, the enrollment server MUST authenticate the user
+enrolling a device, and it MUST check if the user is authorized to do so (and
+possibly it must check if the user is authorized to create devices with names
+like the proposed name).</p>
+<p>We use a single round trip attestation protocol because, if the enrolled device
+<code>EKpub</code> is really for a TPM (and this MUST have been validated), then the
+semantics of <code>TPM2_ActivateCredential()</code> and the <code>AKpub</code> attribute validation
+done by the attestation server, together serve to provide us with all the
+guarantees we need that the PCR quote was legitimate.</p>
+<p>A proof-of-possession protocol is strictly optional, but it can help provide
+alerting.</p>
+<h2 id="analysis">Analysis</h2>
+<p>An attacker may not impersonate an attestation server without having read
+access to the database of enrolled assets.  If we add use of
+<code>TPM2_PolicySigned()</code> then an attacker may not impersonate an attestation
+server without having read access to the database of enrolled assets <em>and</em>
+having access to the attestation server's signing credential.</p>
+<p>Digital signatures on the manifest of enrolled assets prevent attackers able to
+impersonate attestation servers from being able to add or remove enrolled
+assets.</p>
+<p>Digital signatures on enrolled assets prevent attackers able to
+impersonate attestation servers from being able to modify enrolled assets.</p>
+<p>Use of HTTPS (TLS) prevents impersonation of enrollment servers.</p>
+<p>Attestation of trusted state (PCRs) coupled with tight read access controls on
+the enrollment database prevent attackers who gain control of an attestation
+client from recovering the client's enrolled long-term secrets' plaintext: the
+attacker would have to compromise the client in such a way that the quoted PCRs
+do not reveal the fact of the client's compromise to the attestation service.</p>
+<p>However, it is essential that the attestation client have a locally configured
+trust anchor for validating the digital signatures on its enrolled assets.</p>
+<p>Replays of attestation client requests will be rejected if the <code>nonce</code>
+(really, timestamp) is too old.  Otherwise they will be accepted, but attacker
+gets nothing from the response unless they have access to the client's TPM's
+<code>EKpub</code> <em>and</em> the <code>AK</code> that was used by the client.</p>
+<p>Replays of previous attestation service responses will not be accepted by the
+client since they will be bound to attestation keys no longer available on the
+client's TPM (because each <code>AK</code> used in attestation has the <code>stClear</code>
+attribute, so it will not be usable across reboots).</p>
+<p>If an attestation client performs attestation multiple times between reboots,
+then earlier responses can be replayed if the client depends on the server
+returning the client's <code>ak.ctx</code> file to it.  However, since the contents
+returned to the client are static, there is no value to this replay attack.</p>
+<p>Alterations of attestation service responses by MITMs will be detected due to
+the use of authenticated symmetric encryption (via confounded
+AES-256-CBC-HMAC-SHA-256).</p>
+<p>Attackers who do not have access to an attestation client's TPM's <code>EK</code> cannot
+decrypt the attestation response.</p>
+<p>Impersonation of attestation services by attackers who can read the attestation
+database will be detected IFF the attacker removes, replaces, or adds enrolled
+assets and the attacker has not compromised the enrollment server's digital
+signing key or its PKI.</p>
+<p>A client that saves its enrolled assets in local storage can skip attestation
+going forward.  As the intent is that clients attest at boot time, this is a
+problem.  One can deal with this problem by ensuring that clients run only
+trusted code that wouldn't do that.</p>
+<blockquote>
+<p>NOTE: It may be desirable to develop an attestation protocol for frequent
+attestation.  Such a protocol wouldn't deliver enrolled assets to the client,
+ensuring only that the client continues to be in a trusted state.  Such a
+protocol is out of scope for this document at this time.</p>
+</blockquote>
+<h2 id="possible-improvements">Possible Improvements</h2>
+<ul>
+<li>@osresearch proposes that we can use a policy to make sure that enrolled
+   assets delivered to an attestation client cannot be decrypted unless the
+   client attested to trusted state.</li>
+</ul>
+<p>We could do this using <code>TPM2_PolicySigned()</code> with a public key whose private
+   key the attestation server possesses.</p>
+<p>The attestation client would then not be able to decrypt any of its enrolled
+   encrypted assets without first getting a signature from the attestation
+   server, which signature the attestation server would not provide unless it
+   were happy with the client's attested state.  The signature would be part of
+   the response payload wrapper in a <code>TPM2_MakeCredential()</code> bound to the
+   client's <code>AK</code> that has <code>stClear</code>.</p>
+<p>A key benefit of this approach is that the enrolled assets database would no
+   longer be read-sensitive.</p>
+<ul>
+<li>We can get a stronger guarantee that the client's attested state is not
+   spoofed by attaching a policy to the client's <code>AK</code> that binds the attested
+   state, though this is racy (since the attested state can change during the
+   attestation process, though in early boot it wouldn't).  A client could
+   avoid the race by starting and satisfying a corresponding policy session
+   before engaging in the attestation protocol.</li>
+</ul>
+<p>With the current protocol the binding of attested state to the client's
+   ability to "activate" the attestation server's response is only this: that
+   the client must have access to the <code>AK</code> it used and that that <code>AK</code> must have
+   <code>fixedTPM | fixedParent | stClear | sign</code> as its attributes.</p>
+<p>Associating a policy with the <code>AK</code> that uses <code>TPM2_PolicyPCR()</code> and
+   <code>TPM2_PolicyCounterTimer()</code> to bind all the attested state would leave just
+   one item unbound: the <code>nonce</code> (really, timestamp).  We could use the <code>nonce</code>
+   as a password to satisfy an <code>authValue</code>, using <code>TPM2_PolicySecret()</code>.  Thus
+   we could get a much stronger binding of the attested state to the client's
+   ability to activat the attestation response.</p>
+<p>That said, the current, weaker, binding that we have in the protocol seems
+   sufficient for our current purposes.</p>
+<ul>
+<li>Consider having attestation update some state on the server side for
+   detection of <code>resetCount</code> going backwards (replay detection), and replay
+   detection more generally when we start performing proof-of-possession and
+   frequent re-attestation.</li>
+</ul>
+<p>Because we prize availability, we may use an eventually-consistent method of
+   sharing mutable attestation state on the server side.</p>
+<h2 id="securing-communications-with-tpms">Securing Communications with TPMs</h2>
+<p>Depending on the threat model it is essential to use encryption sessions to
+encrypt sensitive command/response parameters, and to authenticate all commands
+and responses.  Authentication of communications with a TPM depends on the
+application knowing the TPM's <code>EKpub</code>.</p>
+<p>Sadly, it is not commonly the case that a computer's BIOS knows the computer's
+TPM's <code>EKpub</code> from factory.  As a result, it is possible for invasive, physical
+MITM attacks on TPMs.  Once a device's TPM's <code>EKpub</code> is enrolled, any MITM has
+to be in the middle every time the attestation client runs.  Therefore the MITM
+has to have been in the middle from the moment the device is enrolled.</p>
+<h2 id="configuring-trust-anchors">Configuring Trust Anchors</h2>
+<p>Attestation clients configured to use secure boot can find a locally configured
+trust anchor on local storage after successful decryption with a <code>rootfs</code> key.
+The <code>rootfs</code> key can be decrypted without authenticating its signature because
+if it can decrypt the local filesystem then the <code>rootfs</code> key must not have been
+altered by any attacker.</p>
+<p>Attestation clients that are not configured to use secure boot can find a
+locally configured trust anchor on local storage, or in a TPM "non-volatile (NV)
+index" (in the case of a TPM NV index, probably only a hash of the trust anchor
+would be stored in the NV index).</p>
+<p>In any case, authentication key rotation would be difficult.  Indirection via
+intermediate keys (PKI-style) would help.</p>
+<h2 id="ekpub-validation"><code>EKpub</code> Validation</h2>
+<p>We rely utterly on TPMs enforcing extended policies.  This means that we must
+know that some <code>EKpub</code> is indeed a TPM's <code>EKpub</code>.</p>
+<h3 id="external-ekpub-validation-google-compute-environment">External <code>EKpub</code> Validation (Google Compute Environment)</h3>
+<p>In the Google Compute Environment the Google Shielded VM product allows us to
+lookup a device by name and obtain its <code>EKpub</code> in <code>PEM</code> format.</p>
+<p>If authorized users of the enrollment service can be trusted to fetch the
+<code>EKpub</code> from the Google Shielded VM API, then the enrollment server need not
+validate the <code>EKpub</code> at all -- the attestation server can just trust the given
+<code>EKpub</code>.</p>
+<h3 id="ekpub-validation-using-ek-certificates"><code>EKpub</code> Validation using <code>EK</code> Certificates</h3>
+<p>When enrolling bare-metal hardware, as opposed to Google Shielded VMs, we must
+either extract the to-be-enrolled device's TPM's <code>EKpub</code> manually, and once
+more trust and allow only authorized users of the enrollment service to enroll
+those, or we must extract the to-be-enrolled device's TPM's <code>EKcert</code> and enroll
+that so that the enrollment server may validate the client's <code>EKcert</code> is issued
+by a trusted TPM vendor.</p>
+<blockquote>
+<p>XXX We have yet to implement this.</p>
+</blockquote>
+<h2 id="alternatives-to-ekpubs">Alternatives to <code>EKpub</code>s</h2>
+<p>Any primary key object with the <code>fixedTPM</code>, <code>fixedParent</code>, and <code>decrypt</code>
+attributes set is suitable as an substitute for the <code>EKpub</code> provided that the
+process of calling <code>TPM2_CreatePrimary()</code> and reading its public key is secured
+by using the <code>EKpub</code>, and that the legitimacy of the TPM is established.
+Wherever we refer to an <code>EKpub</code> in this document, one may substitute such an
+alternative key.</p>
+<h1 id="appendix-a-symmetric-aead-cipher-mode-confounded-aes-256-cbc-hmac-sha-256">Appendix A: Symmetric AEAD Cipher Mode: Confounded AES-256-CBC-HMAC-SHA-256</h1>
+<p>For bulk encryption we use AES-256 with an authenticated encryption with
+additional data (AEAD) cipher mode.</p>
+<p>Given our implementation constraints we ended up using a cipher mode based on
+the well-understood Kerberos cryptosystem specified in RFCs
+<a href="https://datatracker.ietf.org/doc/html/rfc3962">3962</a> and
+<a href="https://datatracker.ietf.org/doc/html/rfc8009">8009</a>.  Kerberos uses AES with
+the CipherText Stealing (CTS) cipher mode, confounded, and with an HMAC with a
+SHA family digest.  CTS is a variation of Cipher Block Chaining mode (CBC).</p>
+<p>The differences between our confounded AES-256-CBC-HMAC-SHA-256 and the Kerberos
+cipher modes are:</p>
+<ul>
+<li>we use CBC instead of CTS</li>
+<li>we use SHA-256 with AES-256</li>
+<li>we don't truncate the HMAC</li>
+</ul>
+<blockquote>
+<p>NOTE: Well, we could use SHA-384 with AES-256 for the HMAC, but then again,
+we're not truncating the HMAC.</p>
+<p>NOTE: "Confounding" consists of prepending to the plaintext a cipherblock's
+worth (16 bytes) of randomly generated bits.  This causes the ciphertext
+resulting from the encryption of the "confounder" to function as the actual,
+non-zero IV for the plaintext.  Confounded CBC is indistinguishable from CBC
+with explicit IV, except that it costs one more cipher block operation, so it
+is slightly slower.</p>
+<p>NOTE: CTS is a variation of CBC that does not require padding.  It does not
+work for plaintexts shorter than a cipher block (16 bytes), but since
+confounding means prefixing a cipher block's worth of nonce to the plaintext,
+confounded CTS always expands the plaintext by just one cipher block's worth,
+and does not require padding.  Therefore a plaintext that is 30 bytes will
+yield a ciphertext that is 46 bytes (+ 32 more bytes for the HMAC), a 31 byte
+plaintext will yield a 47 byte ciphertext, etc.  Replacing CTS with CBC does
+not enable any further cryptanalysis since, after all, CTS applied to
+plaintexts of length divisible by the cipher's block size is equivalent to
+CBC.</p>
+<p>NOTE: When we switch to using OpenSSL 3.0 we will be able to use CTS instead
+of CBC.</p>
+<p>NOTE: The primary reason for using this construction is that it is easily
+implemented in Bash with OpenSSL 1.x tooling, and OpenSSL 1.x tooling does
+not provide authenticated encryption constructions in its command-line tools
+that are suitable for encrypting data at rest.</p>
+</blockquote>
+<p>To encrypt a secret the enrollment server:</p>
+<ol>
+<li>creates a random AES-256 key</li>
+<li>uses confounded AES-256-CBC-HMAC-SHA-256:
+   a. uses AES-256 in cipher block chaining (CBC) mode with<ul>
+<li>all-zero IV</li>
+<li>confounding (a cipherblock's worth of entropy prepended to the plaintext)</li>
+<li>padding
+   b. appends an HMAC-SHA-256 digest of the resulting ciphertext</li>
+</ul>
+</li>
+</ol>
+<p>The padding is per-OpenSSL (if the plaintext is a whole multiple of 16 bytes
+then 16 bytes of zeros are added, else as many bytes are appended to bring the
+plaintext size to a whole multiple of 16 bytes, with the last byte set to the
+count of padding bytes).</p>
+<p>The resulting ciphertexts are stored as-is in the enrollment DB.</p>
+<p>The per-secret AES-256 keys are encrypted to the device's TPM's EKpub, and to
+the escrow agents.</p>
+<p>Decryption of confounded AES-256-CBC-HMAC-SHA-256 ciphertexts is as follows:</p>
+<ul>
+<li>compute the HMAC-SHA-256 MAC of the ciphertext (excluding the MAC in the
+   ciphertext)</li>
+<li>constant-time compare the computed MAC to the MAC in the ciphertext<ul>
+<li>if these do not match, fail</li>
+</ul>
+</li>
+<li>decrypt the ciphertext (excluding the MAC) with AES-256 in CBC mode</li>
+<li>discard the first block of the resulting plaintext (the confounder)</li>
+<li>examine the last byte of the plaintext and drop the indicated amount of
+   padding</li>
+</ul>
+<hr/>
+<div class="md-source-date">
+<small>
+    
+      Last update: <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date">July 27, 2021</span>
+</small>
+</div>
+</article>
+</div>
+</div>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-footer-copyright">
+        
+        
+          Made with
+          <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+            Material for MkDocs
+          </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"base": "..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing", "select.version.title": "Select version"}, "search": "../assets/javascripts/workers/search.fcfe8b6d.min.js", "version": null}</script>
+<script src="../assets/javascripts/bundle.b1047164.min.js"></script>
+</body>
+</html>

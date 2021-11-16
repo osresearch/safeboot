@@ -1,0 +1,636 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="Debian package to enable UEFI SecureBoot, enroll your own hardware backed platform key, sign the kernel and initrd, decrypt the disk with the TPM, and enable system integrity protection with dmverity" name="description"/>
+<link href="https://safeboot.dev/faq/" rel="canonical"/>
+<link href="../images/favicon.ico" rel="icon"/>
+<meta content="mkdocs-1.2.3, mkdocs-material-7.3.6" name="generator"/>
+<!--
+ fill in the opengraph meta tags, with defaults from the site config
+ or values in the yaml metadata for the specific page (summary and image).
+-->
+<meta content="Frequently Asked Questions" property="og:title"/>
+<meta content="safeboot" property="og:site_name"/>
+<meta content="https://safeboot.dev/faq/" property="og:url"/>
+<meta content="Debian package to enable UEFI SecureBoot, enroll your own hardware backed platform key, sign the kernel and initrd, decrypt the disk with the TPM, and enable system integrity protection with dmverity" property="og:description"/>
+<meta content="https://safeboot.dev/images/logo.png" property="og:image"/>
+<title>Frequently Asked Questions - safeboot</title>
+<link href="../assets/stylesheets/main.a57b2b03.min.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/palette.3f5d1f46.min.css" rel="stylesheet"/>
+<!-- Load fonts from Google -->
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css?family=IBM+Plex+Serif:300,400,400i,700%7CIBM+Plex+Sans:500,600,700%7CIBM+Plex+Mono&amp;display=fallback" rel="stylesheet" type="text/css">
+<style>
+           body, input {
+             font-family: "IBM Plex Serif", "Helvetica Neue",
+               Helvetica, Arial, sans-serif;
+           }
+           pre, code, kbd {
+             font-family: "IBM Plex Mono", "Courier New",
+               Courier, monospace;
+           }
+	   h1, h2, h3, h4, h5, h6 {
+             font-family: "IBM Plex Sans", sans-serif;
+	     font-weight: 700 !important;
+           }
+         </style>
+<link href="../extra.css" rel="stylesheet"/>
+</link></link></head>
+<body data-md-color-accent="none" data-md-color-primary="none" data-md-color-scheme="" dir="ltr">
+<script>function __prefix(e){return new URL("..",location).pathname+"."+e}function __get(e,t=localStorage){return JSON.parse(t.getItem(__prefix(e)))}</script>
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#frequently-asked-questions">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="safeboot" class="md-header__button md-logo" data-md-component="logo" href=".." title="safeboot">
+<img alt="logo" src="../images/logo.png"/>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            safeboot
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              Frequently Asked Questions
+            
+          </span>
+</div>
+</div>
+</div>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"></path></svg>
+</button>
+</nav>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/osresearch/safeboot/" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="safeboot" class="md-nav__button md-logo" data-md-component="logo" href=".." title="safeboot">
+<img alt="logo" src="../images/logo.png"/>
+</a>
+    safeboot
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/osresearch/safeboot/" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="..">
+        Overview
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../install/">
+        Installation
+      </a>
+</li>
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" data-md-toggle="toc" id="__toc" type="checkbox"/>
+<label class="md-nav__link md-nav__link--active" for="__toc">
+          Frequently Asked Questions
+          <span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+        Frequently Asked Questions
+      </a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-is-the-threat-model">
+    What is the threat model?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#how-is-this-better-than-normal-uefi-secure-boot">
+    How is this better than normal UEFI Secure Boot?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#does-safeboot-have-a-boothole">
+    Does safeboot have a BootHole?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#how-does-safeboot-compare-to-coreboot">
+    How does safeboot compare to coreboot?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#does-safeboot-work-with-amd-cpus">
+    Does safeboot work with AMD cpus?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#does-safeboot-work-with-qubes-or-xen">
+    Does safeboot work with Qubes or Xen?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-causes-the-tpm-unsealing-to-fail">
+    What causes the TPM unsealing to fail?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#how-is-safeboots-sip-related-to-macos-sip">
+    How is safeboot's SIP related to macOS SIP?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#how-do-i-write-to-the-root-filesystem">
+    How do I write to the root filesystem?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#how-do-i-switch-to-a-new-signing-key">
+    How do I switch to a new signing key?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-happens-if-i-lose-the-signing-key">
+    What happens if I lose the signing key?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#is-it-possible-to-reset-the-uefi-or-bios-password">
+    Is it possible to reset the UEFI or BIOS password?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#does-it-work-on-the-thinkpad-701c">
+    Does it work on the Thinkpad 701c?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#_1">
+    ???
+  </a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../threats/">
+        Threat Model
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../attestation/">
+        Remote Attestation
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../chain-of-trust/">
+        Chain of Trust
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../safeboot/">
+        safeboot subcommands
+      </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../tpm2-attest/">
+        tpm2-attest subcommands
+      </a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-is-the-threat-model">
+    What is the threat model?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#how-is-this-better-than-normal-uefi-secure-boot">
+    How is this better than normal UEFI Secure Boot?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#does-safeboot-have-a-boothole">
+    Does safeboot have a BootHole?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#how-does-safeboot-compare-to-coreboot">
+    How does safeboot compare to coreboot?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#does-safeboot-work-with-amd-cpus">
+    Does safeboot work with AMD cpus?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#does-safeboot-work-with-qubes-or-xen">
+    Does safeboot work with Qubes or Xen?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-causes-the-tpm-unsealing-to-fail">
+    What causes the TPM unsealing to fail?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#how-is-safeboots-sip-related-to-macos-sip">
+    How is safeboot's SIP related to macOS SIP?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#how-do-i-write-to-the-root-filesystem">
+    How do I write to the root filesystem?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#how-do-i-switch-to-a-new-signing-key">
+    How do I switch to a new signing key?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-happens-if-i-lose-the-signing-key">
+    What happens if I lose the signing key?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#is-it-possible-to-reset-the-uefi-or-bios-password">
+    Is it possible to reset the UEFI or BIOS password?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#does-it-work-on-the-thinkpad-701c">
+    Does it work on the Thinkpad 701c?
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#_1">
+    ???
+  </a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1 id="frequently-asked-questions">Frequently Asked Questions</h1>
+<h2 id="what-is-the-threat-model">What is the threat model?</h2>
+<p><img alt="Your threat model is not my threat model, but your threat model is ok" src="https://live.staticflickr.com/5575/31437292510_99ffd0dd11_b.jpg"/></p>
+<p><code>safeboot</code> intends to protect the integrity of the boot process and
+runtime integrity of the system against adversaries with external physical
+access to the device, as well as limited internal physical access.
+The assumption is that the attacker can get code execution on the device
+as the user and as root, but does not have access to the signing keys
+or the disk encryption key. The goal is to prevent the attacker from
+exfiltrating data from the device or making persistent changes to the
+system configuration.</p>
+<p>More details are in <a href="../threats/">the threat model page</a>.</p>
+<h2 id="how-is-this-better-than-normal-uefi-secure-boot">How is this better than normal UEFI Secure Boot?</h2>
+<p><code>safeboot</code> is not a replacement for UEFI SecureBoot - the two work together to
+improve the security of the system. SecureBoot ensures that the boot firmware is
+measured into the TPM and validates the signatures on the Linux kernel and initrd,
+and <code>safeboot</code> adds additional integrity protections beyond that.</p>
+<p>The default UEFI Secure Boot configuration is sufficient for
+Microsoft's needs since they are the only signing authority for
+their runtime, while Linux computer owners frequently want to
+compile their own kernel or runtime.  The compromise solution
+developed by Linux distributions has Microsoft sign a
+<a href="https://mjg59.dreamwidth.org/19448.html">"shim" bootloader</a>
+that has its own key management.  Since most distributions have their
+keys enrolled in the shim, systems that have Secure Boot enabled
+will boot the distribution's ISOs, which might not be desirable since
+it potentially gives an adversary runtime access to unencrypted
+parts of the system.</p>
+<p>A larger problem is that by default only the Linux kernel is signed,
+not the command line parameters or initrd.  While the <code>grub</code> bootloader
+can enable a password to protect against casual changes to the kernel
+parameters, the <code>grub.cfg</code> configuration is not typically signed.   This means
+that potentially a local attacker can modify it on disk to launch the
+kernel with <code>init=/bin/sh</code> to drop into a shell, or an attacker with
+root access can add trojan'ed binaries to the initrd to gain persistence.
+By replacing the Platform Key and removing <code>grub</code>, only Linux kernel and
+initrd images signed by the computer owner will boot.</p>
+<p>Far more details on how <code>safeboot</code> extends UEFI SecureBoot are on
+<a href="../threats/">the threat model page</a>.</p>
+<h2 id="does-safeboot-have-a-boothole">Does <code>safeboot</code> have a BootHole?</h2>
+<p>BootHole (<a href="https://cve.mitre.org/cgi-bin/cvename.cgi?name=2020-10713">CVE-2020-10713</a>),
+is a vulnerability found and <a href="https://eclypsium.com/2020/07/29/theres-a-hole-in-the-boot/">described by Eclypsium</a>)
+in <code>grub</code>'s configuration file parsing which allows arbitrary code execution in <code>grub</code> even when Secure Boot is enabled.
+Kelly Shortridge has a <a href="https://capsule8.com/blog/grubbing-secure-boot-the-wrong-way-cve-2020-10713/">good writeup by at capsule8</a>
+that explains how this threat could be leveraged by an attacker and the difficulties in doing so in
+a general case, although an attacker with physical access is able to write to the internal
+disk and could launch this attack. Since these sorts of physical attacks are included
+in the <a href="../threats/"><code>safeboot</code> threat model</a>, it is worth considering.</p>
+<p>However, a system using <code>safeboot</code> is <strong>not vulnerable to CVE-2020-10713</strong> since
+<em><code>grub</code> is not used at all</em> and will not be run even if it is present on the disk.
+During the <code>safeboot</code> installation process, the system owner
+<a href="../install/#uefi-secure-boot-signing-keys">replaces the UEFI Platform Key with their own</a>,
+which prevents the Microsoft signed shim used by grub from being loaded, and
+they then create <a href="../install/#signed-linux-recovery-kernel"><code>efibootmgr</code> entries for <code>linux</code> and <code>recovery</code></a>
+that are signed with their (hardware protected) key.</p>
+<p>Assuming there are not vulnerabilities in the system's UEFI firmware or CPU vendor's BootGuard
+(which may not be the best assumption...), the <code>safeboot</code> configuration should ensure
+that only signed kernel, initrd, and command lines will be booted by the system.
+This <a href="../chain-of-trust/">static chain of trust</a>
+helps prevent attacks on <code>grub</code> like BootHole, or other ones that modify on-disk
+data, from being able to gain persistence or code execution.</p>
+<p>One caveat to the protection provided by the UEFI Secure Boot Platform Keys is that
+the UEFI NVRAM configuration data is stored in the SPI flash and is also subject to
+modifications by a physically proximate attacker with internal access to the hardware.
+However, if the attacker uses a flash programmer to change the Platform Keys in the flash,
+the TPM measurements of the <code>Setup</code> variable will be different and the TPM should refuse
+to unseal the disk encryption key since the PCR values will not match the sealed ones.
+The adversary might try to roll back to an vulnerable version of the kernel and the
+earlier signed PCRs, but the TPM will refuse to unseal since monotonic counter value
+will not match the signed one.</p>
+<p>An adversary might create a fake PIN entry screen to try to harvest the unsealing PIN
+or the recovery key, although in any of these cases, the TPM TOTP six-digit authenicator
+value will not be correct since the TPM will not unseal it with modified firmware.
+Additionally the system should fail <a href="../attestation/">remote attestation</a> if it attempts
+to connect to a server that validates the TPM quote, improving platform resiliency even
+when attackers do gain persistence.</p>
+<h2 id="how-does-safeboot-compare-to-coreboot">How does <code>safeboot</code> compare to coreboot?</h2>
+<p><img alt="Installing coreboot requires so much flashing" src="../images/coreboot.jpg"/></p>
+<p><a href="https://coreboot.org">coreboot</a> is entirely free software and can
+provide far better control of the boot process, although it is not
+supported on as many modern platforms as UEFI SecureBoot and requires
+reprogramming the SPI flash on the device.  If you have a machine that
+supports both coreboot and Bootguard, then you're probably better off
+running it instead.  However, be prepared to spend quite a bit of quality
+time with your SPI flash programmer to get it working...</p>
+<p>Once coreboot or UEFI hand off to the Linux kernel, the TPM unsealing of
+the disk encryption key, the dmverity protections on the root filesystem
+and the lockdown patches work the same.</p>
+<h2 id="does-safeboot-work-with-amd-cpus">Does <code>safeboot</code> work with AMD cpus?</h2>
+<p><img alt="AMD PSP Inside" src="../images/amd.jpg"/></p>
+<p>It has only been tested on the Intel systems with Bootguard.
+The UEFI platform keys and the rest of the lock down <em>should</em>
+work with AMD, although AMD's hardware secured boot process hasn't
+been reviewed as extensively as Intel's ME and Bootguard.</p>
+<p>For an indepth analysis of the AMD Platform Support Processor (PSP)
+and SEV, <a href="https://media.ccc.de/v/36c3-10942-uncover_understand_own_-_regaining_control_over_your_amd_cpu">Buhren, Eichner and Werling's 35c3 presentation</a>
+is the most detailed look so far.</p>
+<h2 id="does-safeboot-work-with-qubes-or-xen">Does safeboot work with Qubes or Xen?</h2>
+<p><img alt="Xen booting in qemu with secure boot enabled" src="../images/xen.png"/></p>
+<p>Qubes, a reasonably secure OS, uses the Xen hypervisor to separate device drivers
+and applications into separate virtual machines so that an exploit against an individual
+component doesn't necessarily compromise the entire machine.  Unfortunately Xen's EFI support
+is not commonly used, and as a result running Qubes typically requires Legacy BIOS and
+turning off Secure Boot.</p>
+<p>Adding Secure Boot support to Xen is possible with some patches
+(<a href="https://github.com/osresearch/safeboot/issues/21">safeboot-issue #21</a>),
+although it is a work in progress.
+There are other factors involved in configuring Qubes to use dm-verity and TPM sealed
+secrets that have not been addressed yet, as well as an <a href="https://github.com/QubesOS/qubes-issues/issues/4371#issuecomment-668639572">open qubes-issue on distribution signing keys</a>.</p>
+<h2 id="what-causes-the-tpm-unsealing-to-fail">What causes the TPM unsealing to fail?</h2>
+<p><img alt="TPM with wires soldered to the pins" src="../images/tpm.jpg"/></p>
+<p>The TPM will only unseal the disk encryption key if:</p>
+<ul>
+<li>The policy is signed by the UEFI platform key.</li>
+<li>The PCRs in <code>$PCRS</code> match the ones computed by the TPM, which typically include the firmware, UEFI setup variable, UEFI key database, and the PE hash of the kernel + initrd.</li>
+<li>The boot mode PCR in <code>$BOOTMODE_PCR</code> matches the sha256 hash of the <code>safeboot.mode=</code> kernel command line parameter and has not been extended post-boot.</li>
+<li>The TPM monotonic counter in <code>$TPM_NV_VERSION</code> matches the one in the policy.</li>
+<li>The user PIN matches the on used to seal the data.</li>
+</ul>
+<p>These requirements are violated by several different attacks, although
+they can also fail if a new kernel is installed with <code>safeboot linux-sign</code>
+and <code>safeboot pcrs-sign</code> was not successful.  Typically kernel updates can be
+handled seamlessly since the PCR4 value can be predicted from the PE hash of the
+new kernel and initrd.</p>
+<p>The PCRs will also be different when the system has had a firmware update
+from <a href="https://fwupd.org/"><code>fwupd</code></a> (usually measured into PCR0), or if
+the UEFI configuration is changed by the administrator (usually measured
+into PCR1 and PCR5).
+In both of these cases it is hard to predict what
+the resulting PCR values will be, so it is typically necessary to reboot
+into the <code>recovery</code> target to extend the PCRs with the new measurements
+and then update the PCR policy with the new values by running <code>safeboot
+pcrs-sign</code>.  Some vendors publish the new PCR0 values, and it might be possible
+to predict it by evaluating the TPM event log, but it is not guaranteed.</p>
+<p>For a fleet of identical systems, however, it is usually possible to do this upgrade
+on one offline machine and then distribute the signed kernel along with the signed PCR
+policy to the other machines.  This requires some additional work to make practical,
+since the TPM counters are not synchronized.</p>
+<h2 id="how-is-safeboots-sip-related-to-macos-sip">How is safeboot's SIP related to macOS SIP?</h2>
+<p><img alt="dmverity merkle tree diagram" src="../images/dmverity.png"/></p>
+<p><code>safeboot</code>'s System Integrity Protection (SIP) is inspired by the
+<a href="https://support.apple.com/en-us/HT204899">read-only filesystems of macOS SIP</a>.
+Like macOS, writing to the protected filesystems requires rebooting
+with a special kernel command line parameter (in this case <code>tpm.mode=recovery</code>)
+to enable write access.
+Unlike macOS, safeboot SIP can not unseal the disk encryption keys
+automatically from the TPM since the boot mode is part of the PCR
+measurements, so knowledge of the disk recovery password is required.
+This prevents a local adversary who escalates to <code>root</code> from being able
+to disable SIP and reboot into a writable filesystem to try to gain
+persistence.</p>
+<p>safeboot's SIP is also inspired by the <a href="https://source.android.com/security/verifiedboot/dm-verity">Android Verified Boot</a>
+that protects Android's <code>/system</code> partition.  Like Android, <code>safeboot</code> SIP
+provides cryptographic protection against an adversary who gains
+write access to the filesystem since entire filesystem is protected
+by the <code>dmverity</code> merkle tree of hashes.  The root hash is signed by
+the system owner as part of exiting recovery mode, and this root
+hash is passed into the kernel on the command line.
+The kernel command line is part of the cryptographic chain of trust
+from the CPU boostrap through the Bootguard ACM, into the UEFI firmware,
+and all the way to the Linux kernel and initrd.</p>
+<p>This is potentially even stronger protection than macOS SIP since it
+provides protection even against an adversary with physical access,
+the root password and the disk recovery key.  They can't sign the root
+hash without the hardware token, and if they change the signing keys in
+the firmare, then the TPM will no longer unseal the disk encryption key.
+They could re-seal the key with the new PCRs from their fake platform
+key, but the system would then fail both the TPM TOTP local attestation
+as well as the <a href="../attestation/">remote attestation</a> when it tried to
+prove to an external system that it was in a trusted state.</p>
+<h2 id="how-do-i-write-to-the-root-filesystem">How do I write to the root filesystem?</h2>
+<p>With SIP enabled it is not possible to modify the root filesystem.
+You must reboot into recovery mode with <code>safeboot recovery-reboot</code>
+and decrypt the disk with the recovery password.  Once decrypted,
+you can run <code>safeboot remount</code> to unlock the raw device and remount
+it <code>rw</code>.  After making modifications, it is necessary to sign
+the new root hashes with <code>safeboot linux-sign</code>.</p>
+<h2 id="how-do-i-switch-to-a-new-signing-key">How do I switch to a new signing key?</h2>
+<p>There is probably a way to sign a new PK with the old PK, but I haven't
+figured it out...  Instead here are the steps:</p>
+<ul>
+<li>Put the UEFI SecureBoot firmware back in <code>Setup Mode</code></li>
+<li>Boot into the recovery kernel</li>
+<li><code>safeboot remount</code> to get write-access to the disk</li>
+<li><code>safeboot key-init</code> or <code>safeboot yubikey-init</code> to build a new key.
+Answer "<code>y</code>" to overwrite the existing one in <code>/etc/safeboot/cert.pem</code>.</li>
+<li><code>safeboot uefi-sign-keys</code> to upload it into the firmware</li>
+<li><code>safeboot recover-sign</code></li>
+<li><code>safeboot linux-sign</code>, which should re-generate the dmverity hashes</li>
+<li>Reboot into the normal kernel</li>
+<li><code>safeboot luks-seal</code> to measure the new PCRs and normal kernel into the TPM</li>
+</ul>
+<h2 id="what-happens-if-i-lose-the-signing-key">What happens if I lose the signing key?</h2>
+<p>The best solution is to authenticate with the supervisor password
+to the UEFI Setup, re-enter SecureBoot setup mode and clear the key
+database, then boot into recovery mode and follow the instructions
+for switching to a new signing key.  If you don't have the
+UEFI Supervisor password, well, then you're in trouble.</p>
+<h2 id="is-it-possible-to-reset-the-uefi-or-bios-password">Is it possible to reset the UEFI or BIOS password?</h2>
+<p><img alt="EC block diagram from Matrosov presentation" src="../images/ec.png"/></p>
+<p>On modern Thinkpads the UEFI password is in the EC, not in the
+SPI flash.  Lenovo does a mainboard swap to reset it; you could find
+a <a href="https://medium.com/@matrosov/breaking-through-another-side-bypassing-firmware-security-boundaries-85807d3fe604">EC bypass</a>(Matrosov 2019)
+or perhaps a <a href="https://pbx.sh/efitoctou/">Bootguard bypass</a>(Bosch &amp; Hudson, 2019)
+to get into Setup in that case.</p>
+<p><a href="https://www.blackhat.com/us-19/briefings/schedule/index.html#breaking-through-another-side-bypassing-firmware-security-boundaries-from-embedded-controller-15902">Matrosov's 2019 BlackHat Talk</a>
+is a deep dive into the Lenovo EC and why it is not as much of a protection boundary
+as some vendors think it is.</p>
+<h2 id="does-it-work-on-the-thinkpad-701c">Does it work on the Thinkpad 701c?</h2>
+<p><img alt="Butterfly keyboard animation" src="https://farm1.staticflickr.com/793/39371776450_a8b0cd4184_o_d.gif"/></p>
+<p>Unfortunately the wonderful <a href="https://trmm.net/Butterfly">butterfly keyboard Thinkpad</a>
+predates UEFI by a few years, so it does not have a very secure
+boot process.  The X1 Carbon is a much nicer replacement in nearly
+every way, other than missing the amazing sliding keyboard mechanism.</p>
+<h2 id="_1">???</h2>
+<p>Please <a href="https://github.com/osresearch/safeboot/issues">file an issue!</a>
+Or submit a pull-request!</p>
+<hr/>
+<div class="md-source-date">
+<small>
+    
+      Last update: <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date">August 21, 2020</span>
+</small>
+</div>
+</article>
+</div>
+</div>
+</main>
+<footer class="md-footer">
+<nav aria-label="Footer" class="md-footer__inner md-grid">
+<a aria-label="Previous: Installation" class="md-footer__link md-footer__link--prev" href="../install/" rel="prev">
+<div class="md-footer__button md-icon">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"></path></svg>
+</div>
+<div class="md-footer__title">
+<div class="md-ellipsis">
+<span class="md-footer__direction">
+                Previous
+              </span>
+              Installation
+            </div>
+</div>
+</a>
+<a aria-label="Next: Threat Model" class="md-footer__link md-footer__link--next" href="../threats/" rel="next">
+<div class="md-footer__title">
+<div class="md-ellipsis">
+<span class="md-footer__direction">
+                Next
+              </span>
+              Threat Model
+            </div>
+</div>
+<div class="md-footer__button md-icon">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11H4z"></path></svg>
+</div>
+</a>
+</nav>
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-footer-copyright">
+        
+        
+          Made with
+          <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+            Material for MkDocs
+          </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"base": "..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing", "select.version.title": "Select version"}, "search": "../assets/javascripts/workers/search.fcfe8b6d.min.js", "version": null}</script>
+<script src="../assets/javascripts/bundle.b1047164.min.js"></script>
+</body>
+</html>

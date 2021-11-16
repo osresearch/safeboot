@@ -1,0 +1,6 @@
+code { color: #008F00; }
+strong { color: #FF0040; }
+h2 { color: #888888; }
+h1, h2, h3, h4, h5, h6 {
+	color: #CF0000 !important;
+}
