@@ -101,10 +101,10 @@ will allow the user or administrator to detect that the device has been
 compromised.
 
 * On Lenovo's recent firmware, the supervisor password is not stored
-in the SPI flash, but in the EC, and changing it requires the EC to
-validate the change. This prevents a local attacker from modifying
-the NVRAM variabels in the SPI flash to bypass the supervisor checks.
-However, the EC is an open field of security research.
+in the SPI flash (Serial Peripheral Interface), but in the Embedded Controler (EC),
+and changing it requires the EC to validate the change. This prevents a local
+attacker from modifying the NVRAM variabels in the SPI flash to bypass the supervisor
+checks. However, the EC is an open field of security research.
 
 * On Lenovo's recent firmware, the tamper switch state is stored in the EC,
 rather than the RTC RAM.  This makes it more difficult to bypass the
