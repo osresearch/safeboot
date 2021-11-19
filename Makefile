@@ -278,6 +278,7 @@ requirements: | build
 		bison \
 		libelf-dev \
 		libjson-glib-dev \
+		cryptsetup \
 
 
 # Remove the temporary files and build stuff

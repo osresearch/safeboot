@@ -21,6 +21,12 @@
 
 set -e
 
+# A function to ignore errors if a file is already present in the initramfs
+idempotent_copy () {
+	copy_file "$1" "$2" "$3" || [ $? -eq 1 ]
+	return 
+}
+
 if [ "$1" = "prereqs" ]; then
 	exit 0
 fi
@@ -30,15 +36,17 @@ fi
 DIR="/etc/safeboot"
 [ -r "$DIR/safeboot.conf" ] && . "$DIR/safeboot.conf"
 [ -r "$DIR/local.conf" ] && . "$DIR/local.conf"
+ls $DIR
+stat "$DIR/safeboot.conf"
 
 # Move the configuration and keys into the initrd as well
-copy_file safeboot "$DIR/safeboot.conf"
-copy_file safeboot-functions "$DIR/functions.sh"
-copy_file safeboot-keys "$(dirname "$CERT")/$(basename "$CERT" .pem).pub" "$DIR/cert.pub"
-copy_file safeboot-keys "$CERT"
+idempotent_copy safeboot "$DIR/safeboot.conf"
+idempotent_copy safeboot-functions "$DIR/functions.sh"
+idempotent_copy safeboot-keys "$(dirname "$CERT")/$(basename "$CERT" .pem).pub" "$DIR/cert.pub"
+idempotent_copy safeboot-keys "$CERT"
 
 if [ -r "$DIR/local.conf" ]; then
-	copy_file safeboot-local "$DIR/local.conf"
+	idempotent_copy safeboot-local "$DIR/local.conf"
 fi
 
 # Programs required to unseal the secrets and decrypt the disk
@@ -53,7 +61,7 @@ manual_add_modules nls_iso8859-1
 copy_exec /bin/bash
 copy_exec /usr/bin/setsid
 copy_exec /usr/sbin/veritysetup
-copy_exec /usr/bin/xxd
+copy_exec /usr/bin/xxd /sbin/
 copy_exec /usr/bin/dd
 copy_exec /usr/bin/chattr
 copy_exec /usr/bin/objcopy
@@ -61,14 +69,14 @@ copy_exec /bin/efibootmgr
 copy_exec /sbin/safeboot
 copy_exec /sbin/sbsign.safeboot
 copy_exec /usr/sbin/fsck.fat
-copy_file efi-stub /usr/lib/systemd/boot/efi/linuxx64.efi.stub
-copy_file fstab /etc/fstab /etc/safeboot/fstab
+idempotent_copy efi-stub /usr/lib/systemd/boot/efi/linuxx64.efi.stub
+idempotent_copy fstab /etc/fstab /etc/safeboot/fstab
 
 # openssl has lots of dependencies to be able to talk to
 # the pkcs11 smart cards
 copy_exec /usr/bin/openssl
-copy_file opensc /etc/opensc/opensc.conf
-copy_file opensc /usr/lib/ssl/openssl.cnf
+idempotent_copy opensc /etc/opensc/opensc.conf
+idempotent_copy opensc /usr/lib/ssl/openssl.cnf
 copy_exec /usr/lib/x86_64-linux-gnu/engines-1.1/pkcs11.so
 copy_exec /usr/lib/x86_64-linux-gnu/p11-kit-proxy.so
 copy_exec /lib/x86_64-linux-gnu/libffi.so.7
