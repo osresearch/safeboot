@@ -15,6 +15,9 @@ if [[ -s $TOP/lib/safeboot/functions.sh ]]; then
 elif [[ -s $TOP/functions.sh ]]; then
 	# shellcheck disable=SC1090 source=functions.sh
 	. "$TOP/functions.sh"
+elif [[ -s /etc/safeboot/functions.sh ]]; then
+	# shellcheck source=functions.sh
+	. /etc/safeboot/functions.sh
 else
 	echo "Unable to find Safeboot function library" 1>&2
 	exit 1

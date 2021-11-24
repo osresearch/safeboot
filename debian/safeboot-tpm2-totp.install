@@ -1,0 +1,5 @@
+# Compiled with modifications from source
+# to add support for the pkcs11 engine (sbsign),
+# hostnames and small qrcodes (tpm2-totp), 
+# and bundle all tpm2 applications in a single script (tpm2)
+bin/tpm2-totp			usr/sbin/

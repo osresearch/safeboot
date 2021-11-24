@@ -30,6 +30,9 @@ if [[ -s $TOP/lib/safeboot/functions.sh ]]; then
 elif [[ -s $TOP/functions.sh ]]; then
 	# shellcheck source=functions.sh
 	. "$TOP/functions.sh"
+elif [[ -s /etc/safeboot/functions.sh ]]; then
+	# shellcheck source=functions.sh
+	. /etc/safeboot/functions.sh
 else
 	echo "Unable to find Safeboot function library" 1>&2
 	exit 1
@@ -391,7 +394,7 @@ verify()
 
 	QUOTE_TAR="$1"
 	NONCE="$2"
-	CA_ROOT="${3:-$PREFIX$DIR/certs}"
+	CA_ROOT="${3:-$(safeboot_dir certs)}"
 
 	unpack-quote "$QUOTE_TAR" \
 	|| die "$QUOTE_TAR: unable to unpack"

@@ -1,0 +1,8 @@
+# Shell functions library
+functions.sh			etc/safeboot/
+functions.sh			usr/lib/safeboot/
+
+# TPM certs and a script to refresh them
+tpm-certs.txt                   usr/share/safeboot/
+refresh-certs                   usr/share/safeboot/
+certs/*                         usr/share/safeboot/certs/

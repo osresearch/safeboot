@@ -15,6 +15,11 @@ shopt -s extglob
 PROG=${0##*/}
 BINDIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 TOP=$(dirname "$BINDIR")
+if [[ $TOP = /usr ]]; then
+	PATH=${TOP}/libexec/safeboot:$PATH
+else
+	PATH=${TOP}/libexec/:$PATH
+fi
 
 if [[ -s $TOP/lib/safeboot/functions.sh ]]; then
 	# shellcheck source=functions.sh
@@ -22,6 +27,9 @@ if [[ -s $TOP/lib/safeboot/functions.sh ]]; then
 elif [[ -s $TOP/functions.sh ]]; then
 	# shellcheck source=functions.sh
 	. "$TOP/functions.sh"
+elif [[ -s /etc/safeboot/functions.sh ]]; then
+	# shellcheck source=functions.sh
+	. /etc/safeboot/functions.sh
 else
 	echo "Unable to find Safeboot function library" 1>&2
 	exit 1

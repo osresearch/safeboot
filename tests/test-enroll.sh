@@ -45,14 +45,43 @@ cat > db/tofu_pcrs <<EOF
  - 1
 EOF
 
+
+# Make a CA credential for gencert
+openssl genrsa								\
+	-out "${d}/ca-key.pem" 2048					\
+|| die "Could not make a CA key"
+openssl req								\
+	-x509								\
+	-batch								\
+	-subj '/C=US/O=Safeboot CA'					\
+	-sha256								\
+	-new								\
+	-nodes								\
+	-key "${d}/ca-key.pem"						\
+	-days 3650							\
+	-out "${d}/ca-cert.pem"						\
+|| die "Could not make a CSR for the CA key"
+openssl x509								\
+	-in "${d}/ca-cert.pem"						\
+	-text								\
+|| die "Could not make a root CA certificate"
+
 cat > "${d}/attest-enroll.conf" <<EOF
 DBDIR=${d}/db
 POLICY=7fdad037a921f7eec4f97c08722692028e96888f0b970dc7b3bb6a9c97e8f988
 ESCROW_POLICY=
 TRANSPORT_METHOD=WK
-GENPROGS+=(gentest0)
+GENCERT_CA_PRIV=${d}/ca-key.pem
+GENCERT_CA_CERT=${d}/ca-cert.pem
+GENCERT_REALM=SAFEBOOT.ORG
+GENCERT_KEY_BITS=2048
+GENCERT_INCLUDE_SAN_PKINIT=true
+GENCERT_INCLUDE_SAN_DNSNAME=true
+GENCERT_X509_TOOLING=OpenSSL
+GENPROGS+=(gencert gentest0)
 ESCROW_PUBS_DIR=${d}/escrowpubs
 POLICIES[rootfskey]=pcr11
+POLICIES[cert]=pcr11
 POLICIES[test0]=pcr11
 SIGNING_KEY_PUB=${d}/sign.pem
 EOF

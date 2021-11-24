@@ -1,0 +1,14 @@
+# shell scripts in the tree
+sbin/attest-enroll		usr/sbin/
+sbin/attest-verify
+sbin/attest-server		usr/sbin/
+# XXX
+sbin/attest-server-sub.py	usr/sbin/
+
+# These are delivered by safeboot-attest-client for now until we split them up
+# sbin/tpm2-attest		usr/sbin/
+# sbin/tpm2-pcr-validate		usr/sbin/
+
+# libexec shell scripts
+sbin/gencert			usr/libexec/safeboot/
+sbin/genkeytab			usr/libexec/safeboot/

@@ -1,0 +1,6 @@
+# shell script commands
+sbin/tpm2-attest		usr/sbin/
+sbin/tpm2-pcr-validate		usr/sbin/
+
+# libexec shell scripts
+sbin/getkeytab			usr/libexec/safeboot/
