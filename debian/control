@@ -10,15 +10,15 @@ Homepage: https://github.com/osresearch/safeboot/
 
 Package: safeboot
 Architecture: all
-Depends: ${shlibs:Depends}, ${misc:Depends}, binutils, safeboot-tpm2-tools | tpm2-tools, safeboot-tpm2-totp | tpm2-totp
+Depends: ${shlibs:Depends}, ${misc:Depends}, binutils, safeboot-tpm2-tools | tpm2-tools (>= 5.1.1), safeboot-tpm2-totp | tpm2-totp (>= 3.1.0)
 Description: Common (core) package for Safeboot
  Safeboot is a collection of utilities and services for securing the boot
  process.
 
 Package: safeboot-boot
 Architecture: all
-Breaks: safeboot (<<0.8)
-Replaces: safeboot (<<0.8)
+Breaks: safeboot (<<0.9)
+Replaces: safeboot (<<0.9)
 Depends: ${shlibs:Depends}, ${misc:Depends}, safeboot, efitools, opensc, yubico-piv-tool, libengine-pkcs11-openssl, uuid, binutils, libqrencode-dev, libjson-c4, libcurl4
 Description: Boot Linux more safely
  Makes the Linux boot process slightly safer by enabling UEFI Secure Boot,
@@ -28,18 +28,18 @@ Description: Boot Linux more safely
 
 Package: safeboot-attest-client
 Architecture: all
-Breaks: safeboot (<<0.8)
-Replaces: safeboot (<<0.8)
+Breaks: safeboot (<<0.9)
+Replaces: safeboot (<<0.9)
 Depends: ${shlibs:Depends}, ${misc:Depends}, safeboot
 Description: Safeboot attestation client
  Attestation client for Safeboot, which is intended to be used for securely
  fetching local filesystem encryption keys (including for the root
- filesyste), and other secrets (including device credentials).
+ filesystem), and other secrets (including device credentials).
 
 Package: safeboot-attest-server
 Architecture: all
-Breaks: safeboot (<<0.8)
-Replaces: safeboot (<<0.8)
+Breaks: safeboot (<<0.9)
+Replaces: safeboot (<<0.9)
 Depends: ${shlibs:Depends}, ${misc:Depends}, safeboot
 Description: Safeboot attestation server
  Enrollment and attestation server for Safeboot, which is intended to be
@@ -48,16 +48,16 @@ Description: Safeboot attestation server
 
 Package: safeboot-tpm2-tools
 Architecture: any
-Breaks: safeboot (<<0.8)
-Replaces: safeboot (<<0.8)
+Breaks: safeboot (<<0.9)
+Replaces: safeboot (<<0.9)
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: tpm2-tools at version needed by Safeboot
  Safeboot depends on more recent versions of tpm2-tools than are packaged.
 
 Package: safeboot-tpm2-totp
 Architecture: any
-Breaks: safeboot (<<0.8)
-Replaces: safeboot (<<0.8)
+Breaks: safeboot (<<0.9)
+Replaces: safeboot (<<0.9)
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: tpm2-totp at version needed by Safeboot
  Safeboot depends on more recent versions of tpm2-totp than are packaged.
