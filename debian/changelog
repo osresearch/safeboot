@@ -1,3 +1,11 @@
+safeboot (0.9) unstable; urgency=medium
+
+  * Add enrollment server functionality
+  * Add helper scripts for enrolled host credential bootstrapping
+  * Split Debian packaging
+
+ -- Nico Williams <nico@twosigma.com>  Wed, 24 Nov 2021 16:22:53 -0600
+
 safeboot (0.8) unstable; urgency=medium
 
   * `tpm2-attest` and `attest-server` to perform attestations
