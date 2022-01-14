@@ -738,6 +738,8 @@ luks-seal() {
 		>> /tmp/tpm.log \
 	|| die "Unable to create TPM key context"
 
+	tpm2_flushall
+	
 	tpm2 load \
 		--parent-context "$TMP/primary.ctx" \
 		--public "$TMP/sealed.pub" \
