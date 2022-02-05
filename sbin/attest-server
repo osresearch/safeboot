@@ -47,10 +47,14 @@ alg = 'sha256'
 # tarball from the http request and returns the output tarball in the http
 # response.
 
+bindir = os.environ.get('BINDIR')
+if not bindir:
+    bindir = '.'
+
 def attest_verify(quote_file):
 	# verify that the Endorsment Key came from an authorized TPM,
 	# that the quote is signed by a valid Attestation Key
-	sub = subprocess.run(["./sbin/tpm2-attest", "verify", quote_file ],
+	sub = subprocess.run([bindir + "/sbin/tpm2-attest", "verify", quote_file ],
 		stdout=subprocess.PIPE,
 		stderr=sys.stderr,
 	)
@@ -101,7 +105,7 @@ def attest_verify(quote_file):
 	# the quote, eventlog and PCRS are consistent, so ask the verifier to
 	# process the eventlog and decide if the eventlog meets policy for
 	# this ekhash.
-	sub = subprocess.run(["./sbin/attest-verify", "verify", str(quote_valid)],
+	sub = subprocess.run([bindir + "/sbin/attest-verify", "verify", str(quote_valid)],
 		input=bytes(str(quote), encoding="utf-8"),
 		stdout=subprocess.PIPE,
 		stderr=sys.stderr,
@@ -113,7 +117,7 @@ def attest_verify(quote_file):
 	# read the (binary) response from the sub process stdout
 	response = sub.stdout
 
-	result = subprocess.run(["./sbin/tpm2-attest", "seal", quote_file, ],
+	result = subprocess.run([bindir + "/sbin/tpm2-attest", "seal", quote_file, ],
 		input=response,
 		capture_output=True
 	)
