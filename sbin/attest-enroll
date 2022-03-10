@@ -478,62 +478,48 @@ trap cleanup EXIT
 
 # We might need a TPM for what should be software-only things...
 start_swtpm() {
-	local -i tries port start ready
-	((port= 10240 + ( ($$ % (32768 - 10240) ) ) ))
+	local -i tries
+	local mypath
 	mkdir "${tmp}/swtpm"
+	tries=0
+	mypath=${tmp}/socket
 
-	start=$SECONDS
-	for ((tries=0, ready=0;
-	      ready == 0 && tries < 3 && (SECONDS - start) < 10;
-	      tries++, port+=2)); do
+	# swtpm --daemon exits immediately, which can be too soon.
+	swtpm socket							\
+		--tpm2							\
+		--tpmstate dir="${tmp}/swtpm"				\
+		--pid file="${tmp}/.pid"				\
+		--server type="unixio,path=$mypath"		\
+		--ctrl type="unixio,path=$mypath.ctrl"	\
+		--flags startup-clear &
+	swtpm_pid=$!
 
-		# swtpm --daemon exits immediately, which can be too soon.
-		swtpm socket							\
-			--tpm2							\
-			--tpmstate dir="${tmp}/swtpm"				\
-			--pid file="${tmp}/.pid"				\
-			--server type="tcp,bindaddr=127.0.0.1,port=$port"	\
-			--ctrl type="tcp,bindaddr=127.0.0.1,port=$((port+1))"	\
-			--flags startup-clear					&
-		swtpm_pid=$!
-
-		# Wait until swtpm is started and running
-		while ! lsof				\
+	# Wait until swtpm is started and running
+	while /bin/true;
+	do
+		socketlist=$(lsof			\
 				-p "$swtpm_pid"		\
 				-a			\
-				-i ":$port"		\
-				-a			\
-				-i ":$((port+1))" >/dev/null 2>&1; do
-
-			# Is it still running?
-			kill -0 "$swtpm_pid" || break
-
-			# Have we waited too long?
-			(( (SECONDS - start) >= 10 )) && break
-
-			sleep 1
-		done
-
-		# Check that $swtpm_pid has the two ports open
-		lsof					\
-			-p "$swtpm_pid"			\
-			-a				\
-			-i ":$port"			\
-			-a				\
-			-i ":$((port+1))"		\
-			>/dev/null 2>&1			\
-		&& break
-
-		# Nope; retry.  Note that at this point $swtpm_pid would be
-		# alive or a zombie, so it's OK to kill it.
-		kill "$swtpm_pid"
-		wait "$swtpm_pid"
-		swtpm_pid=
+				-U 2> /dev/null)
+		(echo "$socketlist" | \
+			grep -F -v "$mypath.ctrl" | \
+			grep -F "$mypath" && \
+			echo "$socketlist" | \
+			grep -F "$mypath.ctrl") > /dev/null 2>&1 && \
+			break;
+		if ((++tries > 3)); then
+			# Note that at this point $swtpm_pid would be
+			# alive or a zombie, so it's OK to kill it.
+			kill "$swtpm_pid"
+			wait "$swtpm_pid"
+			swtpm_pid=
+			break;
+		fi
 	done
 
 	[[ -n $swtpm_pid ]]	\
 	|| die "Could not start a software TPM"
-	export TPM2TOOLS_TCTI="swtpm:host=127.0.0.1,port=$port"
+	export TPM2TOOLS_TCTI="swtpm:path=$mypath"
 }
 
 info() {

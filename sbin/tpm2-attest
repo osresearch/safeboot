@@ -344,7 +344,7 @@ attest()
 		-X POST \
 		--fail \
 		--silent \
-		--data-binary @"$TMP/quote-out.tar" \
+		-F quote=@"$TMP/quote-out.tar" \
 		--output "$TMP/cipher.tar" \
 		"$SERVER" \
 	|| die "attestation failed"

@@ -1,10 +1,19 @@
 #!/usr/bin/python3
+
 """
 Quote and Eventlog validating Attestation Server.
 
-This server accepts incoming HTTP POST requests from an attesting machine
-that contain a tar file of a TPM Endorsement Key, Attestation Key, Quote,
-PCR list, Eventlog and other details. It performs three actions:
+This is a python flask server implementing a single API end-point on /, which
+expects a POST request encoded in conventional form (multipart/form-data) that
+includes a field called "quote" containing an input tarball (a source filename
+attribute is expected). I.e. the encoded form should contain a section like;
+Content-Disposition: form-data; name="quote"; filename="whatever"
+
+To use from 'curl', you would;
+  curl -X -POST -F quote=@"mytarball.tar" <URL>
+
+The input tarball contains a TPM Endorsement Key, Attestation Key, Quote, PCR
+list, Eventlog and other details. The API performs three actions:
 
 * Validates that the Quote is signed by the AK
 * Validates that the EK certificate has a good trust chain
@@ -13,145 +22,148 @@ PCR list, Eventlog and other details. It performs three actions:
 It then invokes an external handler to verify that the eventlog
 meets the policy requirements, and will return any output from this
 handler to the attesting machine.
+
 """
-from http.server import SimpleHTTPRequestHandler, HTTPServer
-import os
-import logging
-import tempfile
-import sys
+import flask
+from flask import request, abort, send_file
 import subprocess
+import os, sys
+from stat import *
+from markupsafe import escape
+from werkzeug.utils import secure_filename
+import tempfile
+import logging
 import yaml
 import hashlib
 
 # hard code the hashing algorithm used
 alg = 'sha256'
 
+# This subroutine is the meat in the sandwich. Its only argument is a path to
+# the input tarball (the "quotefile") that was received from the attesting
+# host/client, and it returns a 2-tuple of status code and response tarball (as
+# a byte array, not a path) for returning to the host/client. This function is
+# called by the flask-handling code further down, which extracts the input
+# tarball from the http request and returns the output tarball in the http
+# response.
 
-class AttestServer(SimpleHTTPRequestHandler):
-	def fail(self, msg):
-		logging.info("FAILED: ", msg)
-		self.send_response(401)
-		self.send_header('Content-type', 'text/html')
-		self.end_headers()
-		self.wfile.write(msg.encode())
+bindir = os.environ.get('BINDIR')
+if not bindir:
+    bindir = '.'
 
-	def do_GET(self):
-		logging.info("GET request,\nPath: %s\nHeaders:\n%s\n", str(self.path), str(self.headers))
-		return super().do_GET()
-		#self.send_response(200)
-		#self.send_header('Content-type', 'text/html')
-		#self.end_headers()
-		#self.wfile.write("Only POST is supported".encode())
+def attest_verify(quote_file):
+	# verify that the Endorsment Key came from an authorized TPM,
+	# that the quote is signed by a valid Attestation Key
+	sub = subprocess.run([bindir + "/sbin/tpm2-attest", "verify", quote_file ],
+		stdout=subprocess.PIPE,
+		stderr=sys.stderr,
+	)
 
-	def do_POST(self):
-		content_length = int(self.headers.get('Content-Length',0))
-		quote_data = self.rfile.read(content_length)
+	quote_valid = sub.returncode == 0
 
-		# write post data into a file
-		tmp_file = tempfile.NamedTemporaryFile()
-		tmp_file.write(quote_data)
-		tmp_file.flush()
-		quote_file = tmp_file.name
-
-		# verify that the Endorsment Key came from an authorized TPM,
-		# that the quote is signed by a valid Attestation Key
-		sub = subprocess.run(["./sbin/tpm2-attest", "verify", quote_file ],
-			stdout=subprocess.PIPE,
-			stderr=sys.stderr,
-		)
-
-		quote_valid = sub.returncode == 0
-
-		# The output contains YAML formatted hash of the EK and the PCRs
-		quote = yaml.safe_load(sub.stdout)
-		if 'ekhash' in quote:
-			ekhash = quote['ekhash']
-		else:
-			quote_valid = False
-			ekhash = "UNKNOWN"
-
-		with open("/tmp/quote.yaml", "w") as y:
-			y.write(str(quote))
-
-		# Validate that the every computed PCR in the eventlog
-		# matches a quoted PCRs.
-		# This makes no statements about the validitiy of the
-		# event log, only that it is consistent with the quote.
-		# Other PCRs may have values, which is the responsibility
-		# of the verifier to check.
-		if alg not in quote['pcrs']:
-			logging.warning(f"{ekhash=}: quote does not have hash {alg}")
-		quote_pcrs = quote['pcrs'][alg]
-
-		# XXX We need a way to configure whether the eventlog is optional
-		if quote['eventlog-pcrs'] != None:
-			eventlog_pcrs = quote['eventlog-pcrs'][alg]
-
-			for pcr_index in eventlog_pcrs:
-				eventlog_pcr = eventlog_pcrs[pcr_index]
-
-				if pcr_index in quote_pcrs:
-					quote_pcr = quote_pcrs[pcr_index]
-					if quote_pcr != eventlog_pcr:
-						logging.warning(f"{ekhash=}: {pcr_index=} {quote_pcr=} != {eventlog_pcr=}")
-						quote_valid = False
-					else:
-						logging.info(f"{ekhash=}: {pcr_index=} {quote_pcr=} good")
-
-		if quote_valid:
-			logging.info(f"{ekhash=}: so far so good")
-		else:
-			logging.warning(f"{ekhash=}: not good at all")
-
-		# the quote, eventlog and PCRS are consistent, so ask the verifier to
-		# process the eventlog and decide if the eventlog meets policy for
-		# this ekhash.
-		sub = subprocess.run(["./sbin/attest-verify", "verify", str(quote_valid)],
-			input=bytes(str(quote), encoding="utf-8"),
-			stdout=subprocess.PIPE,
-			stderr=sys.stderr,
-		)
-
-		if sub.returncode != 0:
-			return self.fail("ATTEST_VERIFY FAILED")
-
-		# read the (binary) response from the sub process stdout
-		response = sub.stdout
-	
-		# attest-verify returned "success", meaning that it has data
-		# to send to the attesting machine.  Seal this for the remote
-		# machine based on its AK
-		self.send_response(200)
-		self.send_header('Content-type', 'application/octet-stream')
-		self.end_headers()
-
-		subprocess.run(["./sbin/tpm2-attest", "seal", quote_file, ],
-			input=response,
-			stdout=self.wfile,
-			stderr=sys.stderr,
-		)
-
-def run(port=8080):
-	logging.basicConfig(level=logging.INFO)
-	server_address = ('', port)
-	httpd = HTTPServer(server_address, AttestServer)
-	logging.info('Starting attestation httpd port %d...\n' % (port))
-	try:
-		httpd.serve_forever()
-	except KeyboardInterrupt:
-		pass
-	httpd.server_close()
-	logging.info('Stopping httpd...\n')
-
-if __name__ == '__main__':
-	from sys import argv
-
-	if len(argv) > 2:
-		print("Usage: attest-server [port]", file=sys.stderr)
-		exit(1)
-
-	if len(argv) == 2:
-		run(port=int(argv[1]))
+	# The output contains YAML formatted hash of the EK and the PCRs
+	quote = yaml.safe_load(sub.stdout)
+	if 'ekhash' in quote:
+		ekhash = quote['ekhash']
 	else:
-		run()
-	exit(0)
+		quote_valid = False
+		ekhash = "UNKNOWN"
+
+	with open("/tmp/quote.yaml", "w") as y:
+		y.write(str(quote))
+
+	# Validate that the every computed PCR in the eventlog
+	# matches a quoted PCRs.
+	# This makes no statements about the validitiy of the
+	# event log, only that it is consistent with the quote.
+	# Other PCRs may have values, which is the responsibility
+	# of the verifier to check.
+	if alg not in quote['pcrs']:
+		logging.warning(f"{ekhash=}: quote does not have hash {alg}")
+	quote_pcrs = quote['pcrs'][alg]
+
+	# XXX We need a way to configure whether the eventlog is optional
+	if quote['eventlog-pcrs'] != None:
+		eventlog_pcrs = quote['eventlog-pcrs'][alg]
+
+		for pcr_index in eventlog_pcrs:
+			eventlog_pcr = eventlog_pcrs[pcr_index]
+
+			if pcr_index in quote_pcrs:
+				quote_pcr = quote_pcrs[pcr_index]
+				if quote_pcr != eventlog_pcr:
+					logging.warning(f"{ekhash=}: {pcr_index=} {quote_pcr=} != {eventlog_pcr=}")
+					quote_valid = False
+				else:
+					logging.info(f"{ekhash=}: {pcr_index=} {quote_pcr=} good")
+
+	if quote_valid:
+		logging.info(f"{ekhash=}: so far so good")
+	else:
+		logging.warning(f"{ekhash=}: not good at all")
+
+	# the quote, eventlog and PCRS are consistent, so ask the verifier to
+	# process the eventlog and decide if the eventlog meets policy for
+	# this ekhash.
+	sub = subprocess.run([bindir + "/sbin/attest-verify", "verify", str(quote_valid)],
+		input=bytes(str(quote), encoding="utf-8"),
+		stdout=subprocess.PIPE,
+		stderr=sys.stderr,
+	)
+
+	if sub.returncode != 0:
+		return (403, "ATTEST_VERIFY FAILED")
+
+	# read the (binary) response from the sub process stdout
+	response = sub.stdout
+
+	result = subprocess.run([bindir + "/sbin/tpm2-attest", "seal", quote_file, ],
+		input=response,
+		capture_output=True
+	)
+
+	if result.returncode != 0:
+		return (403, "ATTEST_SEAL FAILED")
+
+	return (200, result.stdout)
+
+# The flask details;
+
+app = flask.Flask(__name__)
+app.config["DEBUG"] = True
+
+@app.route('/', methods=['GET'])
+def home_get():
+    return { "error": "GET request, but this service only supports POST" }
+
+@app.route('/', methods=['POST'])
+def home_post():
+    if 'quote' not in request.files:
+        abort(500)
+    f = request.files['quote']
+    # Create a temporary directory for the quote file, and make it world
+    # readable+executable. (This gets garbage collected after we're done, as do
+    # any files we put in there.) We may priv-sep the python API from the
+    # underlying safeboot routines at some point, by running the latter behind
+    # sudo as another user, so this ensures it would be able to read the quote
+    # file.
+    tf = tempfile.TemporaryDirectory()
+    s = os.stat(tf.name)
+    os.chmod(tf.name, s.st_mode | S_IROTH | S_IXOTH)
+    # Sanitize the user-supplied filename, append it to the temp directory
+    # path, and save the quote file.
+    p = os.path.join(tf.name, secure_filename(f.filename))
+    f.save(p)
+    # Pass the saved quote file (by path) to the attestation code
+    rcode, rbody = attest_verify(p)
+    if (rcode != 200):
+        return { "error": "attestation failed" }
+    # Put the output in a file in the temp directory and send it.
+    p = os.path.join(tf.name, 'output')
+    ofd = os.open(p, os.O_RDWR | os.O_CREAT)
+    os.write(ofd, rbody)
+    os.close(ofd)
+    return send_file(p)
+
+if __name__ == "__main__":
+    app.run()
