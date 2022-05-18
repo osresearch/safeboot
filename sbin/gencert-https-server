@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -euo pipefail
+shopt -s extglob
+
+BINDIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+
+gencert_override() {
+	GENCERT_OUTPUT+="-https-server"
+	GENCERT_PKINIT_CLIENT=false
+	GENCERT_PKINIT_KDC=false
+	GENCERT_HTTPS_CLIENT=false
+	GENCERT_HTTPS_SERVER=true
+}
+
+source $BINDIR/gencert
