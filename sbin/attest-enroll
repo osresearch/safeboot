@@ -794,27 +794,26 @@ for genprog in "${GENPROGS[@]}" genmanifest; do
 	fi
 	kind=$1
 	shift
-	if [[ $kind = sensitive ]]; then
-		# Encrypt file, escrow, and place into output dir.
-		info "Encrypting secret file from $genprog: $1"
-		encrypt "$genprog" "$1"
-		info "Signing ciphertext $1"
-		sign "${outdir}/${1}.enc"
-		did_something=true
-		shift
-	fi
 
 	# Copy any remaining files
 	while (($# > 0)); do
-		if [[ -f ${outdir}/$1 ]]; then
-			info "Replacing public file $1"
-			mv -f "${outdir}/$1" "${outdir}/${1}-"
+		if [[ $kind = sensitive ]]; then
+			# Encrypt file, escrow, and place into output dir.
+			info "Encrypting secret file from $genprog: $1"
+			encrypt "$genprog" "$1"
+			info "Signing ciphertext $1"
+			sign "${outdir}/${1}.enc"
 		else
-			info "Installing public file $1"
+			if [[ -f ${outdir}/$1 ]]; then
+				info "Replacing public file $1"
+				mv -f "${outdir}/$1" "${outdir}/${1}-"
+			else
+				info "Installing public file $1"
+			fi
+			cp -f "${tmp}/$1" "${outdir}/${1}"
+			info "Signing metadata file $1"
+			sign "${outdir}/$1"
 		fi
-		cp -f "${tmp}/$1" "${outdir}/${1}"
-		info "Signing metadata file $1"
-		sign "${outdir}/$1"
 		did_something=true
 		shift
 	done
