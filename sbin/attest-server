@@ -52,25 +52,31 @@ if not bindir:
     bindir = '.'
 
 def attest_verify(quote_file):
+	err_output = ""
+
 	# verify that the Endorsment Key came from an authorized TPM,
 	# that the quote is signed by a valid Attestation Key
-	sub = subprocess.run([bindir + "/sbin/tpm2-attest", "verify", quote_file ],
+	subtav = subprocess.run([bindir + "/sbin/tpm2-attest", "verify", quote_file],
 		stdout=subprocess.PIPE,
-		stderr=sys.stderr,
-	)
+		stderr=subprocess.PIPE)
 
-	quote_valid = sub.returncode == 0
+	if subtav.returncode != 0:
+		err_output += f"Error, received quote was invalid"
+		err_output += f"{subtav.stderr}\n"
+		return (403, "TPM2_ATTEST_VERIFY FAILED", err_output)
 
 	# The output contains YAML formatted hash of the EK and the PCRs
-	quote = yaml.safe_load(sub.stdout)
-	if 'ekhash' in quote:
-		ekhash = quote['ekhash']
-	else:
-		quote_valid = False
-		ekhash = "UNKNOWN"
+	quote = yaml.safe_load(subtav.stdout)
+	# Put the quote into our cumulative "stderr"
+	err_output += "INFO: received quote;\n"
+	err_output += f"{str(quote)}\n"
 
-	with open("/tmp/quote.yaml", "w") as y:
-		y.write(str(quote))
+	if 'ekhash' not in quote:
+		err_output += f"Error, received quote had no 'ekhash'\n"
+		return (403, "TPM2_ATTEST_EKHASH FAILED", err_output)
+
+	ekhash = quote['ekhash']
+	err_output += f"INFO: ekhash is {ekhash}\n"
 
 	# Validate that the every computed PCR in the eventlog
 	# matches a quoted PCRs.
@@ -79,7 +85,7 @@ def attest_verify(quote_file):
 	# Other PCRs may have values, which is the responsibility
 	# of the verifier to check.
 	if alg not in quote['pcrs']:
-		logging.warning(f"{ekhash=}: quote does not have hash {alg}")
+		err_output += f"{ekhash=}: quote does not have hash {alg}\n"
 	quote_pcrs = quote['pcrs'][alg]
 
 	# XXX We need a way to configure whether the eventlog is optional
@@ -92,40 +98,40 @@ def attest_verify(quote_file):
 			if pcr_index in quote_pcrs:
 				quote_pcr = quote_pcrs[pcr_index]
 				if quote_pcr != eventlog_pcr:
-					logging.warning(f"{ekhash=}: {pcr_index=} {quote_pcr=} != {eventlog_pcr=}")
-					quote_valid = False
-				else:
-					logging.info(f"{ekhash=}: {pcr_index=} {quote_pcr=} good")
-
-	if quote_valid:
-		logging.info(f"{ekhash=}: so far so good")
-	else:
-		logging.warning(f"{ekhash=}: not good at all")
+					err_output += f"Error, quote/event-log mismatch\n"
+					err_output += f"{ekhash=}: {pcr_index=} {quote_pcr=} != {eventlog_pcr=}\n"
+					return (403, "EVENTLOG_PCR FAILED", err_output)
+				err_output += f"{ekhash=}: {pcr_index=} {quote_pcr=} good\n"
 
 	# the quote, eventlog and PCRS are consistent, so ask the verifier to
 	# process the eventlog and decide if the eventlog meets policy for
 	# this ekhash.
-	sub = subprocess.run([bindir + "/sbin/attest-verify", "verify", str(quote_valid)],
-		input=bytes(str(quote), encoding="utf-8"),
-		stdout=subprocess.PIPE,
-		stderr=sys.stderr,
-	)
+	subavv = subprocess.run([bindir + "/sbin/attest-verify", "verify", "True"],
+				input=bytes(str(quote), encoding="utf-8"),
+				stdout=subprocess.PIPE,
+				stderr=subprocess.PIPE)
 
-	if sub.returncode != 0:
-		return (403, "ATTEST_VERIFY FAILED")
+	if subavv.returncode != 0:
+		if (subavv.returncode == 100):
+			return (404, f"Unrecognised TPM {ekhash}", f"Unrecognised TPM {ekhash}")
+		err_output += f"{subavv.stderr}\n"
+		err_output = f"Error, unknown attestation failure {subavv.returncode}\n{err_output}\n"
+		return (403, "ATTEST_VERIFY FAILED", err_output)
 
-	# read the (binary) response from the sub process stdout
-	response = sub.stdout
+	# read the (binary) response from the subprocess stdout
+	response = subavv.stdout
 
-	result = subprocess.run([bindir + "/sbin/tpm2-attest", "seal", quote_file, ],
-		input=response,
-		capture_output=True
-	)
+	subtas = subprocess.run([bindir + "/sbin/tpm2-attest", "seal", quote_file, ],
+				input=response,
+				stdout=subprocess.PIPE,
+				stderr=subprocess.PIPE)
 
-	if result.returncode != 0:
-		return (403, "ATTEST_SEAL FAILED")
+	if subtas.returncode != 0:
+		err_output += f"Error, failed to seal assets\n"
+		err_output += f"{subtas.stderr}"
+		return (403, "ATTEST_SEAL FAILED", err_output)
 
-	return (200, result.stdout)
+	return (200, subtas.stdout, "")
 
 # The flask details;
 
@@ -155,9 +161,10 @@ def home_post():
     p = os.path.join(tf.name, secure_filename(f.filename))
     f.save(p)
     # Pass the saved quote file (by path) to the attestation code
-    rcode, rbody = attest_verify(p)
+    rcode, rbody, err_output = attest_verify(p)
     if (rcode != 200):
-        return { "error": "attestation failed" }
+        print(f"{err_output}")
+        return { "error": "attestation failed" }, rcode
     # Put the output in a file in the temp directory and send it.
     p = os.path.join(tf.name, 'output')
     ofd = os.open(p, os.O_RDWR | os.O_CREAT)
