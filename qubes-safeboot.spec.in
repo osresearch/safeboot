@@ -35,6 +35,11 @@ if [ -f /boot/efi/EFI/qubes/qubes.efi.signed ]; then
     /usr/sbin/safeboot qubes-sign
 fi
 
+%triggerin -- linux-firmware
+if [ -f /boot/efi/EFI/qubes/qubes.efi.signed ]; then
+    /usr/sbin/safeboot qubes-sign
+fi
+
 %files
 %config %{_sysconfdir}/safeboot/safeboot.conf
 %{_sbindir}/safeboot
