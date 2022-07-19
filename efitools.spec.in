@@ -39,7 +39,7 @@ secure variables of the UEFI firmware, usually in the NVRAM area.
 
 %build
 %set_build_flags
-%make_build
+%make_build -j1
 
 %install
 %make_install DOCDIR=%{buildroot}%{_docdir}/%{name}/ CFLAGS="%{optflags}"
