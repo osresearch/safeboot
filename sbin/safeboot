@@ -505,7 +505,7 @@ pcrs-sign() {
 	target="${2-linux}"
 	linux="$EFIDIR/$target/linux.efi"
 
-	[ -f /etc/qubes-release ] || yubikey_daemon
+	[ -z "$KEY_ENGINE" ] || yubikey_daemon
 
 	if [ "$prevent_rollback" = "prevent-rollback" ]; then
 		warn "$linux: Incrementing TPM version to prevent rollback"
@@ -640,7 +640,7 @@ luks-seal() {
 		shift
 	fi
 
-	[ -f /etc/qubes-release ] || yubikey_daemon
+	[ -z "$KEY_ENGINE" ] || yubikey_daemon
 
 	KEYSLOT=1
 
@@ -848,7 +848,7 @@ sign() {
 		OUT="$IN.signed"
 	fi
 
-	[ -f /etc/qubes-release ] || yubikey_daemon
+	[ -z "$KEY_ENGINE" ] || yubikey_daemon
 
 	sbsign.safeboot \
 		$KEY_ENGINE \
