@@ -163,7 +163,7 @@ key_init_usage='
 ## key-init
 Usage:
 ```
-safeboot key-init "subject"
+safeboot key-init "subject" [nopassword]
 ```
 
 Generate a new x509 signing key with openssl, writing storing
@@ -173,6 +173,10 @@ This is not as secure as storing it in a hardware token,
 although if the key is moved to an external device and the
 `$KEY` variable in `/etc/safeboot/local.conf` updated to point
 to it, then it will prevent a software-only attack.
+
+Optionally available to disable password protection, which 
+can be useful to support unattended updates in a secure 
+environment, such as Qubes OS.
 
 The subject must be written as a "distinguished name":
 ```
@@ -188,6 +192,7 @@ key-init() {
 	fi
 
 	subject="$1"
+	nopassword="$2"
 
 	if [ "$KEY" == "pkcs11:" ]; then
 		warn "\$KEY=pkcs11:; updating in local.conf"
@@ -217,9 +222,8 @@ key-init() {
 		mv "$CERT" "$CERT.orig" \
 		|| die "$CERT: unable to backup"
 	fi
-	# Do not encrypt key with Qubes OS to allow unattended updates
-	if [ -f /etc/qubes-release ]; then
-		openssl_param+="-nodes"
+	if [ "$nopassword" == "nopassword" ]; then
+		openssl_nodes_param="-nodes"
 	fi
 	openssl req \
 		-new \
@@ -231,7 +235,7 @@ key-init() {
 		-out "$CERT" \
 		-days "3650" \
 		-sha256 \
-		$openssl_param \
+		$openssl_nodes_param \
 	|| die "$KEY: unable to create"
 
 	# Create a certificate and public key file from the PEM
