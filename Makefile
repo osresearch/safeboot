@@ -629,6 +629,7 @@ qemu-server: \
 
 get-sources:
 	git submodule update --init --recursive efitools
+	git submodule update --init --recursive --recommend-shallow sbsigntools
 
 verify-sources:
 	@true
