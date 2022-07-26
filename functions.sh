@@ -296,7 +296,7 @@ efivar_write() {
 
 efivar_read() {
 	efivar_setup "${1:-}"
-	tail -c +5 < "$var"
+	cat "$var" | tail -c +5
 }
 
 efiboot_entry() {
