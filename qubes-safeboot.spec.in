@@ -8,8 +8,12 @@ URL:            https://github.com/osresearch/safeboot
 #Source0:       %{url}/archive/refs/tags/release-{version}.tar.gz
 Source0:        %{name}-%{version}.tar.gz
 
+BuildRequires: systemd-rpm-macros
+
 Requires:     efitools%{_isa}
 Requires:     sbsigntools%{_isa}
+Requires:     tpm2-tss%{_isa}
+Requires:     tpm2-tools%{_isa}
 Requires:     binutils%{_isa}
 
 %description
@@ -23,21 +27,32 @@ install -m 0755 -D %{_builddir}/%{name}-%{version}/safeboot -t %{buildroot}%{_sb
 install -m 0644 -D %{_builddir}/%{name}-%{version}/safeboot.conf -t %{buildroot}%{_sysconfdir}/safeboot/
 install -m 0644 -D %{_builddir}/%{name}-%{version}/functions.sh -t %{buildroot}/usr/lib/safeboot/
 install -m 0755 -D %{_builddir}/%{name}-%{version}/qubes-hooks/kernel-safeboot.install %{buildroot}/usr/lib/kernel/install.d/99-qubes-safeboot.install
+install -m 0755 -D 90safeboot/* -t %{buildroot}/usr/lib/dracut/modules.d/90safeboot/
 
-# symlink since we don't build this tools to Qubes OS
+install -m 0644 -D systemd/system/qubes-safeboot-unseal.service -t %{buildroot}%{_unitdir}/
+install -m 0755 -d %{buildroot}%{_unitdir}/initrd.target.wants
+ln -s ../qubes-safeboot-unseal.service %{buildroot}%{_unitdir}/initrd.target.wants/qubes-safeboot-unseal.service
+
+# symlink since we build these packages
 mkdir -p %{buildroot}%{_bindir}
 ln -s sbsign %{buildroot}%{_bindir}/sbsign.safeboot
 ln -s sign-efi-sig-list  %{buildroot}%{_bindir}/sign-efi-sig-list.safeboot
 
 
 %triggerin -- xen-hypervisor
-if [ -f /boot/efi/EFI/qubes/qubes.efi.signed ]; then
+if [ -f /boot/efi/EFI/qubes/qubes.efi ]; then
     /usr/sbin/safeboot qubes-sign
+    if grep -q LINUX_TARGET=qubes /etc/safeboot/local.conf; then
+        /usr/sbin/safeboot pcrs-sign
+    fi
 fi
 
 %triggerin -- linux-firmware
-if [ -f /boot/efi/EFI/qubes/qubes.efi.signed ]; then
+if [ -f /boot/efi/EFI/qubes/qubes.efi ]; then
     /usr/sbin/safeboot qubes-sign
+    if grep -q LINUX_TARGET=qubes /etc/safeboot/local.conf; then
+        /usr/sbin/safeboot pcrs-sign
+    fi
 fi
 
 %files
@@ -45,7 +60,8 @@ fi
 %{_sbindir}/safeboot
 /usr/lib/safeboot/functions.sh
 /usr/lib/kernel/install.d/99-qubes-safeboot.install
-
+/usr/lib/dracut/modules.d/90safeboot/
+%{_unitdir}
 %{_bindir}/sbsign.safeboot
 %{_bindir}/sign-efi-sig-list.safeboot
 

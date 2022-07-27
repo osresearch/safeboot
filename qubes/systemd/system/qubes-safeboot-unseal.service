@@ -1,0 +1,16 @@
+[Unit]
+Description=Qubes Safeboot unsealing
+DefaultDependencies=no
+Wants=cryptsetup-pre.target
+Before=cryptsetup-pre.target
+After=plymouth-start.service
+ConditionKernelCommandLine=rd.luks.key=/safeboot-keyfile
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=/sbin/qubes-safeboot-unseal
+StandardInput=null
+StandardOutput=tty
+StandardError=journal+console
+TimeoutStartSec=300

@@ -1,0 +1,115 @@
+#!/bin/bash
+# This is run in the initramfs context, not in the normal user space.
+# The boot mode should have been extended in the start of the initramfs.
+#
+# It attempts to unseal the key from the TPM based on the PCRS passed
+# on the command line using direct access since there is no resource
+# manager.
+#
+# If successful, PCR14 will be extended to prevent later stages from
+# retrieving the decryption key.  The key is stored in a kernel key
+# ring, so it should not be accessible to even a root user.
+#
+# If the unsealing fails, fall back to asking for the user's recovery key.
+#
+# turn off "echo flags are undefined" and external shell scripts
+# shellcheck disable=SC2039 disable=SC1091
+
+PCRS=0
+BOOTMODE_PCR=14
+TPM_UNSEALED_SECRET="$TMP/safeboot-keyfile"
+MODE=qubes
+if [ -z "$DIR" ]; then
+	DIR="/etc/safeboot"
+fi
+
+for script in \
+	safeboot.conf \
+	local.conf \
+	functions.sh \
+; do
+	if [ -r "$DIR/$script" ]; then
+		. "$DIR/$script" || warn "$DIR/$script: failed to source"
+	fi
+done
+
+# Override die to extend the boot mode PCR to indicate the failure
+die() {
+	echo >&2 "$@"
+	echo -n bootfail | tpm2_extend "$BOOTMODE_PCR"
+	touch "/tmp/unseal-failed"
+	exit 1
+}
+
+# shellcheck disable=SC2013
+echo -n $MODE | tpm2_extend "$BOOTMODE_PCR"
+warn "TPM mode=$MODE pcrs=$PCRS $BOOTMODE_PCR"
+
+tpm2 pcrread >&2 \
+	'sha256:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16'
+
+#
+# Try to unseal the secret using the TPM,
+# the current NV version and optional user PIN.
+#
+# Extract the signature from the UEFI variable, skipping
+# the four-byte UEFI variable header.
+
+VERSION="$(tpm2 nvread "$TPM_NV_VERSION" | bin2hex)"
+TPM_SESSION_TYPE=policy
+TPM_POLICY_SIG="$TMP/pcr.policy.sig"
+
+efivar_read "$PCR_SIGNATURE" > "$TPM_POLICY_SIG"
+
+tpm2_create_policy "" "$VERSION"
+
+tpm2 flushcontext --transient-object
+
+#
+# Attempt and unseal, and if successful, write the key
+# to stdout as well as extending the boot mode PCR
+#
+tpm2_unseal()
+{
+	PIN="$1"
+	tpm2 unseal \
+		--auth "session:$TMP/session.ctx$PIN" \
+		--object-context "$TPM_SEALED_HANDLE" \
+		--output "$TPM_UNSEALED_SECRET" \
+	|| return $?
+
+	# Successfully unsealed, extend the bootmode PCR
+	warn "TPM disk key unsealed"
+	echo -n postboot | tpm2_extend "$BOOTMODE_PCR"
+	exit 0
+}
+
+if [ "$SEAL_PIN" != "1" ]; then
+	tpm2_unseal ""
+else
+	for tries in 1 2 3; do
+		while true; do
+			# Use the askpass program to try to get a pin
+			# retrieve a tpmtotp attestation so that the user knows
+			# that the firmware is unmodified and that it is safe to
+			# enter their credentials.
+			#totp="$(/usr/sbin/tpm2-totp --time calculate || echo TPM TOTP FAILED)"
+			msg="Enter Safeboot Password (Try $tries)
+
+Enter unseal PIN for $CRYPTTAB_SOURCE ($CRYPTTAB_NAME): "
+
+			PIN=$(systemd-ask-password --timeout=0 "$msg" )
+		
+			if [ "$PIN" != "" ]; then
+				break
+			fi
+		done
+
+		# try to unseal with the provided PIN
+		tpm2_unseal "+$PIN"
+	done
+fi
+
+# if we ended up here, things are bad.
+# The system will re-run the script to try to use the recovery key
+die "UNSEALING FAILED"

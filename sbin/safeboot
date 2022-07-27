@@ -508,7 +508,11 @@ pcrs-sign() {
 
 	prevent_rollback="${1}"
 	target="${2-linux}"
-	linux="$EFIDIR/$target/linux.efi"
+	if [ "$LINUX_TARGET" = "qubes" ]; then
+		linux="$EFIDIR/qubes/qubes.efi"
+	else
+		linux="$EFIDIR/$target/linux.efi"
+	fi
 
 	[ -z "$KEY_ENGINE" ] || yubikey_daemon
 
@@ -649,11 +653,21 @@ luks-seal() {
 
 	KEYSLOT=1
 
-	# check to see if the initramfs hook is installed
-	if [ ! -x "$PREFIX/etc/initramfs-tools/hooks/safeboot-hooks" ]; then
-		warn "!!! $PREFIX/etc/initramfs-tools/hooks/safeboot-hooks is not installed; this will probably not work"
+	if [ -f /etc/qubes-release ]; then
+		LINUX_TARGET="qubes"
+		if ! grep -q "LINUX_TARGET=qubes" $PREFIX$DIR/local.conf; then
+			echo "LINUX_TARGET=qubes" >> $PREFIX$DIR/local.conf
+		fi
+		# enable dracut module
+		if [ ! -r /etc/dracut.conf.d/safeboot.conf ]; then
+			echo "add_dracutmodules+=\" safeboot \""> safeboot.conf
+		fi
+	else
+		# check to see if the initramfs hook is installed
+		if [ ! -x "$PREFIX/etc/initramfs-tools/hooks/safeboot-hooks" ]; then
+			warn "!!! $PREFIX/etc/initramfs-tools/hooks/safeboot-hooks is not installed; this will probably not work"
+		fi
 	fi
-
 	# and make sure that the unlock script is installed as expected
 	if [ ! -x "$PREFIX/usr/sbin/safeboot" ]; then
 		warn "!!! $PREFIX/usr/sbin/safeboot is not installed; this will probably not work"
@@ -766,16 +780,28 @@ luks-seal() {
 		"$TPM_SEALED_HANDLE" \
 	|| die "Unable to persist sealed data into the TPM"
 
-	# make sure the crypttab has the unlock script referenced
-	if ! grep keyscript "$PREFIX/etc/crypttab" > /dev/null ; then
-		warn "adding crypttab unseal script"
-		sed \
-			-i.orig \
-			's: luks: keyscript=/usr/sbin/safeboot-tpm-unseal,luks:' \
-			$PREFIX/etc/crypttab \
-		|| die "$PREFIX/etc/crypttab: unable to add keyscript"
+	if [ -f /etc/qubes-release ]; then
+		if ! grep -q keyfile "$XEN_CONFIG"; then
+			warn "adding keyfile kernel cmdline parameter"
+			sed -r \
+				-i.orig \
+				's:^kernel=(.*)$:kernel=\1 rd.luks.crypttab=no rd.luks.key=/safeboot-keyfile:' \
+				$XEN_CONFIG \
+			|| die "$XEN_CONFIG: unable add keyfile option"
+			need_update_initramfs=1
+		fi
+	else
+		# make sure the crypttab has the unlock script referenced
+		if ! grep keyscript "$PREFIX/etc/crypttab" > /dev/null ; then
+			warn "adding crypttab unseal script"
+			sed \
+				-i.orig \
+				's: luks: keyscript=/usr/sbin/safeboot-tpm-unseal,luks:' \
+				$PREFIX/etc/crypttab \
+			|| die "$PREFIX/etc/crypttab: unable to add keyscript"
 
-		need_update_initramfs=1
+			need_update_initramfs=1
+		fi
 	fi
 
 	# ask for the disk encryption key
@@ -809,13 +835,23 @@ luks-seal() {
 	warn "$dev: sealed with PCR $PCRS,$BOOTMODE_PCR"
 
 	if [ -n "$need_update_initramfs" ]; then
-		warn "-------- Need to update initramfs --------"
-		update-initramfs -u \
-		|| die "Unable to update initramfs"
+		if [ -f /etc/qubes-release ]; then
+			warn "-------- Need to update initramfs --------"
+			dracut -f --kver $(uname -r) "$EFIDIR"/qubes/initramfs-$(uname -r).img \
+			|| die "Unable to update initramfs"
 
-		warn "-------- Need to sign new kernel --------"
-		linux-sign "$LINUX_TARGET" \
-		|| die "Unable to sign kernel"
+			warn "-------- Need to sign new boot module --------"
+			qubes-sign \
+			|| die "Unable to sign qubes.efi"
+		else
+			warn "-------- Need to update initramfs --------"
+			update-initramfs -u \
+			|| die "Unable to update initramfs"
+
+			warn "-------- Need to sign new kernel --------"
+			linux-sign "$LINUX_TARGET" \
+			|| die "Unable to sign kernel"
+		fi
 	fi
 
 	warn "-------- Need to sign PCR and counter values --------"
