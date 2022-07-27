@@ -82,6 +82,7 @@ fi
 : "${LINUX_COMMANDLINE:=}"
 : "${RECOVERY_COMMANDLINE:=${LINUX_COMMANDLINE}}"
 : "${SEAL_PIN:=1}"
+: "${XEN_CONFIG:=$EFIDIR/qubes/xen.cfg}"
 
 #
 # Ensure that there is a valid root device
@@ -1181,22 +1182,20 @@ qubes-xen-config(){
 	show_help "$1" "$qubes_xen_config_usage"
 	rootdev-check -
 
-	QUBES_EFIDIR="/boot/efi/EFI/qubes"
-	xen_config="$QUBES_EFIDIR/xen.cfg"
-	if [ -f "$xen_config" ]; then
+	if [ -f "$XEN_CONFIG" ]; then
 		warn "Xen config exists"
 		return
 	fi
 
-	QUBES_KVER=$(uname -r)
-	kernel="vmlinuz-$QUBES_KVER"
-	[ -f /boot/$kernel ] \
-		&& cp /boot/$kernel $QUBES_EFIDIR \
+	qubes_kver=$(uname -r)
+	qubes_kernel="$KERNEL-$qubes_kver"
+	[ -f $kernel ] \
+		&& cp $qubes_kernel $EFIDIR/qubes \
 		|| die "Kernel image not found!"
 
-	ramdisk=initramfs-$QUBES_KVER.img
-	[ -f /boot/$ramdisk ] \
-		&& cp /boot/$ramdisk $QUBES_EFIDIR \
+	qubes_ramdisk=initramfs-$qubes_kver.img
+	[ -f /boot/$qubes_ramdisk ] \
+		&& cp /boot/$qubes_ramdisk $EFIDIR/qubes \
 		|| die "Initrd image not found!"
 
 	. /etc/default/grub
@@ -1206,12 +1205,12 @@ qubes-xen-config(){
 
 	( \
 	echo "[global]" ; \
-	echo "default=$QUBES_KVER" ; \
-	echo "[$QUBES_KVER]" ; \
-	echo "kernel=$kernel root=$ROOTDEV ro $GRUB_CMDLINE_LINUX" ; \
-	echo "ramdisk=$ramdisk" ; \
+	echo "default=$qubes_kver" ; \
+	echo "[$qubes_kver]" ; \
+	echo "kernel=$qubes_kernel root=$ROOTDEV ro $GRUB_CMDLINE_LINUX" ; \
+	echo "ramdisk=$qubes_ramdisk" ; \
 	echo "options=$GRUB_CMDLINE_XEN_DEFAULT"
-	) >> $xen_config \
+	) >> $XEN_CONFIG \
 	|| die "Unable create xen.cfg"
 }
 
@@ -1235,40 +1234,39 @@ qubes-sign()
 {
 	show_help "$1" "$qubes_sign_usage"
 
-	xen_config='/boot/efi/EFI/qubes/xen.cfg'
-	[ -f "$xen_config" ] \
-		&& QUBES_KVER=$(awk -F= '/default=/ {print $2}' "$xen_config") \
+	[ -f "$XEN_CONFIG" ] \
+		&& qubes_kver=$(awk -F= '/default=/ {print $2}' "$XEN_CONFIG") \
 		|| qubes-xen-config
 
-	xen_efi='/boot/efi/EFI/qubes/xen.efi'
+	xen_efi="$EFIDIR/qubes/xen.efi"
 	[ -f "$xen_efi" ] \
 		|| die "No xen.efi found!"
 
-	qubes_kernel="/boot/efi/EFI/qubes/vmlinuz-$QUBES_KVER"
+	qubes_kernel="$EFIDIR/qubes/vmlinuz-$qubes_kver"
 	[ -f "$qubes_kernel" ] \
 		|| die "No default kernel found!"
 
-	qubes_ramdisk="/boot/efi/EFI/qubes/initramfs-$QUBES_KVER.img"
+	qubes_ramdisk="$EFIDIR/qubes/initramfs-$qubes_kver.img"
 	[ -f "$qubes_ramdisk" ] \
 		|| die "No default initramfs found!"
 
-	qubes_efi='/boot/efi/EFI/qubes/qubes.efi'
+	qubes_efi="$EFIDIR/qubes/qubes.efi"
 	objcopy \
-		--add-section .config="$xen_config" \
+		--add-section .config="$XEN_CONFIG" \
 		--change-section-vma .config=0xffff82d041000000 \
 		--add-section .kernel="$qubes_kernel" \
 		--change-section-vma .kernel=0xffff82d041100000 \
 		--add-section .ramdisk="$qubes_ramdisk" \
 		--change-section-vma .ramdisk=0xffff82d042000000 \
 		$xen_efi \
-		$qubes_efi \
+		$TMP/qubes.efi \
 		|| die "Objcopy failed!"
 
 	sign \
-		$qubes_efi $qubes_efi.signed \
+		$TMP/qubes.efi $qubes_efi \
 		|| die "Signing failed!"
 
-	qubes_label="Safeboot Qubes OS"
+	qubes_label="Safeboot Qubes"
 	qubes_entry=$(efiboot_entry "$qubes_label")
 	if [ -z "$qubes_entry" ]; then
 		# determine the device the EFI system partition is on
@@ -1282,7 +1280,7 @@ qubes-sign()
 			--disk "$DEV" \
 			--part $part \
 			--label "$qubes_label" \
-			--loader "\\EFI\\qubes\\qubes.efi.signed" \
+			--loader "\\EFI\\qubes\\qubes.efi" \
 		|| die "efibootmgr: failed to create $qubes_label entry"
 	fi
 }
