@@ -1,7 +1,7 @@
 #global candidate rc2
 
 Name:    tpm2-tools
-Version: 5.1.0
+Version: #VERSION#
 Release: 1%{?candidate:.%{candidate}}%{?dist}
 Summary: A bunch of TPM testing toolS build upon tpm2-tss
 

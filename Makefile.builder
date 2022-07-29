@@ -32,14 +32,18 @@ qubes-safeboot-$(VERSION).tar.gz:
 
 $(EFITOOLS):
 	tar --xform='s:$(ORIG_SRC)/efitools:efitools-$(EFITOOLS_VERSION):' -czf $(CHROOT_DIR)$(DIST_SRC)/$(EFITOOLS) $(ORIG_SRC)/efitools
+	sed -i "s:#VERSION#:$(EFITOOLS_VERSION):" $(CHROOT_DIR)$(DIST_SRC)/efitools.spec.in
 
 $(SBSIGNTOOLS):
 	tar --xform='s:$(ORIG_SRC)/sbsigntools:sbsigntools-$(SBSIGNTOOLS_VERSION):' -czf $(CHROOT_DIR)$(DIST_SRC)/$(SBSIGNTOOLS) $(ORIG_SRC)/sbsigntools
+	sed -i "s:#VERSION#:$(SBSIGNTOOLS_VERSION):" $(CHROOT_DIR)$(DIST_SRC)/sbsigntools.spec.in
 
 $(TPM2_TSS):
 	tar --xform='s:$(ORIG_SRC)/tpm2-tss:tpm2-tss-$(TPM2_TSS_VERSION):' -czf $(CHROOT_DIR)$(DIST_SRC)/$(TPM2_TSS) $(ORIG_SRC)/tpm2-tss
+	sed -i "s:#VERSION#:$(TPM2_TSS_VERSION):" $(CHROOT_DIR)$(DIST_SRC)/tpm2-tss.spec.in
 
 $(TPM2_TOOLS):
 	tar --xform='s:$(ORIG_SRC)/tpm2-tools:tpm2-tools-$(TPM2_TOOLS_VERSION):' -czf $(CHROOT_DIR)$(DIST_SRC)/$(TPM2_TOOLS) $(ORIG_SRC)/tpm2-tools
+	sed -i "s:#VERSION#:$(TPM2_TOOLS_VERSION):" $(CHROOT_DIR)$(DIST_SRC)/tpm2-tools.spec.in
 
 # vim: set ft=make:

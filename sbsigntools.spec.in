@@ -2,7 +2,7 @@
 %define _warning_options -Wall -Werror=format-security -Wno-deprecated-declarations
 
 Name:          sbsigntools
-Version:       0.9.4
+Version:       #VERSION#
 Release:       8%{?dist}
 Summary:       Signing utility for UEFI secure boot
 License:       GPLv3+

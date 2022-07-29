@@ -1,5 +1,5 @@
 Name:           efitools
-Version:        1.9.2
+Version:        #VERSION#
 Release:        7%{?dist}
 Summary:        Tools to manipulate EFI secure boot keys and signatures
 License:        GPLv2 and LGPLv2 and BSD
