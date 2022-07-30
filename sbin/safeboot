@@ -660,7 +660,7 @@ luks-seal() {
 		fi
 		# enable dracut module
 		if [ ! -r /etc/dracut.conf.d/safeboot.conf ]; then
-			echo "add_dracutmodules+=\" safeboot \""> safeboot.conf
+			echo "add_dracutmodules+=\" safeboot \""> /etc/dracut.conf.d/safeboot.conf
 		fi
 	else
 		# check to see if the initramfs hook is installed
