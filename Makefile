@@ -627,11 +627,3 @@ qemu-server: \
 	-kill `cat $(TPM_PID)`
 	@-$(RM) "$(TPM_PID)" "$(TPMSOCK)"
 
-get-sources:
-	git submodule update --init --recursive efitools
-	git submodule update --init --recursive --recommend-shallow sbsigntools
-	git submodule update --init --recursive --recommend-shallow tpm2-tss
-	git submodule update --init --recursive --recommend-shallow tpm2-tools
-
-verify-sources:
-	@true
