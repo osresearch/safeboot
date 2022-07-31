@@ -2,4 +2,7 @@
 
 if [ -f /boot/efi/EFI/qubes/qubes.efi.signed ]; then
 	safeboot qubes-sign
+	if grep -q LINUX_TARGET=qubes /etc/safeboot/local.conf; then
+		/usr/sbin/safeboot pcrs-sign
+	fi
 fi
