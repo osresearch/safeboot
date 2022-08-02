@@ -541,13 +541,19 @@ pcrs-sign() {
 	# This works on the Thinkpad X1, which extends PCR4
 	# with EFI_EV_SEPARATOR and then the PE hash of the EFI_BOOT_APPLICATION
 	linux_hash="$(sbsign.safeboot --hash-only "$linux" || die "unable to hash")"
-	ev_sep="$(echo "00000000" | hex2bin | tpm2_trial_extend 0)"
+	if [ -n "$TPM_EFI_ACTION" ]; then
+		ev_act="$(echo -n "Calling EFI Application from Boot Option" | tpm2_trial_extend 0)"
+	else
+		ev_act=0
+	fi
+	ev_sep="$(echo "00000000" | hex2bin | tpm2_trial_extend $ev_act)"
 	pcr4_computed="$(echo -n "${ev_sep}${linux_hash}" | hex2bin | sha256)"
 
 	pcr2_read="$(tpm2 pcrread sha256:2 | tail -1 | cut -c9- | tr '[:upper:]' '[:lower:]')"
 	pcr4_read="$(tpm2 pcrread sha256:4 | tail -1 | cut -c9- | tr '[:upper:]' '[:lower:]')"
 
 	# HACK: this assumes PCR2 is the second in the list
+	ev_sep="$(echo "00000000" | hex2bin | tpm2_trial_extend 0)"
 	if [ "$pcr2_read" != "$ev_sep" ]; then
 		warn "PCR2: ignoring BootMenu entries"
 		echo -n "$ev_sep" | hex2bin \
