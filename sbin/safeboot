@@ -82,6 +82,7 @@ fi
 : "${LINUX_COMMANDLINE:=}"
 : "${RECOVERY_COMMANDLINE:=${LINUX_COMMANDLINE}}"
 : "${SEAL_PIN:=1}"
+: "${XEN_CONFIG:=$EFIDIR/qubes/xen.cfg}"
 
 #
 # Ensure that there is a valid root device
@@ -163,7 +164,7 @@ key_init_usage='
 ## key-init
 Usage:
 ```
-safeboot key-init "subject"
+safeboot key-init "subject" [nopassword]
 ```
 
 Generate a new x509 signing key with openssl, writing storing
@@ -173,6 +174,10 @@ This is not as secure as storing it in a hardware token,
 although if the key is moved to an external device and the
 `$KEY` variable in `/etc/safeboot/local.conf` updated to point
 to it, then it will prevent a software-only attack.
+
+Optionally available to disable password protection, which 
+can be useful to support unattended updates in a secure 
+environment, such as Qubes OS.
 
 The subject must be written as a "distinguished name":
 ```
@@ -188,6 +193,7 @@ key-init() {
 	fi
 
 	subject="$1"
+	nopassword="$2"
 
 	if [ "$KEY" == "pkcs11:" ]; then
 		warn "\$KEY=pkcs11:; updating in local.conf"
@@ -217,7 +223,9 @@ key-init() {
 		mv "$CERT" "$CERT.orig" \
 		|| die "$CERT: unable to backup"
 	fi
-
+	if [ "$nopassword" == "nopassword" ]; then
+		openssl_nodes_param="-nodes"
+	fi
 	openssl req \
 		-new \
 		-x509 \
@@ -228,6 +236,7 @@ key-init() {
 		-out "$CERT" \
 		-days "3650" \
 		-sha256 \
+		$openssl_nodes_param \
 	|| die "$KEY: unable to create"
 
 	# Create a certificate and public key file from the PEM
@@ -499,9 +508,13 @@ pcrs-sign() {
 
 	prevent_rollback="${1}"
 	target="${2-linux}"
-	linux="$EFIDIR/$target/linux.efi"
+	if [ "$LINUX_TARGET" = "qubes" ]; then
+		linux="$EFIDIR/qubes/qubes.efi"
+	else
+		linux="$EFIDIR/$target/linux.efi"
+	fi
 
-	yubikey_daemon
+	[ -z "$KEY_ENGINE" ] || yubikey_daemon
 
 	if [ "$prevent_rollback" = "prevent-rollback" ]; then
 		warn "$linux: Incrementing TPM version to prevent rollback"
@@ -528,13 +541,19 @@ pcrs-sign() {
 	# This works on the Thinkpad X1, which extends PCR4
 	# with EFI_EV_SEPARATOR and then the PE hash of the EFI_BOOT_APPLICATION
 	linux_hash="$(sbsign.safeboot --hash-only "$linux" || die "unable to hash")"
-	ev_sep="$(echo "00000000" | hex2bin | tpm2_trial_extend 0)"
+	if [ -n "$TPM_EFI_ACTION" ]; then
+		ev_act="$(echo -n "Calling EFI Application from Boot Option" | tpm2_trial_extend 0)"
+	else
+		ev_act=0
+	fi
+	ev_sep="$(echo "00000000" | hex2bin | tpm2_trial_extend $ev_act)"
 	pcr4_computed="$(echo -n "${ev_sep}${linux_hash}" | hex2bin | sha256)"
 
 	pcr2_read="$(tpm2 pcrread sha256:2 | tail -1 | cut -c9- | tr '[:upper:]' '[:lower:]')"
 	pcr4_read="$(tpm2 pcrread sha256:4 | tail -1 | cut -c9- | tr '[:upper:]' '[:lower:]')"
 
 	# HACK: this assumes PCR2 is the second in the list
+	ev_sep="$(echo "00000000" | hex2bin | tpm2_trial_extend 0)"
 	if [ "$pcr2_read" != "$ev_sep" ]; then
 		warn "PCR2: ignoring BootMenu entries"
 		echo -n "$ev_sep" | hex2bin \
@@ -636,15 +655,25 @@ luks-seal() {
 		shift
 	fi
 
-	yubikey_daemon
+	[ -z "$KEY_ENGINE" ] || yubikey_daemon
 
 	KEYSLOT=1
 
-	# check to see if the initramfs hook is installed
-	if [ ! -x "$PREFIX/etc/initramfs-tools/hooks/safeboot-hooks" ]; then
-		warn "!!! $PREFIX/etc/initramfs-tools/hooks/safeboot-hooks is not installed; this will probably not work"
+	if [ -f /etc/qubes-release ]; then
+		LINUX_TARGET="qubes"
+		if ! grep -q "LINUX_TARGET=qubes" $PREFIX$DIR/local.conf; then
+			echo "LINUX_TARGET=qubes" >> $PREFIX$DIR/local.conf
+		fi
+		# enable dracut module
+		if [ ! -r /etc/dracut.conf.d/safeboot.conf ]; then
+			echo "add_dracutmodules+=\" safeboot \""> /etc/dracut.conf.d/safeboot.conf
+		fi
+	else
+		# check to see if the initramfs hook is installed
+		if [ ! -x "$PREFIX/etc/initramfs-tools/hooks/safeboot-hooks" ]; then
+			warn "!!! $PREFIX/etc/initramfs-tools/hooks/safeboot-hooks is not installed; this will probably not work"
+		fi
 	fi
-
 	# and make sure that the unlock script is installed as expected
 	if [ ! -x "$PREFIX/usr/sbin/safeboot" ]; then
 		warn "!!! $PREFIX/usr/sbin/safeboot is not installed; this will probably not work"
@@ -757,16 +786,28 @@ luks-seal() {
 		"$TPM_SEALED_HANDLE" \
 	|| die "Unable to persist sealed data into the TPM"
 
-	# make sure the crypttab has the unlock script referenced
-	if ! grep keyscript "$PREFIX/etc/crypttab" > /dev/null ; then
-		warn "adding crypttab unseal script"
-		sed \
-			-i.orig \
-			's: luks: keyscript=/usr/sbin/safeboot-tpm-unseal,luks:' \
-			$PREFIX/etc/crypttab \
-		|| die "$PREFIX/etc/crypttab: unable to add keyscript"
+	if [ -f /etc/qubes-release ]; then
+		if ! grep -q keyfile "$XEN_CONFIG"; then
+			warn "adding keyfile kernel cmdline parameter"
+			sed -r \
+				-i.orig \
+				's:^kernel=(.*)$:kernel=\1 rd.luks.crypttab=no rd.luks.key=/safeboot-keyfile:' \
+				$XEN_CONFIG \
+			|| die "$XEN_CONFIG: unable add keyfile option"
+			need_update_initramfs=1
+		fi
+	else
+		# make sure the crypttab has the unlock script referenced
+		if ! grep keyscript "$PREFIX/etc/crypttab" > /dev/null ; then
+			warn "adding crypttab unseal script"
+			sed \
+				-i.orig \
+				's: luks: keyscript=/usr/sbin/safeboot-tpm-unseal,luks:' \
+				$PREFIX/etc/crypttab \
+			|| die "$PREFIX/etc/crypttab: unable to add keyscript"
 
-		need_update_initramfs=1
+			need_update_initramfs=1
+		fi
 	fi
 
 	# ask for the disk encryption key
@@ -800,13 +841,23 @@ luks-seal() {
 	warn "$dev: sealed with PCR $PCRS,$BOOTMODE_PCR"
 
 	if [ -n "$need_update_initramfs" ]; then
-		warn "-------- Need to update initramfs --------"
-		update-initramfs -u \
-		|| die "Unable to update initramfs"
+		if [ -f /etc/qubes-release ]; then
+			warn "-------- Need to update initramfs --------"
+			dracut -f --kver $(uname -r) "$EFIDIR"/qubes/initramfs-$(uname -r).img \
+			|| die "Unable to update initramfs"
 
-		warn "-------- Need to sign new kernel --------"
-		linux-sign "$LINUX_TARGET" \
-		|| die "Unable to sign kernel"
+			warn "-------- Need to sign new boot module --------"
+			qubes-sign \
+			|| die "Unable to sign qubes.efi"
+		else
+			warn "-------- Need to update initramfs --------"
+			update-initramfs -u \
+			|| die "Unable to update initramfs"
+
+			warn "-------- Need to sign new kernel --------"
+			linux-sign "$LINUX_TARGET" \
+			|| die "Unable to sign kernel"
+		fi
 	fi
 
 	warn "-------- Need to sign PCR and counter values --------"
@@ -844,7 +895,7 @@ sign() {
 		OUT="$IN.signed"
 	fi
 
-	yubikey_daemon
+	[ -z "$KEY_ENGINE" ] || yubikey_daemon
 
 	sbsign.safeboot \
 		$KEY_ENGINE \
@@ -1153,6 +1204,126 @@ linux-sign()
 		# stash a copy of the verity log in the boot directory
 		# so that repeat signing can be done more quickly
 		cp "$TMP/verity.log" "$OUTDIR"
+	fi
+}
+
+########################################
+
+qubes_xen_config_usage='
+## qubes-xen-config
+Usage:
+```
+safeboot qubes-xen-config
+```
+Generate Xen EFI loader configuration (xen.cfg) based on default grub2 variables.
+'
+usage+=$qubes_xen_config_usage
+commands+="|qubes-xen-config"
+
+qubes-xen-config(){
+	show_help "$1" "$qubes_xen_config_usage"
+	rootdev-check -
+
+	if [ -f "$XEN_CONFIG" ]; then
+		warn "Xen config exists"
+		return
+	fi
+
+	qubes_kver=$(uname -r)
+	qubes_kernel="$KERNEL-$qubes_kver"
+	[ -f $kernel ] \
+		&& cp $qubes_kernel $EFIDIR/qubes \
+		|| die "Kernel image not found!"
+
+	qubes_ramdisk=initramfs-$qubes_kver.img
+	[ -f /boot/$qubes_ramdisk ] \
+		&& cp /boot/$qubes_ramdisk $EFIDIR/qubes \
+		|| die "Initrd image not found!"
+
+	. /etc/default/grub
+	[ -n "$GRUB_CMDLINE_LINUX" ] \
+		&& [ -n "$GRUB_CMDLINE_XEN_DEFAULT" ] \
+		|| die "Failed read grub defaults"
+
+	( \
+	echo "[global]" ; \
+	echo "default=$qubes_kver" ; \
+	echo "[$qubes_kver]" ; \
+	echo "kernel=$qubes_kernel root=$ROOTDEV ro $GRUB_CMDLINE_LINUX" ; \
+	echo "ramdisk=$qubes_ramdisk" ; \
+	echo "options=$GRUB_CMDLINE_XEN_DEFAULT"
+	) >> $XEN_CONFIG \
+	|| die "Unable create xen.cfg"
+}
+
+qubes_sign_usage='
+## qubes-sign
+Usage:
+```
+safeboot qubes-sign 
+```
+
+Generate a unified EFI executable bundle with xen, xen config, kernel and initrd,
+ sign it with safeboot keys and create EFI boot record "Safeboot Qubes OS".
+
+It requires Qubes OS R4.1+ with xen >= 4.14
+'
+
+usage+=$qubes_sign_usage
+commands+="|qubes-sign"
+
+qubes-sign()
+{
+	show_help "$1" "$qubes_sign_usage"
+
+	[ -f "$XEN_CONFIG" ] \
+		&& qubes_kver=$(awk -F= '/default=/ {print $2}' "$XEN_CONFIG") \
+		|| qubes-xen-config
+
+	xen_efi="$EFIDIR/qubes/xen.efi"
+	[ -f "$xen_efi" ] \
+		|| die "No xen.efi found!"
+
+	qubes_kernel="$EFIDIR/qubes/vmlinuz-$qubes_kver"
+	[ -f "$qubes_kernel" ] \
+		|| die "No default kernel found!"
+
+	qubes_ramdisk="$EFIDIR/qubes/initramfs-$qubes_kver.img"
+	[ -f "$qubes_ramdisk" ] \
+		|| die "No default initramfs found!"
+
+	qubes_efi="$EFIDIR/qubes/qubes.efi"
+	objcopy \
+		--add-section .config="$XEN_CONFIG" \
+		--change-section-vma .config=0xffff82d041000000 \
+		--add-section .kernel="$qubes_kernel" \
+		--change-section-vma .kernel=0xffff82d041100000 \
+		--add-section .ramdisk="$qubes_ramdisk" \
+		--change-section-vma .ramdisk=0xffff82d042000000 \
+		$xen_efi \
+		$TMP/qubes.efi \
+		|| die "Objcopy failed!"
+
+	sign \
+		$TMP/qubes.efi $qubes_efi \
+		|| die "Signing failed!"
+
+	qubes_label="Safeboot Qubes"
+	qubes_entry=$(efiboot_entry "$qubes_label")
+	if [ -z "$qubes_entry" ]; then
+		# determine the device the EFI system partition is on
+		DEV="$(df "$qubes_efi" | tail -1 | cut -d' ' -f1)"
+		part=$(cat /sys/class/block/$(basename $DEV)/partition)
+		partuuid=$(blkid --output value --match-tag PARTUUID $DEV)
+		warn "efibootmgr: Creating boot menu item on $DEV, partition $part"
+		efibootmgr \
+			--quiet \
+			--create \
+			--disk "$DEV" \
+			--part $part \
+			--label "$qubes_label" \
+			--loader "\\EFI\\qubes\\qubes.efi" \
+		|| die "efibootmgr: failed to create $qubes_label entry"
 	fi
 }
 
@@ -1641,7 +1812,7 @@ case "$command" in
 		exit 0
 		;;
 	#$commands)
-	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign|unify-kernel|sign-kernel|install-kernel|linux-sign|recovery-sign|reboot|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext|unlock|mount-all)
+	yubikey-init|yubikey-pubkey|key-init|uefi-sign-keys|uefi-set-keys|luks-seal|pcrs-sign|sign|unify-kernel|sign-kernel|install-kernel|linux-sign|qubes-xen-config|qubes-sign|recovery-sign|reboot|recovery-reboot|remount|tpm2_trial_extend|sip-init|bootnext|unlock|mount-all)
 		$command "$@"
 		;;
 	*)
