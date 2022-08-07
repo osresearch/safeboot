@@ -779,24 +779,28 @@ for genprog in "${GENPROGS[@]}" genmanifest; do
 
 	# We want to split the output of genprog on spaces:
 	# shellcheck disable=SC2046
-	set -- $("$genprog" "$tmp" "$outdir" "$hostname")
+	genprog_output=$("$genprog" "$tmp" "$outdir" "$hostname") \
+		|| die "genprog '$genprog' failed"
+	set -- $genprog_output
 
+	info "output was $genprog_output"
 	if (($# > 0)) && [[ $1 = skip ]]; then
 		shift
 		info "GENPROG $genprog skipped${1:+": "}$*"
 		continue
 	fi
-	if (($# < 2)) ||
-	   [[ $1 != @(sensitive|public) ||
-	      ! -f $tmp/$2 ]]; then
-		warn "GENPROG $genprog output is unexpected: $*; skipping"
-		continue
+	if (($# < 2)) || [[ $1 != @(sensitive|public) ]]; then
+		die "GENPROG $genprog output is unexpected: $*"
 	fi
 	kind=$1
 	shift
 
 	# Copy any remaining files
 	while (($# > 0)); do
+		if [[ ! -f "$tmp/$1" ]]; then
+			ls -l "$tmp" >&2
+			die "Missing $genprog output file: $1"
+		fi
 		if [[ $kind = sensitive ]]; then
 			# Encrypt file, escrow, and place into output dir.
 			info "Encrypting secret file from $genprog: $1"
