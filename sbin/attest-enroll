@@ -781,9 +781,13 @@ for genprog in "${GENPROGS[@]}" genmanifest; do
 	# shellcheck disable=SC2046
 	genprog_output=$("$genprog" "$tmp" "$outdir" "$hostname") \
 		|| die "genprog '$genprog' failed"
-	set -- $genprog_output
 
-	info "output was $genprog_output"
+# To support multi-line output (where this code previously supported only one),
+# use negative indentation to put a loop around the existing code.
+echo "$genprog_output" | while read; do
+	info "Processing output line: $REPLY"
+	set -- $REPLY
+
 	if (($# > 0)) && [[ $1 = skip ]]; then
 		shift
 		info "GENPROG $genprog skipped${1:+": "}$*"
@@ -821,6 +825,7 @@ for genprog in "${GENPROGS[@]}" genmanifest; do
 		did_something=true
 		shift
 	done
+done
 done
 
 # Re-sign all assets if the signing key has changed
