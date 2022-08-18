@@ -92,6 +92,7 @@ configs() {
 
 die() { echo >&2 "Error: $PROG" "$@" ; exit 1 ; }
 warn() { echo >&2 "$@" ; }
+log() { echo >&2 "$@" ; }
 
 # This policyDigest is the result of executing a policy with two commands:
 #
@@ -655,22 +656,52 @@ cat "$EKPUB" > "$tmp/ekpub" \
 || die "$0: unable to read EKpub from stdin"
 exec </dev/null
 
-# Normalize EKpub into TPM2B_PUBLIC form
-# TODO: Support EKcert
-case "$(file -b --mime-type "$tmp/ekpub")" in
-text/plain)
-	# Should be a PEM file then
-	EKCERT=
+# Detect the format of the submitted "ekpub" and provide required conversions.
+# At the conclusion, we should ahve "ek.pub" as the public key in TPM2B_PUBLIC
+# format. NB: we should eventually add a control here so we can choose not to
+# trust the enroller with this power. I.e. right now they could extract the
+# public key from any EKcert and just submit that, obviously bypassing any
+# objections we might have had with the EKcert...
+EKformat="$(file -b --mime-type "$tmp/ekpub")"
+if [[ $EKformat == "application/octet-stream" ]]; then
+	log "Binary ekpub provided, detecting format..."
+	# See if it's a DER cert
+	if openssl x509 -inform DER		\
+			-in "$tmp/ekpub"	\
+			-outform PEM		\
+			-out "$tmp/ekcert.pem"	\
+			> /dev/null 2>&1; then
+		log "EKpub is a DER x509, convert to PEM and re-process"
+		# Trigger the PEM processing path for the rest
+		EKformat="text/plain"
+		mv "$tmp/ekcert.pem" "$tmp/ekpub"
+	# Try as raw TPM2B_PUBLIC
+	elif tpm2 print -t TPM2B_PUBLIC		\
+			"$tmp/ekpub" 		\
+			> /dev/null 2>&1; then
+		log "EKpub is a TPM2B_PUBLIC public key"
+		mv "$tmp/ekpub" "$tmp/ek.pub"
+		EKformat=done
+	else
+		die "Can't decode the provided EKpub"
+	fi
+fi
+EKCERT=
+if [[ $EKformat = "text/plain" ]]; then
+	log "Text EKpub provided, detecting format..."
 	if grep -q CERTIFICATE "$tmp/ekpub"; then
-		# EKcert
-		cp "$tmp/ekpub" "$tmp/ekcert.pem"
+		# It claims to be a cert
+		mv "$tmp/ekpub" "$tmp/ekcert.pem"
 		EKCERT="$tmp/ekcert.pem"
-		openssl x509				\
-			-pubkey				\
-			-noout				\
-			-outform PEM			\
-			-in "$tmp/ekpub"		\
-			> "$tmp/ek.pub"
+		openssl x509			\
+			-pubkey			\
+			-noout			\
+			-outform PEM		\
+			-in "$EKCERT"		\
+			> "$tmp/ekpub.pem"	\
+			2> /dev/null		\
+		|| die "EKpub appears to be a broken cert"
+		log "EKpub is a PEM x509, perform chain-validation"
 		if [[ -d $TPM_VENDORS ]]; then
 			CAarg=CApath
 		elif [[ -f $TPM_VENDORS ]]; then
@@ -681,34 +712,34 @@ text/plain)
 		openssl verify				\
 			-$CAarg "$TPM_VENDORS"		\
 			-partial_chain			\
-			"$tmp/ekpub"			\
+			"$EKCERT"			\
+			> /dev/null 2>&1		\
 		|| die "EKcert is not trusted"
+		log "EKcert is trusted, extract public-key and re-process"
+		# Trigger the PEM public-key processing path for the rest
+		mv "$tmp/ekpub.pem" "$tmp/ekpub"
+	fi
+	if grep -q PUBLIC "$tmp/ekpub"; then
+		# It claims to be a public key
 		pem2tpm2bpublic				\
 			"$tmp/ekpub"			\
 			"$tmp/ek.pub"			\
-			"${DEFAULT_EK_POLICY:-}"
-	elif grep -q PUBLIC "$tmp/ekpub"; then
-		# Plain public key
-		pem2tpm2bpublic				\
-			"$tmp/ekpub"			\
-			"$tmp/ek.pub"			\
-			"${DEFAULT_EK_POLICY:-}"
+			"${DEFAULT_EK_POLICY:-}"	\
+			> /dev/null 2>&1		\
+		|| die "EKpub appears to be a broken public key"
+		log "EKpub is a PEM public key"
 	else
-		die "Cannot understand given EKpub/EKcert"
-	fi;;
-
-application/octet-stream)
-	EKCERT=
-	cp "$tmp/ekpub" "$tmp/ek.pub";;
-
-*)	die "Given EKpub is not in a supported format: $(file -b --mime-type "$tmp/ekpub")";;
-esac
+		die "Can't decode the provided EKpub"
+	fi
+elif [[ $EKformat == "done" ]]; then
+	:
+else
+	die "EKpub is not in a supported format: $EKformat"
+fi
 EKPUB="$tmp/ek.pub"
 
 #
 # Verify that the EK meets our specifications
-#
-# TODO: Support EKcert.
 #
 tpm2 print \
 	-t TPM2B_PUBLIC \
@@ -770,7 +801,7 @@ cp "$EKPUB" "$outdir/ek.pub" \
 
 if [[ -n $EKCERT ]]; then
 	cp "$EKCERT" "$outdir/ek.pub" \
-	|| die "unable to copy EK public key to output directory $outdir"
+	|| die "unable to copy EK certificate to output directory $outdir"
 fi
 
 info "Generating secrets and metadata"
