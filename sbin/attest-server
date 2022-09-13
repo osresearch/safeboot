@@ -51,9 +51,10 @@ bindir = os.environ.get('BINDIR')
 if not bindir:
     bindir = '.'
 
-def attest_verify(quote_file):
-	err_output = ""
+def log(s):
+	print(f"{s}", file = sys.stderr)
 
+def attest_verify(quote_file):
 	# verify that the Endorsment Key came from an authorized TPM,
 	# that the quote is signed by a valid Attestation Key
 	subtav = subprocess.run([bindir + "/sbin/tpm2-attest", "verify", quote_file],
@@ -61,22 +62,22 @@ def attest_verify(quote_file):
 		stderr=subprocess.PIPE)
 
 	if subtav.returncode != 0:
-		err_output += f"Error, received quote was invalid"
-		err_output += f"{subtav.stderr}\n"
-		return (403, "TPM2_ATTEST_VERIFY FAILED", err_output)
+		log(f"Error, received quote was invalid")
+		log(f"{subtav.stderr}")
+		return (400, "TPM2_ATTEST_VERIFY FAILED")
 
 	# The output contains YAML formatted hash of the EK and the PCRs
 	quote = yaml.safe_load(subtav.stdout)
 	# Put the quote into our cumulative "stderr"
-	err_output += "INFO: received quote;\n"
-	err_output += f"{str(quote)}\n"
+	log("INFO: received quote;")
+	log(f"{str(quote)}")
 
 	if 'ekhash' not in quote:
-		err_output += f"Error, received quote had no 'ekhash'\n"
-		return (403, "TPM2_ATTEST_EKHASH FAILED", err_output)
+		log(f"Error, received quote had no 'ekhash'")
+		return (400, "TPM2_ATTEST_EKHASH FAILED")
 
 	ekhash = quote['ekhash']
-	err_output += f"INFO: ekhash is {ekhash}\n"
+	log(f"INFO: ekhash is {ekhash}")
 
 	# Validate that the every computed PCR in the eventlog
 	# matches a quoted PCRs.
@@ -85,7 +86,7 @@ def attest_verify(quote_file):
 	# Other PCRs may have values, which is the responsibility
 	# of the verifier to check.
 	if alg not in quote['pcrs']:
-		err_output += f"{ekhash=}: quote does not have hash {alg}\n"
+		log(f"{ekhash=}: quote does not have hash {alg}")
 	quote_pcrs = quote['pcrs'][alg]
 
 	# XXX We need a way to configure whether the eventlog is optional
@@ -98,10 +99,10 @@ def attest_verify(quote_file):
 			if pcr_index in quote_pcrs:
 				quote_pcr = quote_pcrs[pcr_index]
 				if quote_pcr != eventlog_pcr:
-					err_output += f"Error, quote/event-log mismatch\n"
-					err_output += f"{ekhash=}: {pcr_index=} {quote_pcr=} != {eventlog_pcr=}\n"
-					return (403, "EVENTLOG_PCR FAILED", err_output)
-				err_output += f"{ekhash=}: {pcr_index=} {quote_pcr=} good\n"
+					log(f"Error, quote/event-log mismatch")
+					log(f"{ekhash=}: {pcr_index=} {quote_pcr=} != {eventlog_pcr=}")
+					return (400, "EVENTLOG_PCR FAILED")
+				log(f"{ekhash=}: {pcr_index=} {quote_pcr=} good")
 
 	# the quote, eventlog and PCRS are consistent, so ask the verifier to
 	# process the eventlog and decide if the eventlog meets policy for
@@ -113,10 +114,10 @@ def attest_verify(quote_file):
 
 	if subavv.returncode != 0:
 		if (subavv.returncode == 100):
-			return (404, f"Unrecognised TPM {ekhash}", f"Unrecognised TPM {ekhash}")
-		err_output += f"{subavv.stderr}\n"
-		err_output = f"Error, unknown attestation failure {subavv.returncode}\n{err_output}\n"
-		return (403, "ATTEST_VERIFY FAILED", err_output)
+			return (404, f"Unrecognised TPM {ekhash}")
+		log(f"{subavv.stderr}")
+		log(f"Error, unknown attestation failure {subavv.returncode}\n{err_output}")
+		return (400, "ATTEST_VERIFY FAILED")
 
 	# read the (binary) response from the subprocess stdout
 	response = subavv.stdout
@@ -127,11 +128,11 @@ def attest_verify(quote_file):
 				stderr=subprocess.PIPE)
 
 	if subtas.returncode != 0:
-		err_output += f"Error, failed to seal assets\n"
-		err_output += f"{subtas.stderr}"
-		return (403, "ATTEST_SEAL FAILED", err_output)
+		log(f"Error, failed to seal assets")
+		log(f"{subtas.stderr}")
+		return (500, "ATTEST_SEAL FAILED")
 
-	return (200, subtas.stdout, "")
+	return (200, subtas.stdout)
 
 # The flask details;
 
@@ -161,9 +162,8 @@ def home_post():
     p = os.path.join(tf.name, secure_filename(f.filename))
     f.save(p)
     # Pass the saved quote file (by path) to the attestation code
-    rcode, rbody, err_output = attest_verify(p)
+    rcode, rbody = attest_verify(p)
     if (rcode != 200):
-        print(f"{err_output}")
         return { "error": "attestation failed" }, rcode
     # Put the output in a file in the temp directory and send it.
     p = os.path.join(tf.name, 'output')
