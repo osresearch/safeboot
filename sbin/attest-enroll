@@ -111,13 +111,13 @@ genhostname() {
 		fi
 
 		info "Recording secondary hostname: $hostname"
-		echo "$hostname" > "${1}/hostname-${hostname:0:80}"
+		echo -n "$hostname" > "${1}/hostname-${hostname:0:80}"
 		echo "public hostname-${hostname:0:80}"
 		return 0
 	fi
 
 	info "Recording primary hostname: $hostname"
-	echo "$hostname" > "${1}/hostname"
+	echo -n "$hostname" > "${1}/hostname"
 	echo "public hostname"
 }
 
