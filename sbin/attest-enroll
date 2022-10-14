@@ -800,7 +800,7 @@ cp "$EKPUB" "$outdir/ek.pub" \
 || die "unable to copy EK public key to output directory $outdir"
 
 if [[ -n $EKCERT ]]; then
-	cp "$EKCERT" "$outdir/ek.pub" \
+	cp "$EKCERT" "$outdir/ek.cert" \
 	|| die "unable to copy EK certificate to output directory $outdir"
 fi
 
