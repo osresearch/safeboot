@@ -202,11 +202,14 @@ configure() {
 
 usage() {
 	((${1:-1} == 0)) || exec 1>&2
+	# shellcheck disable=SC2209
 	pager=cat
 	if [[ -t 0 && -t 1 && -t 2 ]]; then
 		if [[ -z ${PAGER:-} ]] && type less >/dev/null 2>&1; then
+			# shellcheck disable=SC2209
 			pager=less
 		elif [[ -z ${PAGER:-} ]] && type more >/dev/null 2>&1; then
+			# shellcheck disable=SC2209
 			pager=more
 		elif [[ -n ${PAGER:-} ]]; then
 			pager=$PAGER
