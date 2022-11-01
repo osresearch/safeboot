@@ -713,7 +713,8 @@ text/plain)
 
 application/octet-stream)
 	EKCERT=
-	cp "$tmp/ekpub" "$tmp/ek.pub";;
+	cp "$tmp/ekpub" "$tmp/ek.pub"
+	normalize_ekpub "$tmp/ek.pub";;
 
 *)	die "Given EKpub is not in a supported format: $(file -b --mime-type "$tmp/ekpub")";;
 esac
