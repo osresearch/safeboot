@@ -352,6 +352,33 @@ mount_by_uuid() {
 	esac
 }
 
+# An EKpub is a TPM2B_PUBLIC format payload.  For an RSA public key the
+# TPM2B_PUBLIC for an EK public key can vary in two ways:
+#
+#  - the exponent, if it is the default 65537, can be written either as
+#    the all-zero exponent (which indicates that the exponent is the
+#    default exponent), or as 0x00010001 (65537)
+#
+#  - the RSA scheme, which for a restricted decrypt-only key (as all EKs
+#    are) must be OEAP, and this can be written as the null algorithm ID
+#    or as the actual algorithm ID
+#
+# Since we want to identify enrolled hosts by the hash of their EKpubs
+# (which we call "EKhash"), we may need to normalize the enrollee's
+# EKpub TPM2B_PUBLIC payload.  The swTPM will use the all-zero exponent,
+# and the null alg ID for the RSA scheme, while at least one dTPM writes
+# the actual exponent (65537) but thankfully also uses the null alg ID
+# for the RSA scheme.
+#
+# This function normalizes an EKpub so that we may reliably use its hash
+# to identify the enrollee.
+function normalize_ekpub {
+	# We'd like to use tpm2 loadexternal then tpm2 readpublic, but
+	# the swtpm will remember the exponent field and then use the
+	# same value on output.  So we have to use dd.
+	dd if=/dev/zero of="$1" seek=54 bs=1 count=4 conv=notrunc
+}
+
 # Convert a bare RSA public key (2048 bits) in PEM format to TPM2B_PUBLIC
 # format.
 #
@@ -372,7 +399,7 @@ pem2tpm2bpublic() {
 	fi
 
 	# This is the policy on the EKs produced by swtpm.  It may be different
-	# on other TPMs.
+        # on other TPMs.  (It's not. The TCG requires this policyDigest for EKs.)
 	ekpolicy=${3:-837197674484b3f81a90cc8d46a5d724fd52d76e06520b64f2a1da1b331469aa}
 
 	attrs='fixedtpm|fixedparent|sensitivedataorigin|adminwithpolicy|restricted|decrypt'
@@ -395,6 +422,7 @@ pem2tpm2bpublic() {
 	   && tpm2 readpublic				\
 			--output="$2"			\
 			--object-context="${1}.ctx"; then
+		normalize_ekpub "$2"
 		rm "${pemfile}.policy"
 		return 0
 	fi
