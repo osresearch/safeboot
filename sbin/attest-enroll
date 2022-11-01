@@ -681,6 +681,7 @@ if [[ $EKformat == "application/octet-stream" ]]; then
 			> /dev/null 2>&1; then
 		log "EKpub is a TPM2B_PUBLIC public key"
 		mv "$tmp/ekpub" "$tmp/ek.pub"
+		normalize_ekpub "$tmp/ek.pub"
 		EKformat=done
 	else
 		die "Can't decode the provided EKpub"
