@@ -642,15 +642,46 @@ function make_policyDigest {
 	exec_policy "$@"
 }
 
-# A well-known private key just for the TPM2_MakeCredential()-based encryption
-# of secrets to TPMs.  It was generated with:
-#  openssl genpkey -genparam                               \
-#                  -algorithm EC                           \
-#                  -out "${d}/ecp.pem"                     \
-#                  -pkeyopt ec_paramgen_curve:secp384r1    \
-#                  -pkeyopt ec_param_enc:named_curve
-#  openssl genpkey -paramfile "${d}/ecp.pem"
-function wkpriv {
+# Well-known private keys just for the TPM2_MakeCredential()-based encryption
+# of secrets to TPMs.
+#
+# We need one for secp384r1 because we used that not knowing that some dTPMs
+# don't support it.  We have a secp256k1 just to demonstrate it.  We have an
+# RSA 2048 key for all future uses, as it's expected to be the most well-
+# supported option.
+#
+# These were generated with:
+#
+#  openssl genpkey -genparam					\
+#		   -algorithm EC				\
+#		   -out param_secp384r1.pem			\
+#		   -pkeyopt ec_paramgen_curve:secp384r1		\
+#		   -pkeyopt ec_param_enc:named_curve
+#  openssl genpkey -paramfile param_secp384r1.pem		\
+#		   -out wkpriv_secp384r1.pem
+#
+#  openssl genpkey -genparam					\
+#		   -algorithm EC				\
+#		   -out param_secp256k1.pem			\
+#		   -pkeyopt ec_paramgen_curve:secp256k1		\
+#		   -pkeyopt ec_param_enc:named_curve
+#  openssl genpkey -paramfile param_secp256k1.pem		\
+#		   -out wkpriv_secp256k1.pem
+#
+#  openssl genpkey -algorithm RSA				\
+#		   -out /tmp/wkpriv_rsa2048.pem			\
+#		   -pkeyopt rsa_keygen_bits:2048
+#
+function wkpriv_secp256r1 {
+	cat <<"EOF"
+-----BEGIN PRIVATE KEY-----
+MIGEAgEAMBAGByqGSM49AgEGBSuBBAAKBG0wawIBAQQgoarpvf6AHYeLDk/RnGvY
+mKvgvxLB8TddAtpZBwqRanmhRANCAAR7Ya/W4WmoMwxADcreTtgmIFY51+IBkqd0
+nZktTgsMM18ncr+qVP1jw64Z5USNpiq5rwYcDJL8c9oXVHOxOuQE
+-----END PRIVATE KEY-----
+EOF
+}
+function wkpriv_secp384r1 {
 	cat <<"EOF"
 -----BEGIN PRIVATE KEY-----
 MIG2AgEAMBAGByqGSM49AgEGBSuBBAAiBIGeMIGbAgEBBDAlMnCWue7CfXjNLibH
@@ -659,6 +690,48 @@ vymljYVDyrUriOet8zPB/9tq9XJ7A54qsVkaVufAuEJ6GIvD4xUZ27manMosJADS
 aW2TLJkwxecRh2eTwPtSx2U32M2/yHeuWRV/0juiIozefPsTAlHAi3E=
 -----END PRIVATE KEY-----
 EOF
+}
+
+function wkpriv_rsa2048 {
+	cat <<"EOF"
+-----BEGIN PRIVATE KEY-----
+MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQC9B19eltQ/MlpB
+6W0e2cvubYvfdMX3CS/Q9RnyyHCfaVGwwwyK+WUve1YvjCA3khFa+QgMSY2/DCG7
+OuQNLcM7YtdZJ7slIxiflZFBvmontyWMV7wYsrN3fpGCA+1TKNZe7OHuosyeG9nK
+zIcB+FXBk5Iw3I2PFimefje1+9MwPswG4u5hMrR+ORQthAHZ8oczbAM/qjGJ65XJ
+UKu1EmmB+cHK3CEGnPu0XzFwJ2bdeQ2ueCfOZ/y8qhXExPtdHCL+DK1jVb+phwaY
+GuLv0OufD0wAX3THH4+4eWqoUqGVSKti38kc8w/Vlf89VlSga0dIExN1u89KSPSk
+PnOwQjjJAgMBAAECggEACUhMpl41P4I3PO/byC1NTqDKAtfe5c3pb3MtykaOA0H+
+fTXizotHLQD7Pzv8FAaD/Cno+4N8JrLPkDxo2P3Tjb3BkfL5xW3XBnUnjCkv2NHt
+Udo4FiVmWzqXpiEPvSru9fvfb2LGtgfrlsIa6h2aBna68dPOzsU5l3sevLzIRuDk
+88uagp6qtchKT1Zmno2cbv9PrWgXUTvRUM4iLQYEbaElonblzN584ijSjhIQi2rf
+5IpXUcqLi/xwM/IMql6z3Yp6GsjMb7tvVuE573IAHYB0XbdsP+Y2aAL6x/XCgVmV
+we1x/O2OIobYqXxMY/DoSmZHVZbfux2cisYHgb3KgQKBgQDYOyQvosv2B61+ITEP
+qK6CjwluGOmh24xXb+pa7HOSuQl4Q0HKeD2qQF8h7qUMFXO8h2ISEm5bpW0OuTAB
+KD6AyTSeaW/qlYNCVOJMC2VIquQIDZM8wevkgpWLyG5Xh1kQj+2NihKi2MgU5nCk
+TKQyzMOyRK/J1ik9w91uvxiviQKBgQDfy3ZVaBlwQM/KLjvXXn1FzUW2mmk9yEDu
+tqv60kUdVLIPnHEDOuKrOrXi7b4Lg8vcIHw2shotNYv2VHI6B2pfRMkhybhk0ONJ
+Qkf5+TUA1pJ8wDQCdcNOH5s4tQNVwke7y4MsQFLylD4ARJCfs/IEP+xYgvumKG2e
+ETHivEevQQKBgDFOSxIRrTCMz6LTLrzDWgerVhsk0yF1Tqshee8Bu9jZGK+zpmzk
+vir0Qr0aDciTm7CBrnsweLmtHxEcaTXaV2ZGexkkMcDsFuIpOPDeKFpJnXW4orpX
+/dI9dJxLN939nvGH4ENGGLnJdNZPNaBBWa+7wWQFBZCgpQbQgs2eBaMBAoGAHnaa
+uAuAkvgvkMz0Vl/FW7ASkkW4l7FfrV7uUCk5QUHbLybTd2YXnslSIv7LxNN+94rw
+fZ2G1KqaT8C0/9MslqVNX60OzaJlnf5Iv+09WszaieK78a3IFSVWQsTZHF5i11xf
+kbF72Qt22SB8M1ESW6O771x9FuQf78lVahDJDUECgYAQ8YBP3WPfdy0+FbxgpY6T
+E/cRZZYr4oV7/jo/UkIyCxh3akreb0uF+Ge3yQYrMcnsntRBDJLNR1gSfnfQVzz6
+XhNQqqqI/0BJlQMx9k//gMA0uAIjgyGs2Q0Y33v2E7JF3LKa0XC/+g0IqOIY35qR
+VANWNftZuh2wzcLm6sv28Q==
+-----END PRIVATE KEY-----
+EOF
+}
+
+function wkpriv {
+	case "${1:-rsa2048}" in
+	secp256k1)  wkpriv_secp256k1;;
+	secp384r1)  wkpriv_secp384r1;;
+	rs2048)	    wkpriv_rs2048;;
+	*)	    die "WK key algorithm \"${1:-}\" not supported";;
+	esac
 }
 
 # verify_sig PUBKEY_FILE BODYHASH_FILE SIG_FILE
