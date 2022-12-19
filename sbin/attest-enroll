@@ -92,6 +92,7 @@ configs() {
 
 die() { echo >&2 "Error: $PROG" "$@" ; exit 1 ; }
 warn() { echo >&2 "$@" ; }
+log() { echo >&2 "$@" ; }
 
 # This policyDigest is the result of executing a policy with two commands:
 #
@@ -110,13 +111,13 @@ genhostname() {
 		fi
 
 		info "Recording secondary hostname: $hostname"
-		echo "$hostname" > "${1}/hostname-${hostname:0:80}"
+		echo -n "$hostname" > "${1}/hostname-${hostname:0:80}"
 		echo "public hostname-${hostname:0:80}"
 		return 0
 	fi
 
 	info "Recording primary hostname: $hostname"
-	echo "$hostname" > "${1}/hostname"
+	echo -n "$hostname" > "${1}/hostname"
 	echo "public hostname"
 }
 
@@ -201,11 +202,14 @@ configure() {
 
 usage() {
 	((${1:-1} == 0)) || exec 1>&2
+	# shellcheck disable=SC2209
 	pager=cat
 	if [[ -t 0 && -t 1 && -t 2 ]]; then
 		if [[ -z ${PAGER:-} ]] && type less >/dev/null 2>&1; then
+			# shellcheck disable=SC2209
 			pager=less
 		elif [[ -z ${PAGER:-} ]] && type more >/dev/null 2>&1; then
+			# shellcheck disable=SC2209
 			pager=more
 		elif [[ -n ${PAGER:-} ]]; then
 			pager=$PAGER
@@ -478,62 +482,48 @@ trap cleanup EXIT
 
 # We might need a TPM for what should be software-only things...
 start_swtpm() {
-	local -i tries port start ready
-	((port= 10240 + ( ($$ % (32768 - 10240) ) ) ))
+	local -i tries
+	local mypath
 	mkdir "${tmp}/swtpm"
+	tries=0
+	mypath=${tmp}/socket
 
-	start=$SECONDS
-	for ((tries=0, ready=0;
-	      ready == 0 && tries < 3 && (SECONDS - start) < 10;
-	      tries++, port+=2)); do
+	# swtpm --daemon exits immediately, which can be too soon.
+	swtpm socket							\
+		--tpm2							\
+		--tpmstate dir="${tmp}/swtpm"				\
+		--pid file="${tmp}/.pid"				\
+		--server type="unixio,path=$mypath"		\
+		--ctrl type="unixio,path=$mypath.ctrl"	\
+		--flags startup-clear &
+	swtpm_pid=$!
 
-		# swtpm --daemon exits immediately, which can be too soon.
-		swtpm socket							\
-			--tpm2							\
-			--tpmstate dir="${tmp}/swtpm"				\
-			--pid file="${tmp}/.pid"				\
-			--server type="tcp,bindaddr=127.0.0.1,port=$port"	\
-			--ctrl type="tcp,bindaddr=127.0.0.1,port=$((port+1))"	\
-			--flags startup-clear					&
-		swtpm_pid=$!
-
-		# Wait until swtpm is started and running
-		while ! lsof				\
+	# Wait until swtpm is started and running
+	while /bin/true;
+	do
+		socketlist=$(lsof			\
 				-p "$swtpm_pid"		\
 				-a			\
-				-i ":$port"		\
-				-a			\
-				-i ":$((port+1))" >/dev/null 2>&1; do
-
-			# Is it still running?
-			kill -0 "$swtpm_pid" || break
-
-			# Have we waited too long?
-			(( (SECONDS - start) >= 10 )) && break
-
-			sleep 1
-		done
-
-		# Check that $swtpm_pid has the two ports open
-		lsof					\
-			-p "$swtpm_pid"			\
-			-a				\
-			-i ":$port"			\
-			-a				\
-			-i ":$((port+1))"		\
-			>/dev/null 2>&1			\
-		&& break
-
-		# Nope; retry.  Note that at this point $swtpm_pid would be
-		# alive or a zombie, so it's OK to kill it.
-		kill "$swtpm_pid"
-		wait "$swtpm_pid"
-		swtpm_pid=
+				-U 2> /dev/null)
+		(echo "$socketlist" | \
+			grep -F -v "$mypath.ctrl" | \
+			grep -F "$mypath" && \
+			echo "$socketlist" | \
+			grep -F "$mypath.ctrl") > /dev/null 2>&1 && \
+			break;
+		if ((++tries > 3)); then
+			# Note that at this point $swtpm_pid would be
+			# alive or a zombie, so it's OK to kill it.
+			kill "$swtpm_pid"
+			wait "$swtpm_pid"
+			swtpm_pid=
+			break;
+		fi
 	done
 
 	[[ -n $swtpm_pid ]]	\
 	|| die "Could not start a software TPM"
-	export TPM2TOOLS_TCTI="swtpm:host=127.0.0.1,port=$port"
+	export TPM2TOOLS_TCTI="swtpm:path=$mypath"
 }
 
 info() {
@@ -669,22 +659,53 @@ cat "$EKPUB" > "$tmp/ekpub" \
 || die "$0: unable to read EKpub from stdin"
 exec </dev/null
 
-# Normalize EKpub into TPM2B_PUBLIC form
-# TODO: Support EKcert
-case "$(file -b --mime-type "$tmp/ekpub")" in
-text/plain)
-	# Should be a PEM file then
-	EKCERT=
+# Detect the format of the submitted "ekpub" and provide required conversions.
+# At the conclusion, we should ahve "ek.pub" as the public key in TPM2B_PUBLIC
+# format. NB: we should eventually add a control here so we can choose not to
+# trust the enroller with this power. I.e. right now they could extract the
+# public key from any EKcert and just submit that, obviously bypassing any
+# objections we might have had with the EKcert...
+EKformat="$(file -b --mime-type "$tmp/ekpub")"
+if [[ $EKformat == "application/octet-stream" ]]; then
+	log "Binary ekpub provided, detecting format..."
+	# See if it's a DER cert
+	if openssl x509 -inform DER		\
+			-in "$tmp/ekpub"	\
+			-outform PEM		\
+			-out "$tmp/ekcert.pem"	\
+			> /dev/null 2>&1; then
+		log "EKpub is a DER x509, convert to PEM and re-process"
+		# Trigger the PEM processing path for the rest
+		EKformat="text/plain"
+		mv "$tmp/ekcert.pem" "$tmp/ekpub"
+	# Try as raw TPM2B_PUBLIC
+	elif tpm2 print -t TPM2B_PUBLIC		\
+			"$tmp/ekpub" 		\
+			> /dev/null 2>&1; then
+		log "EKpub is a TPM2B_PUBLIC public key"
+		mv "$tmp/ekpub" "$tmp/ek.pub"
+		normalize_ekpub "$tmp/ek.pub"
+		EKformat=done
+	else
+		die "Can't decode the provided EKpub"
+	fi
+fi
+EKCERT=
+if [[ $EKformat = "text/plain" ]]; then
+	log "Text EKpub provided, detecting format..."
 	if grep -q CERTIFICATE "$tmp/ekpub"; then
-		# EKcert
-		cp "$tmp/ekpub" "$tmp/ekcert.pem"
+		# It claims to be a cert
+		mv "$tmp/ekpub" "$tmp/ekcert.pem"
 		EKCERT="$tmp/ekcert.pem"
-		openssl x509				\
-			-pubkey				\
-			-noout				\
-			-outform PEM			\
-			-in "$tmp/ekpub"		\
-			> "$tmp/ek.pub"
+		openssl x509			\
+			-pubkey			\
+			-noout			\
+			-outform PEM		\
+			-in "$EKCERT"		\
+			> "$tmp/ekpub.pem"	\
+			2> /dev/null		\
+		|| die "EKpub appears to be a broken cert"
+		log "EKpub is a PEM x509, perform chain-validation"
 		if [[ -d $TPM_VENDORS ]]; then
 			CAarg=CApath
 		elif [[ -f $TPM_VENDORS ]]; then
@@ -695,34 +716,34 @@ text/plain)
 		openssl verify				\
 			-$CAarg "$TPM_VENDORS"		\
 			-partial_chain			\
-			"$tmp/ekpub"			\
+			"$EKCERT"			\
+			> /dev/null 2>&1		\
 		|| die "EKcert is not trusted"
+		log "EKcert is trusted, extract public-key and re-process"
+		# Trigger the PEM public-key processing path for the rest
+		mv "$tmp/ekpub.pem" "$tmp/ekpub"
+	fi
+	if grep -q PUBLIC "$tmp/ekpub"; then
+		# It claims to be a public key
 		pem2tpm2bpublic				\
 			"$tmp/ekpub"			\
 			"$tmp/ek.pub"			\
-			"${DEFAULT_EK_POLICY:-}"
-	elif grep -q PUBLIC "$tmp/ekpub"; then
-		# Plain public key
-		pem2tpm2bpublic				\
-			"$tmp/ekpub"			\
-			"$tmp/ek.pub"			\
-			"${DEFAULT_EK_POLICY:-}"
+			"${DEFAULT_EK_POLICY:-}"	\
+			> /dev/null 2>&1		\
+		|| die "EKpub appears to be a broken public key"
+		log "EKpub is a PEM public key"
 	else
-		die "Cannot understand given EKpub/EKcert"
-	fi;;
-
-application/octet-stream)
-	EKCERT=
-	cp "$tmp/ekpub" "$tmp/ek.pub";;
-
-*)	die "Given EKpub is not in a supported format: $(file -b --mime-type "$tmp/ekpub")";;
-esac
+		die "Can't decode the provided EKpub"
+	fi
+elif [[ $EKformat == "done" ]]; then
+	:
+else
+	die "EKpub is not in a supported format: $EKformat"
+fi
 EKPUB="$tmp/ek.pub"
 
 #
 # Verify that the EK meets our specifications
-#
-# TODO: Support EKcert.
 #
 tpm2 print \
 	-t TPM2B_PUBLIC \
@@ -783,8 +804,8 @@ cp "$EKPUB" "$outdir/ek.pub" \
 || die "unable to copy EK public key to output directory $outdir"
 
 if [[ -n $EKCERT ]]; then
-	cp "$EKCERT" "$outdir/ek.pub" \
-	|| die "unable to copy EK public key to output directory $outdir"
+	cp "$EKCERT" "$outdir/ek.cert" \
+	|| die "unable to copy EK certificate to output directory $outdir"
 fi
 
 info "Generating secrets and metadata"
@@ -793,45 +814,53 @@ for genprog in "${GENPROGS[@]}" genmanifest; do
 
 	# We want to split the output of genprog on spaces:
 	# shellcheck disable=SC2046
-	set -- $("$genprog" "$tmp" "$outdir" "$hostname")
+	genprog_output=$("$genprog" "$tmp" "$outdir" "$hostname") \
+		|| die "genprog '$genprog' failed"
+
+# To support multi-line output (where this code previously supported only one),
+# use negative indentation to put a loop around the existing code.
+echo "$genprog_output" | while read; do
+	info "Processing output line: $REPLY"
+	set -- $REPLY
 
 	if (($# > 0)) && [[ $1 = skip ]]; then
 		shift
 		info "GENPROG $genprog skipped${1:+": "}$*"
 		continue
 	fi
-	if (($# < 2)) ||
-	   [[ $1 != @(sensitive|public) ||
-	      ! -f $tmp/$2 ]]; then
-		warn "GENPROG $genprog output is unexpected: $*; skipping"
-		continue
+	if (($# < 2)) || [[ $1 != @(sensitive|public) ]]; then
+		die "GENPROG $genprog output is unexpected: $*"
 	fi
 	kind=$1
 	shift
-	if [[ $kind = sensitive ]]; then
-		# Encrypt file, escrow, and place into output dir.
-		info "Encrypting secret file from $genprog: $1"
-		encrypt "$genprog" "$1"
-		info "Signing ciphertext $1"
-		sign "${outdir}/${1}.enc"
-		did_something=true
-		shift
-	fi
 
 	# Copy any remaining files
 	while (($# > 0)); do
-		if [[ -f ${outdir}/$1 ]]; then
-			info "Replacing public file $1"
-			mv -f "${outdir}/$1" "${outdir}/${1}-"
-		else
-			info "Installing public file $1"
+		if [[ ! -f "$tmp/$1" ]]; then
+			ls -l "$tmp" >&2
+			die "Missing $genprog output file: $1"
 		fi
-		cp -f "${tmp}/$1" "${outdir}/${1}"
-		info "Signing metadata file $1"
-		sign "${outdir}/$1"
+		if [[ $kind = sensitive ]]; then
+			# Encrypt file, escrow, and place into output dir.
+			info "Encrypting secret file from $genprog: $1"
+			encrypt "$genprog" "$1"
+			info "Signing ciphertext $1"
+			sign "${outdir}/${1}.enc"
+		else
+			if [[ -f ${outdir}/$1 ]]; then
+				info "Replacing public file $1"
+				mv -f "${outdir}/$1" "${outdir}/${1}-"
+			else
+				info "Installing public file $1"
+			fi
+			cp -f "${tmp}/$1" "${outdir}/${1}"
+			info "Signing metadata file $1"
+			sign "${outdir}/$1"
+		fi
 		did_something=true
 		shift
 	done
+done
 done
 
 # Re-sign all assets if the signing key has changed

@@ -53,6 +53,13 @@ def write_tofu_pcrs(fn, q, which_pcrs):
 	with open(fn, 'w') as f:
 		yaml.dump(v, f)
 
+# The caller is expecting specific return codes to facilitate meaningful
+# logging (and a reduction in noise)
+# 99: general problem, log all the stderr, to hell with brevity.
+# 100: no matching ekpubhash doesn't exist in the DB
+# TODO: quote_valid should be deprecated. HCP always passes TRUE (why come
+# through here with a known-invalid quote?), but it's left here in case other
+# lingering dependencies on it need to be cleaned up.
 def verify(quote, quote_valid):
 	ekhash = quote['ekhash']
 
@@ -60,11 +67,14 @@ def verify(quote, quote_valid):
 	ekdir = os.path.join(db_path, 'ekpubhash', ekhash[0:2], ekhash[0:6], ekhash[0:32])
 	if not os.path.exists(ekdir):
 		ekdir = os.path.join(db_path, ekhash[0:2], ekhash)
+		if not os.path.exists(ekdir):
+			logging.warning(f"{ekhash=}: can't find matching enrollment")
+			return 100
 
 	# default policy is to reject any invalid quotes
 	if quote_valid != "True":
 		logging.warning(f"{ekhash=}: rejecting invalid quote")
-		return -1
+		return 99
 
 	if os.path.exists(os.path.join(ekdir, 'phase2')):
 		tofu_pcrs = [0, 1]
@@ -78,11 +88,11 @@ def verify(quote, quote_valid):
 			valid_pcrs = yaml.safe_load(pcrs_file)
 		if valid_pcrs is None:
 			logging.warning(f"{ekhash=}: rejecting unknown machine")
-			return -1
+			return 99
 
 		if not pcr_validate(valid_pcrs['pcrs'], quote['pcrs']):
 			logging.warning(f"{ekhash=}: rejecting bad PCRs")
-			return -1
+			return 99
 
 	# the eventlog meets the policy requirements
 	# so output the secret for encoding by the attestation server
@@ -92,6 +102,9 @@ def verify(quote, quote_valid):
 		stdout=sys.stdout,
 		stderr=sys.stderr,
 	)
+	if sub.returncode != 0:
+		logging.warning(f"{ekhash=}: asset-packing failed")
+
 	return sub.returncode
 
 if __name__ == '__main__':

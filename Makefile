@@ -278,6 +278,7 @@ requirements: | build
 		bison \
 		libelf-dev \
 		libjson-glib-dev \
+		python3-flask
 
 
 # Remove the temporary files and build stuff

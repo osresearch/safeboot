@@ -115,6 +115,63 @@ function auth {
 	tpm2 flushcontext --loaded-session
 }
 
+# activate_with_wk WK_NAME ...
+function activate_with_wk {
+	# Load the WK for use as the activation object for
+	# TPM2_ActivateCredential():
+	local attrs wkname wkalg
+
+	wkname=$1
+	wkalg=ecc
+	if [[ $wkname = rsa* ]]; then
+		wkalg=rsa
+	fi
+	shift
+
+	tpm2 flushcontext --transient-object 1>&2
+	tpm2 flushcontext --loaded-session 1>&2
+	wkpriv "$1" > "${d}/wkpriv.pem"
+	attrs='sign'
+	adminwithpolicy=
+	if (($# > 0)); then
+		attrs='adminwithpolicy|sign'
+		adminwithpolicy=true
+	fi
+	if tpm2 loadexternal						\
+			--hierarchy n					\
+			--key-algorithm "$wkalg"			\
+			--private "${d}/wkpriv.pem"			\
+			${adminwithpolicy:+--policy "${d}/policy"}	\
+			--attributes "$attrs"				\
+			--key-context "${d}/wk.ctx" 1>&2; then
+		true
+	elif [[ $wkalg = rsa ]]; then
+		die "Failed to load rsa2048 WK"
+	else
+		echo "Warning: Failed to load $wkname WK" 1>&2
+		rm -f "${d}/wkpriv.pem"
+		return 1
+	fi
+
+	# If a policy was given to execute, create a policy session and execute
+	# and satisfy the policy:
+	activatecredential_args=()
+	if (($# > 0)); then
+		activatecredential_args+=(--credentialedkey-auth session:"${d}/session.ctx")
+		auth "$@"
+	fi
+
+	# Finally, ActivateCredential
+	tpm2 activatecredential						\
+		--credentialedkey-context "${d}/wk.ctx"			\
+		"${activatecredential_args[@]}"				\
+		--credentialkey-context "${d}/ek.ctx"			\
+		--credentialkey-auth session:"${d}/sessionek.ctx"	\
+		--credential-blob "$ciphertext_file"			\
+		--certinfo-data "$out_file" > /dev/null			\
+	|| die "could not decrypt using TPM2_ActivateCredential()"
+}
+
 if $use_tk; then
 	# attempt to load the secret wrapping key into our TPM
 	# as a transient object
@@ -166,46 +223,8 @@ if $use_tk; then
 		|| die "tpm2: unable to decrypt with transport key"
 	fi
 else
-	# Load the WK for use as the activation object for
-	# TPM2_ActivateCredential():
-	tpm2 flushcontext --transient-object 1>&2
-	tpm2 flushcontext --loaded-session 1>&2
-	wkpriv > "${d}/wkpriv.pem"
-	attrs='sign'
-	adminwithpolicy=
-	if (($# > 0)); then
-		attrs='adminwithpolicy|sign'
-		adminwithpolicy=true
-	fi
-	if tpm2 loadexternal						\
-			--hierarchy n					\
-			--key-algorithm ecc				\
-			--private "${d}/wkpriv.pem"			\
-			${adminwithpolicy:+--policy "${d}/policy"}	\
-			--attributes "$attrs"				\
-			--key-context "${d}/wk.ctx" 1>&2; then
-		true
-	else
-		stat=$?
-		echo "ERROR: Failed to load WK: $?" 1>&2
-		exit $stat
-	fi
-
-	# If a policy was given to execute, create a policy session and execute
-	# and satisfy the policy:
-	activatecredential_args=()
-	if (($# > 0)); then
-		activatecredential_args+=(--credentialedkey-auth session:"${d}/session.ctx")
-		auth "$@"
-	fi
-
-	# Finally, ActivateCredential
-	tpm2 activatecredential						\
-		--credentialedkey-context "${d}/wk.ctx"			\
-		"${activatecredential_args[@]}"				\
-		--credentialkey-context "${d}/ek.ctx"			\
-		--credentialkey-auth session:"${d}/sessionek.ctx"	\
-		--credential-blob "$ciphertext_file"			\
-		--certinfo-data "$out_file" > /dev/null			\
-	|| die "could not decrypt using TPM2_ActivateCredential()"
+	activate_with_wk secp384r1 "$@"				\
+	|| activate_with_wk secp256k1 "$@"			\
+	|| activate_with_wk rsa2048 "$@"			\
+	|| die "could not decrypt"
 fi

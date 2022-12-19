@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -euo pipefail
+shopt -s extglob
+
+BINDIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+
+gencert_override() {
+	GENCERT_OUTPUT+="-pkinit-kdc"
+	GENCERT_PKINIT_CLIENT=false
+	GENCERT_PKINIT_KDC=true
+	GENCERT_HTTPS_CLIENT=false
+	GENCERT_HTTPS_SERVER=false
+}
+
+source $BINDIR/gencert

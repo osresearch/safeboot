@@ -340,18 +340,40 @@ attest()
 
 	warn "$SERVER: sending attestation"
 
-	curl \
+	# Capture the status code as well as the output.
+	ecode=0
+	status=$(curl \
 		-X POST \
 		--fail \
 		--silent \
-		--data-binary @"$TMP/quote-out.tar" \
+		-F quote=@"$TMP/quote-out.tar" \
 		--output "$TMP/cipher.tar" \
-		"$SERVER" \
-	|| die "attestation failed"
+		-w "%{http_code}" \
+		"$SERVER") || ecode=$?
+	debug "curl returned, ecode=$ecode, status=$status"
+
+	if [[ $ecode != 0 ]]; then
+		# die gives an exit code of 1 by default, but we coerce it to 2 in the
+		# "unrecognized TPM" case, so that the caller can loop waiting for
+		# enrollment replication (if desired).
+		if [[ $status == 404 ]]; then
+			die 2 "TPM not recognized (yet)"
+		fi
+		# Anything other than 200 is considered an error
+		if [[ $status == 200 ]]; then
+			die "Strange: curl failed ($ecode) but returned status == 200"
+		fi
+		die "Attestation failed"
+	fi
+
+	if [[ $status != 200 ]]; then
+		die "Strange: curl succeeded, but status code ($status) unexpected"
+	fi
+	debug "Attestation complete"
 
 	# shellcheck disable=SC2119
-	unseal < "$TMP/cipher.tar" \
-	|| die "unsealing failed"
+	unseal < "$TMP/cipher.tar" || die "unsealing failed"
+	debug "Unsealing complete"
 }
 
 

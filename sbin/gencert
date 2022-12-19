@@ -20,20 +20,42 @@ else
 	exit 1
 fi
 
-GENCERT_CRED=PEM-FILE:/etc/safeboot/gencert-ca.pem
+GENCERT_OUTPUT=hostcert # filenames are prefixed by this
+GENCERT_CA_PRIV=
+GENCERT_CA_CERT=PEM-FILE:/etc/safeboot/gencert-ca.pem
 GENCERT_REALM=
 GENCERT_KEY_BITS=2048
-GENCERT_INCLUDE_SAN_PKINIT=true
-GENCERT_INCLUDE_SAN_DNSNAME=false
-GENCERT_EKUS=()
+GENCERT_INCLUDE_SAN_DNSNAME=true
+GENCERT_X509_TOOLING=OpenSSL # Or Heimdal
+declare -a GENCERT_EKUS
 declare -A GENCERT_DOMAIN_REALM
+declare -A POLICIES
+GENCERT_EKUS=()
+GENCERT_DOMAIN_REALM=()
+# One of the following must be defined
+GENCERT_PKINIT_CLIENT=true
+GENCERT_PKINIT_KDC=false
+GENCERT_HTTPS_CLIENT=false
+GENCERT_HTTPS_SERVER=false
 
-cf=$(safeboot_file etc enroll.conf)
-if [[ -n $cf && -f $cf ]]; then
+if [[ -n ${SAFEBOOT_ENROLL_CONF:-} ]]; then
 	# shellcheck disable=SC1090
-	. "$cf"
-	export SAFEBOOT_ENROLL_CONF="$cf"
+	. "$SAFEBOOT_ENROLL_CONF"
+else
+	cf=$(safeboot_file etc enroll.conf)
+	if [[ -n $cf && -f $cf ]]; then
+		# shellcheck disable=SC1090
+		. "$cf"
+	fi
 fi
+
+# This script could be sourced by another, and if it defines a
+# gencert_override() function, we will call it _after_ enroll.conf has been
+# processed.
+[[ $(type -t gencert_override) == function ]] && gencert_override
+
+# Make GCERT a shorthand
+GCERT=$GENCERT_OUTPUT
 
 die() { echo "skip: $*"; echo >&2 "Error: $PROG" "$@" ; exit 1 ; }
 warn() { echo >&2 "$@" ; }
@@ -42,6 +64,35 @@ cd "$1"
 outdir=$2
 hostname=$3
 shift 3
+
+(${GENCERT_PKINIT_CLIENT} || ${GENCERT_PKINIT_KDC}) && 		\
+	GENCERT_PKINIT=true ||
+	GENCERT_PKINIT=false
+
+${GENCERT_PKINIT}						\
+|| ${GENCERT_INCLUDE_SAN_DNSNAME}				\
+|| die 'One of GENCERT_{PKINIT_{CLIENT,KDC},INCLUDE_SAN_DNSNAME} must be set to true'
+
+typecount=0
+${GENCERT_PKINIT_CLIENT} && typedump=$((typecount++))
+${GENCERT_PKINIT_KDC} && typedump=$((typecount++))
+${GENCERT_HTTPS_CLIENT} && typedump=$((typecount++))
+${GENCERT_HTTPS_SERVER} && typedump=$((typecount++))
+[[ $typecount == 1 ]]						\
+|| die 'One of GENCERT_{PKINIT_{CLIENT,KDC},HTTPS_{CLIENT,SERVER}} must be set to true'
+
+declare -a hxtool_ca_opts
+declare -a openssl_x509_opts
+
+hxtool_ca_opts=("--ca-certificate=$GENCERT_CA_CERT")
+openssl_x509_opts=("-CA" "$GENCERT_CA_CERT")
+
+if [[ -n $GENCERT_CA_PRIV ]]; then
+	[[ -n $GENCERT_CA_CERT ]]				\
+	|| die "GENCERT_CA_CERT is not set"
+	hxtool_ca_opts+=("--ca-private-key=$GENCERT_CA_PRIV")
+	openssl_x509_opts+=("-CAkey" "$GENCERT_CA_PRIV")
+fi
 
 if [[ -z $GENCERT_REALM ]]; then
 	domain=${hostname}
@@ -60,48 +111,135 @@ if [[ -z $GENCERT_REALM ]]; then
 	|| die "Could not determine realm name for $hostname"
 fi
 
-sans=()
+#TBD: this hxtool stuff needs updating
+${GENCERT_PKINIT_CLIENT}					\
+&& GENCERT_HOST_PRINC="host/$hostname@$GENCERT_REALM"
 
-${GENCERT_INCLUDE_SAN_PKINIT}					\
-&& sans+=(--pk-init-principal="host/$hostname@$GENCERT_REALM")
+#TBD: this hxtool stuff needs updating
+${GENCERT_PKINIT_CLIENT}					\
+&& hxtool_ca_opts+=(--pk-init-principal="$GENCERT_HOST_PRINC")	\
+&& hxtool_ca_opts+=(--type=pkinit-client)
+${GENCERT_HTTPS_CLIENT}						\
+&& hxtool_ca_opts+=(--type=https-client)
+${GENCERT_HTTPS_SERVER}						\
+&& hxtool_ca_opts+=(--type=https-server)
 
 ${GENCERT_INCLUDE_SAN_DNSNAME}					\
-&& sans+=(--hostname="$hostname")
+&& hxtool_ca_opts+=(--hostname="$hostname")
 
-ekus=()
 if ((${#GENCERT_EKUS[@]} > 0)); then
 	for eku in "${GENCERT_EKUS[@]}"; do
-		ekus+=(--eku="$eku")
+		hxtool_ca_opts+=(--eku="$eku")
 	done
 fi
 
+cat > "$GCERT-extensions" <<EOF
+[client_cert]
+basicConstraints=CA:FALSE
+$(${GENCERT_PKINIT_KDC}						\
+	&& printf 'keyUsage=nonRepudiation,digitalSignature,keyEncipherment,keyAgreement\n' \
+	|| printf 'keyUsage=digitalSignature,keyEncipherment,keyAgreement\n')
+extendedKeyUsage=@eku_section
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid,issuer
+issuerAltName=issuer:copy
+subjectAltName=critical,@subject_alt_section
+
+[eku_section]
+$(${GENCERT_PKINIT_CLIENT}					\
+	&& printf 'extendedKeyUsage.800=1.3.6.1.5.2.3.4\n')
+$(${GENCERT_PKINIT_KDC}						\
+	&& printf 'extendedKeyUsage.800=1.3.6.1.5.2.3.5\n')
+$(${GENCERT_HTTPS_CLIENT}					\
+	&& printf 'extendedKeyUsage.801=1.3.6.1.5.5.7.3.2\n')
+$(${GENCERT_HTTPS_SERVER}					\
+	&& printf 'extendedKeyUsage.801=1.3.6.1.5.5.7.3.1\n')
+$(
+	for i in "${!GENCERT_EKUS[@]}"; do
+		printf 'extendedKeyUsage.%s=%s\n'		\
+			"$i" "${GENCERT_EKUS[1]}"
+	done
+)
+
+[subject_alt_section]
+$(${GENCERT_INCLUDE_SAN_DNSNAME}				\
+	&& printf 'DNS.1=${ENV::HOST_NAME}\n')
+$(${GENCERT_PKINIT}						\
+	&& printf 'otherName.2=1.3.6.1.5.2.2;SEQUENCE:princ_name\n')
+
+[princ_name]
+realm=EXP:0,GeneralString:\${ENV::GENCERT_REALM}
+principal_name=EXP:1,SEQUENCE:principal_seq
+
+[principal_seq]
+name_type=EXP:0,INTEGER:1
+name_string=EXP:1,SEQUENCE:principals
+
+[principals]
+$(${GENCERT_PKINIT_CLIENT}					\
+	&& printf 'princ0=GeneralString:\${ENV::GENCERT_HOST_PRINC}\n')
+$(${GENCERT_PKINIT_KDC}						\
+	&& printf 'princ0=GeneralString:krbtgt\n' 		\
+	&& printf 'princ1=GeneralString:\${ENV::GENCERT_REALM}\n')
+EOF
+
 # Generate the private key (and a CSR, which is kind of unnecessary, but...)
-trap 'rm -f cert-req.der cert-key.pem' EXIT
-hxtool request-create						\
-	--subject=''						\
-	--generate-key=rsa					\
-	--key-bits="$GENCERT_KEY_BITS"				\
-	--key="PEM-FILE:$PWD/cert-key.pem"			\
-	cert-req.der						\
-|| die "Could not generate RSA key!"
-# Format and sign the end-entity certificate
-hxtool issue-certificate					\
-	--type=pkinit-client					\
-	--ca-certificate="$GENCERT_CRED"			\
-	--subject=						\
-	"${sans[@]}"						\
-	"${ekus[@]}"						\
-	--ku=digitalSignature					\
-	--lifetime=10y						\
-	--req="PKCS10:cert-req.der"				\
-	--certificate=PEM-FILE:cert.pem				\
-|| die "skip: Could not issue PKINIT certificate for impersonation!"
+trap 'rm -f "$GCERT-extensions" "$GCERT-req" "$GCERT-key.pem"' EXIT
+
+# Try Heimdal's hxtool. TBD: this needs updating
+case "$GENCERT_X509_TOOLING" in
+Heimdal)
+	hxtool request-create						\
+		--subject=''						\
+		--generate-key=rsa					\
+		--key-bits="$GENCERT_KEY_BITS"				\
+		--key=PEM-FILE:$GCERT-key.pem				\
+		$GCERT-req 2>/dev/null					\
+	|| die "Could not generate a key and make a CSR"
+	! hxtool issue-certificate					\
+		"${hxtool_ca_opts[@]}"					\
+		--subject=						\
+		--ku=digitalSignature					\
+		--lifetime=10y						\
+		--req=PKCS10:$GCERT-req					\
+		--certificate=PEM-FILE:$GCERT.pem 2>/dev/null		\
+	|| die "Could not issue certificate"
+	;;
+OpenSSL)
+	openssl genrsa							\
+		-out "$GCERT-key.pem" 2048				\
+	|| die "Could not make an RSA key"
+	openssl req							\
+		-new							\
+		-batch							\
+		-subj '/'						\
+		-key "$GCERT-key.pem"					\
+		-out "$GCERT-req"					\
+	|| die "Could not make a CSR"
+
+	export GENCERT_REALM
+	export GENCERT_HOST_PRINC
+	export HOST_NAME="$hostname"
+	export SERVICE="host"
+
+	openssl x509							\
+		-set_serial "0x$(_rand 16 | bin2hex)"			\
+		"${openssl_x509_opts[@]}"				\
+		-req							\
+		-in "$GCERT-req"					\
+		-extensions client_cert					\
+		-extfile "$GCERT-extensions"				\
+		-days 365						\
+		-out "$GCERT.pem"					\
+	|| die "Could not make a certificate"
+esac
+
 
 # Append the issuer certificate and any other certs in that file to the output
 # so that the full chain is included.
-openssl crl2pkcs7 -nocrl -certfile "${GENCERT_CRED#*:}"		\
-| openssl pkcs7 -print_certs >> cert.pem
+openssl crl2pkcs7 -nocrl -certfile "${GENCERT_CA_CERT#*:}"		\
+| openssl pkcs7 -print_certs >> $GCERT.pem
 
-grep -q PRIVATE cert.pem && die "Private key in cert file?!"
+grep -q PRIVATE $GCERT.pem && die "Private key in cert file?!"
 trap true EXIT
-echo "sensitive cert-key.pem cert.pem"
+echo "sensitive $GCERT-key.pem $GCERT.pem"
